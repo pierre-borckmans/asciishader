@@ -11,6 +11,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 )
 
 type tickMsg time.Time
@@ -246,7 +247,7 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	// Right panel resize
 	if m.rightPanel.Width() > 0 || m.rightPanel.Animating() {
-		rpEdgeX := m.width - m.rightPanel.Width() - 2
+		rpEdgeX := m.width - m.rightPanel.Width()
 		m.rightPanel.Resizer().SetEdgePos(rpEdgeX)
 		if m.rightPanel.HandleResizeEvent(msg, m.width) {
 			m.resizeViewport()
@@ -265,11 +266,18 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Right panel scroll
+	// Right panel: controls mouse interaction (clicks, drags, hover)
 	if m.rightPanel.IsExpanded() {
 		rpX := m.width - m.rightPanel.Width() + 2
 		rpY := hh
 		m.rightPanel.ScrollView().SetPosition(rpX, rpY)
+
+		// Controls zoned interaction (click/hover on sliders, scene, gpu)
+		if m.controls.HandleMouse(msg, &m) {
+			return m, nil
+		}
+
+		// Scrollbar interaction
 		if m.rightPanel.HandleMouseEvent(msg) {
 			return m, nil
 		}
@@ -666,7 +674,7 @@ func (m model) View() string {
 		middle = lipgloss.JoinHorizontal(lipgloss.Top, sidebarStr, leftGap, viewContentBlock)
 	}
 
-	return header + "\n" + middle + "\n" + footer
+	return zone.Scan(header + "\n" + middle + "\n" + footer)
 }
 
 func main() {
@@ -682,6 +690,8 @@ func main() {
 		pprof.StopCPUProfile()
 		f.Close()
 	}()
+
+	zone.NewGlobal()
 
 	m := initialModel()
 

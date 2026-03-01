@@ -67,8 +67,7 @@ func (pr *PanelResizer) HandleMouse(msg tea.MouseMsg, currentSize int, screenSiz
 		mousePos = msg.Y
 	}
 
-	// Check if mouse is on the edge (+-1 tolerance)
-	onEdge := mousePos >= pr.edgePos-1 && mousePos <= pr.edgePos+1
+	onEdge := mousePos == pr.edgePos
 
 	switch msg.Action {
 	case tea.MouseActionPress:
