@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"strconv"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -16,9 +15,7 @@ type ControlsTab struct {
 	focus       int // which item is focused (0-8: 7 sliders + scene + gpu)
 	numItems    int
 	zoned       *ZonedInteraction
-	dragging    bool // currently dragging a slider bar
-	dragSlider  int  // which slider index is being dragged
-	renderWidth int  // last render width (for slider bar math)
+	renderWidth int // last render width
 }
 
 const (
@@ -148,22 +145,33 @@ func (ct *ControlsTab) zoneIDs() []string {
 // HandleMouse processes a mouse event for the controls panel.
 // Returns true if handled.
 func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m *model) bool {
-	// Handle ongoing drag
-	if ct.dragging {
-		switch msg.Action {
-		case tea.MouseActionMotion:
-			ct.setSliderFromMouse(ct.dragSlider, msg)
-			ct.SyncToRenderer(m.renderer)
-			return true
-		case tea.MouseActionRelease:
-			ct.setSliderFromMouse(ct.dragSlider, msg)
-			ct.SyncToRenderer(m.renderer)
-			ct.dragging = false
-			return true
+	// Delegate to sliders first (they own drag/hover state)
+	for i, s := range ct.sliders {
+		zi := zone.Get(ct.zoned.zoneID("slider-" + strconv.Itoa(i)))
+		if !zi.IsZero() {
+			s.SetScreenX(zi.StartX)
+		}
+		if s.IsDragging() {
+			if s.HandleMouse(msg) {
+				ct.SyncToRenderer(m.renderer)
+				return true
+			}
+		}
+		// Check zone bounds for non-drag events
+		if !zi.IsZero() && zi.InBounds(msg) {
+			if s.HandleMouse(msg) {
+				if msg.Action == tea.MouseActionPress {
+					ct.focus = i
+				}
+				ct.SyncToRenderer(m.renderer)
+				return true
+			}
+		} else if msg.Action == tea.MouseActionMotion {
+			s.ClearHover()
 		}
 	}
 
-	// Use zoned interaction for hover + click detection
+	// Use zoned interaction for hover + release-based clicks (scene, gpu)
 	result := ct.zoned.HandleMouse(msg, ct.zoneIDs())
 
 	if result.HoverChanged {
@@ -178,10 +186,9 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m *model) bool {
 		return false
 	}
 
-	// Route click to the right control
+	// Scene click — left half = prev, right half = next
 	if clicked == "scene" {
 		ct.focus = ctrlScene
-		// Use zone position to determine left/right half click
 		zi := zone.Get(ct.zoned.zoneID("scene"))
 		if !zi.IsZero() {
 			mid := (zi.StartX + zi.EndX) / 2
@@ -197,6 +204,7 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m *model) bool {
 		return true
 	}
 
+	// GPU toggle
 	if clicked == "gpu" {
 		ct.focus = ctrlGPU
 		if m.gpu != nil {
@@ -205,64 +213,17 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m *model) bool {
 		return true
 	}
 
-	// Slider click — parse index from "slider-N"
-	if len(clicked) > 7 && clicked[:7] == "slider-" {
-		idx, err := strconv.Atoi(clicked[7:])
-		if err == nil && idx >= 0 && idx < len(ct.sliders) {
-			ct.focus = idx
-			ct.dragging = true
-			ct.dragSlider = idx
-			ct.setSliderFromMouse(idx, msg)
-			ct.SyncToRenderer(m.renderer)
-			return true
-		}
-	}
-
 	return false
 }
 
-// setSliderFromMouse sets a slider value based on mouse X position within the zone.
-func (ct *ControlsTab) setSliderFromMouse(idx int, msg tea.MouseMsg) {
-	s := ct.sliders[idx]
-	zi := zone.Get(ct.zoned.zoneID("slider-" + strconv.Itoa(idx)))
-	if zi.IsZero() {
-		return
-	}
-
-	// Bar layout within the rendered slider line:
-	// " Label       [═══│───]  val"
-	labelW := 12
-	barW := ct.renderWidth - labelW - len(fmt.Sprintf(s.Format, s.Value)) - 5
-	if barW < 4 {
-		barW = 4
-	}
-	barStartX := zi.StartX + 1 + labelW + 1 // space + label + '['
-	barEndX := barStartX + barW
-
-	frac := float64(msg.X-barStartX) / float64(barEndX-barStartX)
-	if frac < 0 {
-		frac = 0
-	}
-	if frac > 1 {
-		frac = 1
-	}
-
-	if idx == ctrlSpecPower {
-		logMin := math.Log(s.Min)
-		logMax := math.Log(s.Max)
-		s.Value = math.Exp(logMin + frac*(logMax-logMin))
-	} else {
-		s.Value = s.Min + frac*(s.Max-s.Min)
-		if s.Step > 0 {
-			s.Value = math.Round(s.Value/s.Step) * s.Step
+// IsDragging returns whether any slider drag is in progress.
+func (ct *ControlsTab) IsDragging() bool {
+	for _, s := range ct.sliders {
+		if s.IsDragging() {
+			return true
 		}
 	}
-	s.Value = clamp(s.Value, s.Min, s.Max)
-}
-
-// IsDragging returns whether a slider drag is in progress.
-func (ct *ControlsTab) IsDragging() bool {
-	return ct.dragging
+	return false
 }
 
 // Render returns the controls tab content as a string.
@@ -280,7 +241,7 @@ func (ct *ControlsTab) Render(width int, m *model) string {
 	// Sliders — each wrapped in a zone
 	for i, s := range ct.sliders {
 		rendered := s.Render(width, ct.focus == i)
-		if ct.zoned.IsHovered("slider-" + strconv.Itoa(i)) && ct.focus != i {
+		if ct.zoned.IsHovered("slider-"+strconv.Itoa(i)) && ct.focus != i {
 			rendered = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("252")).
 				Render(rendered)

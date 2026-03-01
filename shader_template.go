@@ -163,6 +163,7 @@ vec4 shade(vec3 ro, vec3 rd, float t) {
 
     float diff = clamp(dot(n, uLightDir), 0.0, 1.0);
     float shadow = softShadow(p + n*0.02, uLightDir, 0.02, 10.0, 16.0);
+    shadow = mix(1.0, shadow, 0.6); // soften shadow intensity
     diff *= shadow;
 
     float spec = 0.0;

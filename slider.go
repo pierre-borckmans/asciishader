@@ -3,11 +3,15 @@ package main
 import (
 	"fmt"
 	"math"
+	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Slider is a render-only widget for adjusting a numeric parameter.
+const sliderLabelWidth = 12
+
+// Slider is a widget for adjusting a numeric parameter with mouse support.
 type Slider struct {
 	Label  string
 	Value  float64
@@ -15,6 +19,14 @@ type Slider struct {
 	Max    float64
 	Step   float64
 	Format string // e.g. "%.2f" or "%.0f"
+
+	// Mouse state
+	dragging   bool
+	thumbHover bool
+
+	// Render state (set during Render, used for mouse math)
+	screenX int // X of the left edge of this slider on screen
+	barW    int // bar width in columns
 }
 
 // Increase advances the value by one step.
@@ -27,58 +39,152 @@ func (s *Slider) Decrease() {
 	s.Value = math.Max(s.Value-s.Step, s.Min)
 }
 
-// Render returns the slider as a styled string fitting in width columns.
-// focused highlights the row.
-func (s *Slider) Render(width int, focused bool) string {
-	valStr := fmt.Sprintf(s.Format, s.Value)
+// IsDragging returns whether a drag is in progress.
+func (s *Slider) IsDragging() bool {
+	return s.dragging
+}
 
-	// Layout: " Label   [═══│───]  val"
-	labelW := 12
-	valW := len(valStr)
-	barW := width - labelW - valW - 5 // 5 = spaces + brackets
-	if barW < 4 {
-		barW = 4
+// frac returns the normalized 0–1 position of the value.
+func (s *Slider) frac() float64 {
+	f := (s.Value - s.Min) / (s.Max - s.Min)
+	if f < 0 {
+		return 0
+	}
+	if f > 1 {
+		return 1
+	}
+	return f
+}
+
+// thumbScreenX returns the screen X of the thumb.
+func (s *Slider) thumbScreenX() int {
+	pos := int(s.frac() * float64(s.barW-1))
+	if pos >= s.barW {
+		pos = s.barW - 1
+	}
+	return s.screenX + 1 + sliderLabelWidth + pos
+}
+
+// barStartX returns the screen X where the bar begins.
+func (s *Slider) barStartX() int {
+	return s.screenX + 1 + sliderLabelWidth
+}
+
+// HandleMouse processes a mouse event for this slider.
+// The slider must be in bounds (caller checks zone). Returns true if handled.
+func (s *Slider) HandleMouse(msg tea.MouseMsg) bool {
+	if s.dragging {
+		switch msg.Action {
+		case tea.MouseActionMotion:
+			s.setValueFromX(msg.X)
+			return true
+		case tea.MouseActionRelease:
+			s.setValueFromX(msg.X)
+			s.dragging = false
+			return true
+		}
 	}
 
-	// Compute fill position
-	frac := (s.Value - s.Min) / (s.Max - s.Min)
+	switch msg.Action {
+	case tea.MouseActionMotion:
+		oldHover := s.thumbHover
+		s.thumbHover = msg.X == s.thumbScreenX()
+		return s.thumbHover != oldHover
+
+	case tea.MouseActionPress:
+		if msg.Button == tea.MouseButtonLeft {
+			bStart := s.barStartX()
+			bEnd := bStart + s.barW
+			if msg.X >= bStart && msg.X < bEnd {
+				s.dragging = true
+				s.setValueFromX(msg.X)
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// setValueFromX sets the value from a screen X coordinate.
+func (s *Slider) setValueFromX(x int) {
+	bStart := s.barStartX()
+	frac := float64(x-bStart) / float64(s.barW-1)
 	if frac < 0 {
 		frac = 0
 	}
 	if frac > 1 {
 		frac = 1
 	}
-	fillPos := int(frac * float64(barW))
-	if fillPos > barW {
-		fillPos = barW
+	s.Value = s.Min + frac*(s.Max-s.Min)
+	if s.Step > 0 {
+		s.Value = math.Round(s.Value/s.Step) * s.Step
+	}
+	s.Value = clamp(s.Value, s.Min, s.Max)
+}
+
+// ClearHover resets hover state (call when mouse leaves the zone).
+func (s *Slider) ClearHover() {
+	s.thumbHover = false
+}
+
+// SetScreenX sets the screen X position for mouse coordinate math.
+// Call this after zone.Scan() determines the actual position.
+func (s *Slider) SetScreenX(x int) {
+	s.screenX = x
+}
+
+// Render returns the slider as a styled string fitting in width columns.
+func (s *Slider) Render(width int, focused bool) string {
+	valStr := fmt.Sprintf(s.Format, s.Value)
+
+	// Layout: " Label       ━━━●─── val"
+	valW := len(valStr)
+	barW := width - sliderLabelWidth - valW - 3
+	if barW < 4 {
+		barW = 4
+	}
+
+	s.barW = barW
+
+	thumbPos := int(s.frac() * float64(barW-1))
+	if thumbPos >= barW {
+		thumbPos = barW - 1
+	}
+
+	leftWidth := thumbPos
+	rightWidth := barW - thumbPos - 1
+	if rightWidth < 0 {
+		rightWidth = 0
 	}
 
 	// Build bar
-	bar := make([]byte, barW)
-	for i := 0; i < barW; i++ {
-		if i < fillPos {
-			bar[i] = '='
-		} else if i == fillPos {
-			bar[i] = '|'
-		} else {
-			bar[i] = '-'
-		}
+	var bar strings.Builder
+	thumbColor := "39" // Cyan
+	if focused || s.thumbHover || s.dragging {
+		thumbColor = "226" // Yellow
 	}
+	bar.WriteString("\x1b[38;5;39m")
+	bar.WriteString(strings.Repeat("━", leftWidth))
+	bar.WriteString("\x1b[38;5;" + thumbColor + "m●\x1b[38;5;39m")
+	bar.WriteString(strings.Repeat("─", rightWidth))
+	bar.WriteString("\x1b[0m")
 
 	// Pad label
 	label := s.Label
-	for len(label) < labelW {
+	for len(label) < sliderLabelWidth {
 		label += " "
 	}
-	if len(label) > labelW {
-		label = label[:labelW]
+	if len(label) > sliderLabelWidth {
+		label = label[:sliderLabelWidth]
 	}
 
-	line := fmt.Sprintf(" %s[%s] %s", label, string(bar), valStr)
+	line := fmt.Sprintf(" %s%s %s", label, bar.String(), valStr)
 
 	// Pad to full width
-	for len(line) < width {
-		line += " "
+	visibleWidth := 1 + sliderLabelWidth + barW + 1 + valW
+	if visibleWidth < width {
+		line += strings.Repeat(" ", width-visibleWidth)
 	}
 
 	if focused {
