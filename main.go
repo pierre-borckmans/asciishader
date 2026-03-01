@@ -42,6 +42,8 @@ func initialModel() model {
 	r.ExtDist = 1.0
 	r.Ambient = 0.15
 	r.SpecPower = 32.0
+	r.ShadowSteps = 32
+	r.AOSteps = 5
 	return model{
 		renderer:  r,
 		camDist:   4.0,
@@ -207,7 +209,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "$":
 			m.renderer.SpecPower = clamp(m.renderer.SpecPower/1.5, 4, 128)
 		case "5":
-			m.renderer.CheapSamples = !m.renderer.CheapSamples
+			m.renderer.ShadowSteps = min(m.renderer.ShadowSteps+4, 48)
+		case "%":
+			m.renderer.ShadowSteps = max(m.renderer.ShadowSteps-4, 0)
+		case "6":
+			m.renderer.AOSteps = min(m.renderer.AOSteps+1, 10)
+		case "^":
+			m.renderer.AOSteps = max(m.renderer.AOSteps-1, 0)
 
 		case "r":
 			m.camAngleX = 0
@@ -219,7 +227,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.renderer.ExtDist = 1.0
 			m.renderer.Ambient = 0.15
 			m.renderer.SpecPower = 32.0
-			m.renderer.CheapSamples = false
+			m.renderer.ShadowSteps = 32
+			m.renderer.AOSteps = 5
 			m.time = 0
 		}
 	}
@@ -244,17 +253,13 @@ func (m model) View() string {
 		pauseStr = " ⏸ PAUSED"
 	}
 
-	cheapStr := "off"
-	if m.renderer.CheapSamples {
-		cheapStr = "on"
-	}
-
-	hud := fmt.Sprintf(" 🎬 [%d/%d] %s%s │ C:%.1f S:%.1f E:%.1f A:%.2f P:%.0f F:%s │ 🎯 %.0f fps",
+	hud := fmt.Sprintf(" 🎬 [%d/%d] %s%s │ C:%.1f S:%.1f E:%.1f A:%.2f P:%.0f Sh:%d AO:%d │ 🎯 %.0f fps",
 		m.scene+1, len(scenes), scenes[m.scene].Name, pauseStr,
 		m.renderer.Contrast, m.renderer.Spread, m.renderer.ExtDist,
-		m.renderer.Ambient, m.renderer.SpecPower, cheapStr, m.fps)
+		m.renderer.Ambient, m.renderer.SpecPower,
+		m.renderer.ShadowSteps, m.renderer.AOSteps, m.fps)
 
-	controls := " []:contrast  1:spread  2:extDist  3:ambient  4:specPow  5:fastShade  (shift+N to decrease)  r:reset  q:quit"
+	controls := " []:contrast  1:spread  2:extDist  3:ambient  4:specPow  5:shadow  6:AO  (shift+N to decrease)  r:reset  q:quit"
 
 	hudStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245")).

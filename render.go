@@ -7,11 +7,10 @@ import (
 )
 
 const (
-	maxSteps   = 80
-	maxDist    = 50.0
-	surfDist   = 0.005
-	normalEps  = 0.001
-	shadowSteps = 32
+	maxSteps  = 80
+	maxDist   = 50.0
+	surfDist  = 0.005
+	normalEps = 0.001
 )
 
 // ASCII ramp from dark to bright
@@ -40,7 +39,8 @@ type Renderer struct {
 	ExtDist       float64 // external sample distance multiplier (1.0 = default)
 	Ambient       float64 // ambient light level (0-1)
 	SpecPower     float64 // specular exponent
-	CheapSamples  bool    // use cheap shading for sub-samples (faster, less accurate shapes)
+	ShadowSteps   int     // shadow ray steps (0 = off, 32 = full)
+	AOSteps       int     // ambient occlusion samples (0 = off, 5 = full)
 	buf           []byte
 }
 
@@ -96,9 +96,12 @@ func (r *Renderer) normal(p Vec3) Vec3 {
 
 // Soft shadow
 func (r *Renderer) softShadow(ro, rd Vec3, mint, maxt, k float64) float64 {
+	if r.ShadowSteps <= 0 {
+		return 1.0
+	}
 	res := 1.0
 	t := mint
-	for i := 0; i < shadowSteps; i++ {
+	for i := 0; i < r.ShadowSteps; i++ {
 		p := ro.Add(rd.Mul(t))
 		d := r.Scene(p, r.Time)
 		if d < surfDist*0.5 {
@@ -115,9 +118,12 @@ func (r *Renderer) softShadow(ro, rd Vec3, mint, maxt, k float64) float64 {
 
 // Ambient occlusion
 func (r *Renderer) ao(p, n Vec3) float64 {
+	if r.AOSteps <= 0 {
+		return 1.0
+	}
 	occ := 0.0
 	scale := 1.0
-	for i := 0; i < 5; i++ {
+	for i := 0; i < r.AOSteps; i++ {
 		h := 0.01 + 0.12*float64(i)
 		d := r.Scene(p.Add(n.Mul(h)), r.Time)
 		occ += (h - d) * scale
@@ -126,7 +132,7 @@ func (r *Renderer) ao(p, n Vec3) float64 {
 	return clamp(1-1.5*occ, 0, 1)
 }
 
-// Shade a point - returns brightness 0..1
+// shade computes brightness 0..1 using ShadowSteps/AOSteps from the Renderer.
 func (r *Renderer) shade(ro, rd Vec3, t float64) float64 {
 	p := ro.Add(rd.Mul(t))
 	n := r.normal(p)
@@ -134,89 +140,69 @@ func (r *Renderer) shade(ro, rd Vec3, t float64) float64 {
 	// Diffuse
 	diff := clamp(n.Dot(r.LightDir), 0, 1)
 
-	// Soft shadow
+	// Shadow + specular (skip entirely when ShadowSteps=0)
 	shadow := r.softShadow(p.Add(n.Mul(0.02)), r.LightDir, 0.02, 10.0, 16.0)
 	diff *= shadow
 
-	// Specular (Blinn-Phong)
-	half := r.LightDir.Sub(rd).Normalize()
-	spec := math.Pow(clamp(n.Dot(half), 0, 1), r.SpecPower) * shadow
+	spec := 0.0
+	if r.ShadowSteps > 0 {
+		half := r.LightDir.Sub(rd).Normalize()
+		spec = math.Pow(clamp(n.Dot(half), 0, 1), r.SpecPower) * shadow
+	}
 
-	// Ambient occlusion
+	// AO + fresnel (skip when AOSteps=0)
 	ao := r.ao(p, n)
+	fresnel := 0.0
+	if r.AOSteps > 0 {
+		fresnel = math.Pow(1-clamp(-rd.Dot(n), 0, 1), 3) * 0.3
+	}
 
-	// Fresnel rim
-	fresnel := math.Pow(1-clamp(-rd.Dot(n), 0, 1), 3) * 0.3
-
-	// Combine
 	ambient := r.Ambient * ao
 	brightness := ambient + diff*0.65*ao + spec*0.25 + fresnel*ao
 
-	// Fog
 	fog := math.Exp(-t * t * 0.008)
 	brightness *= fog
 
 	return clamp(brightness, 0, 1)
 }
 
-// shadeColor returns an RGB color (0-1 per channel) for a surface hit,
-// using the same lighting as shade() but with material color multiplied in.
+// shadeColor returns RGB color using the same lighting pipeline as shade().
 func (r *Renderer) shadeColor(ro, rd Vec3, t float64) Vec3 {
 	p := ro.Add(rd.Mul(t))
 	n := r.normal(p)
 
-	// Material color
 	mat := V(1, 1, 1)
 	if r.ColorFunc != nil {
 		mat = r.ColorFunc(p, r.Time)
 	}
 
-	// Diffuse
 	diff := clamp(n.Dot(r.LightDir), 0, 1)
 
-	// Soft shadow
 	shadow := r.softShadow(p.Add(n.Mul(0.02)), r.LightDir, 0.02, 10.0, 16.0)
 	diff *= shadow
 
-	// Specular (Blinn-Phong) — white specular highlight
-	half := r.LightDir.Sub(rd).Normalize()
-	spec := math.Pow(clamp(n.Dot(half), 0, 1), r.SpecPower) * shadow
+	spec := 0.0
+	if r.ShadowSteps > 0 {
+		half := r.LightDir.Sub(rd).Normalize()
+		spec = math.Pow(clamp(n.Dot(half), 0, 1), r.SpecPower) * shadow
+	}
 
-	// Ambient occlusion
 	ao := r.ao(p, n)
+	fresnel := 0.0
+	if r.AOSteps > 0 {
+		fresnel = math.Pow(1-clamp(-rd.Dot(n), 0, 1), 3) * 0.3
+	}
 
-	// Fresnel rim
-	fresnel := math.Pow(1-clamp(-rd.Dot(n), 0, 1), 3) * 0.3
-
-	// Combine: material color modulates diffuse + ambient, specular stays white
 	ambient := r.Ambient * ao
 	diffContrib := diff * 0.65 * ao
 	col := mat.Mul(ambient + diffContrib)
 	col = col.Add(V(1, 1, 1).Mul(spec * 0.25))
 	col = col.Add(mat.Mul(fresnel * ao))
 
-	// Fog — fade toward black
 	fog := math.Exp(-t * t * 0.008)
 	col = col.Mul(fog)
 
 	return V(clamp(col.X, 0, 1), clamp(col.Y, 0, 1), clamp(col.Z, 0, 1))
-}
-
-// shadeCheap is a lightweight shading for sub-samples: diffuse + fog only.
-func (r *Renderer) shadeCheap(ro, rd Vec3, t float64) float64 {
-	p := ro.Add(rd.Mul(t))
-	n := r.normal(p)
-
-	// Diffuse only
-	diff := clamp(n.Dot(r.LightDir), 0, 1)
-
-	brightness := 0.15 + diff*0.75
-
-	// Fog
-	fog := math.Exp(-t * t * 0.008)
-	brightness *= fog
-
-	return clamp(brightness, 0, 1)
 }
 
 // raymarchFrom starts a raymarch near a known surface hit.
@@ -243,9 +229,6 @@ func (r *Renderer) sampleBrightness(ro, fwd, right, up Vec3, snx, sny, halfW, ha
 	rd := fwd.Add(right.Mul(snx * halfW)).Add(up.Mul(sny * halfH)).Normalize()
 	t, hit := r.raymarchFrom(ro, rd, hintT)
 	if hit {
-		if r.CheapSamples {
-			return r.shadeCheap(ro, rd, t)
-		}
 		return r.shade(ro, rd, t)
 	}
 	return 0
