@@ -4,18 +4,21 @@ import "math"
 
 // Scene is a distance function + description
 type Scene struct {
-	Name string
-	SDF  func(p Vec3, time float64) float64
+	Name  string
+	SDF   func(p Vec3, time float64) float64
+	Color func(p Vec3, time float64) Vec3 // material color at world point (RGB 0-1), nil = white
 }
 
 var scenes = []Scene{
 	{
-		Name: "Bullet Train",
-		SDF:  sceneTrain,
+		Name:  "Bullet Train",
+		SDF:   sceneTrain,
+		Color: colorTrain,
 	},
 	{
-		Name: "Sphere & Cube",
-		SDF:  sceneSphereAndCube,
+		Name:  "Sphere & Cube",
+		SDF:   sceneSphereAndCube,
+		Color: colorSphereAndCube,
 	},
 	{
 		Name: "Torus Knot",
@@ -211,4 +214,61 @@ func sceneGyroid(p Vec3, t float64) float64 {
 	bound := sdSphere(p, 2.0)
 
 	return opIntersect(gyroid-0.03, bound)
+}
+
+// --- Material color functions ---
+
+// colorTrain returns material color for the bullet train scene.
+func colorTrain(p Vec3, _ float64) Vec3 {
+	// Windshield — tinted blue-green glass
+	wsP := p.Sub(V(0, 0.9, 0.3))
+	if math.Abs(wsP.X) < 0.55 && math.Abs(wsP.Y) < 0.25 && math.Abs(wsP.Z) < 0.2 {
+		return V(0.4, 0.6, 0.7)
+	}
+
+	// Headlights — bright white
+	if sdSphere(p.Sub(V(-0.6, -0.15, -0.7)), 0.15) < 0 ||
+		sdSphere(p.Sub(V(0.6, -0.15, -0.7)), 0.15) < 0 {
+		return V(1.0, 1.0, 0.9)
+	}
+
+	// Bogies — dark grey
+	bogie1 := opRound(sdBox(p.Sub(V(0, -0.65, 1.0)), V(0.85, 0.15, 0.45)), 0.05)
+	bogie2 := opRound(sdBox(p.Sub(V(0, -0.65, 5.5)), V(0.85, 0.15, 0.45)), 0.05)
+	if math.Min(bogie1, bogie2) < 0.02 {
+		return V(0.25, 0.25, 0.28)
+	}
+
+	// Rails — silver
+	rail1 := sdBox(p.Sub(V(-0.7, -0.88, 0)), V(0.05, 0.06, 30.0))
+	rail2 := sdBox(p.Sub(V(0.7, -0.88, 0)), V(0.05, 0.06, 30.0))
+	if math.Min(rail1, rail2) < 0.02 {
+		return V(0.7, 0.72, 0.75)
+	}
+
+	// Ties — brown wood
+	tieP := p.Sub(V(0, -0.93, 0))
+	rep := 0.7
+	tieP.Z = math.Mod(tieP.Z+rep*0.5, rep) - rep*0.5
+	if sdBox(tieP, V(1.15, 0.04, 0.08)) < 0.02 {
+		return V(0.45, 0.3, 0.15)
+	}
+
+	// Ground — dark earth
+	if p.Y < -0.9 {
+		return V(0.3, 0.28, 0.22)
+	}
+
+	// Train body — light grey with blue stripe hint
+	return V(0.78, 0.8, 0.84)
+}
+
+// colorSphereAndCube returns red for sphere, blue for cube.
+func colorSphereAndCube(p Vec3, _ float64) Vec3 {
+	sphere := sdSphere(p.Sub(V(-1.2, 0, 0)), 0.9)
+	cube := sdBox(p.Sub(V(1.2, 0, 0)), V(0.7, 0.7, 0.7))
+	if sphere < cube {
+		return V(0.9, 0.15, 0.1)
+	}
+	return V(0.1, 0.2, 0.9)
 }

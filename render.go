@@ -2,6 +2,7 @@ package main
 
 import (
 	"math"
+	"strconv"
 	"sync"
 )
 
@@ -29,6 +30,7 @@ type Renderer struct {
 	Width, Height int
 	Camera        Camera
 	Scene         func(Vec3, float64) float64
+	ColorFunc     func(Vec3, float64) Vec3 // material color at point (nil = white)
 	Time          float64
 	LightDir      Vec3
 	ShapeMode     bool
@@ -156,6 +158,49 @@ func (r *Renderer) shade(ro, rd Vec3, t float64) float64 {
 	return clamp(brightness, 0, 1)
 }
 
+// shadeColor returns an RGB color (0-1 per channel) for a surface hit,
+// using the same lighting as shade() but with material color multiplied in.
+func (r *Renderer) shadeColor(ro, rd Vec3, t float64) Vec3 {
+	p := ro.Add(rd.Mul(t))
+	n := r.normal(p)
+
+	// Material color
+	mat := V(1, 1, 1)
+	if r.ColorFunc != nil {
+		mat = r.ColorFunc(p, r.Time)
+	}
+
+	// Diffuse
+	diff := clamp(n.Dot(r.LightDir), 0, 1)
+
+	// Soft shadow
+	shadow := r.softShadow(p.Add(n.Mul(0.02)), r.LightDir, 0.02, 10.0, 16.0)
+	diff *= shadow
+
+	// Specular (Blinn-Phong) — white specular highlight
+	half := r.LightDir.Sub(rd).Normalize()
+	spec := math.Pow(clamp(n.Dot(half), 0, 1), r.SpecPower) * shadow
+
+	// Ambient occlusion
+	ao := r.ao(p, n)
+
+	// Fresnel rim
+	fresnel := math.Pow(1-clamp(-rd.Dot(n), 0, 1), 3) * 0.3
+
+	// Combine: material color modulates diffuse + ambient, specular stays white
+	ambient := r.Ambient * ao
+	diffContrib := diff * 0.65 * ao
+	col := mat.Mul(ambient + diffContrib)
+	col = col.Add(V(1, 1, 1).Mul(spec * 0.25))
+	col = col.Add(mat.Mul(fresnel * ao))
+
+	// Fog — fade toward black
+	fog := math.Exp(-t * t * 0.008)
+	col = col.Mul(fog)
+
+	return V(clamp(col.X, 0, 1), clamp(col.Y, 0, 1), clamp(col.Z, 0, 1))
+}
+
 // shadeCheap is a lightweight shading for sub-samples: diffuse + fog only.
 func (r *Renderer) shadeCheap(ro, rd Vec3, t float64) float64 {
 	p := ro.Add(rd.Mul(t))
@@ -204,9 +249,10 @@ func (r *Renderer) sampleBrightness(ro, fwd, right, up Vec3, snx, sny, halfW, ha
 
 // renderCellShaped casts 6 internal + 6 external sub-cell rays,
 // applies directional and global contrast, then matches against shape vectors.
-func (r *Renderer) renderCellShaped(ro, fwd, right, up Vec3, nx, ny, dx, dy, halfW, halfH, centerT float64) byte {
+// Returns the matched character and the center-ray color.
+func (r *Renderer) renderCellShaped(ro, fwd, right, up Vec3, nx, ny, dx, dy, halfW, halfH, centerT float64, centerRd Vec3) (byte, Vec3) {
 	if centerT >= maxDist {
-		return ' '
+		return ' ', Vec3{}
 	}
 
 	// Internal offsets: 2 cols x 3 rows within the cell
@@ -234,12 +280,34 @@ func (r *Renderer) renderCellShaped(ro, fwd, right, up Vec3, nx, ny, dx, dy, hal
 		}
 	}
 
+	// Average brightness from sub-samples (before contrast for shape matching)
+	avgBright := 0.0
+	for i := 0; i < 6; i++ {
+		avgBright += sv[i]
+	}
+	avgBright /= 6
+
 	sv = DirectionalContrast(sv, ext, r.Contrast)
 	sv = EnhanceContrast(sv, r.Contrast)
-	return r.ShapeTable.Match(sv)
+	ch := r.ShapeTable.Match(sv)
+
+	// Color: material color * average brightness (no extra shade pass)
+	mat := V(1, 1, 1)
+	if r.ColorFunc != nil {
+		p := ro.Add(centerRd.Mul(centerT))
+		mat = r.ColorFunc(p, r.Time)
+	}
+	col := mat.Mul(avgBright)
+	return ch, V(clamp(col.X, 0, 1), clamp(col.Y, 0, 1), clamp(col.Z, 0, 1))
 }
 
-// Render the full frame, returns ASCII art as string
+// cell holds a character and its foreground color.
+type cell struct {
+	ch  byte
+	col Vec3 // RGB 0-1
+}
+
+// Render the full frame, returns ANSI true-color string
 func (r *Renderer) Render() string {
 	w, h := r.Width, r.Height
 	if w <= 0 || h <= 0 {
@@ -266,13 +334,13 @@ func (r *Renderer) Render() string {
 
 	// Parallel rendering - one goroutine per row
 	var wg sync.WaitGroup
-	lines := make([][]byte, h)
+	lines := make([][]cell, h)
 
 	for y := 0; y < h; y++ {
 		wg.Add(1)
 		go func(y int) {
 			defer wg.Done()
-			line := make([]byte, w)
+			line := make([]cell, w)
 			// Normalized y: -1 to 1
 			ny := 1.0 - 2.0*float64(y)/float64(h-1)
 
@@ -287,10 +355,13 @@ func (r *Renderer) Render() string {
 				t, _ := r.raymarch(ro, rd)
 
 				var ch byte
+				var col Vec3
 				if shapeMode {
-					ch = r.renderCellShaped(ro, fwd, right, up, nx, ny, dx, dy, halfW, halfH, t)
+					ch, col = r.renderCellShaped(ro, fwd, right, up, nx, ny, dx, dy, halfW, halfH, t, rd)
 				} else if t < maxDist {
-					brightness := r.shade(ro, rd, t)
+					col = r.shadeColor(ro, rd, t)
+					// Luminance for ASCII ramp lookup
+					brightness := col.X*0.299 + col.Y*0.587 + col.Z*0.114
 					idx := int(brightness * float64(len(asciiRamp)-1))
 					if idx < 0 {
 						idx = 0
@@ -310,22 +381,46 @@ func (r *Renderer) Render() string {
 						idx = len(asciiRamp) - 1
 					}
 					ch = asciiRamp[idx]
+					col = Vec3{} // black background
 				}
-				line[x] = ch
+				line[x] = cell{ch, col}
 			}
 			lines[y] = line
 		}(y)
 	}
 	wg.Wait()
 
-	// Build output string
-	total := w*h + h // chars + newlines
-	out := make([]byte, 0, total)
+	// Build ANSI true-color output (zero-alloc inner loop)
+	out := make([]byte, 0, w*h*20+h*10)
+	prevR, prevG, prevB := -1, -1, -1
 	for y := 0; y < h; y++ {
 		if y > 0 {
 			out = append(out, '\n')
 		}
-		out = append(out, lines[y]...)
+		prevR, prevG, prevB = -1, -1, -1 // reset after line break
+		for x := 0; x < w; x++ {
+			c := lines[y][x]
+			if c.ch == ' ' {
+				out = append(out, ' ')
+				continue
+			}
+			cr := int(c.col.X * 255)
+			cg := int(c.col.Y * 255)
+			cb := int(c.col.Z * 255)
+			// Only emit ANSI escape when color changes
+			if cr != prevR || cg != prevG || cb != prevB {
+				out = append(out, "\033[38;2;"...)
+				out = strconv.AppendInt(out, int64(cr), 10)
+				out = append(out, ';')
+				out = strconv.AppendInt(out, int64(cg), 10)
+				out = append(out, ';')
+				out = strconv.AppendInt(out, int64(cb), 10)
+				out = append(out, 'm')
+				prevR, prevG, prevB = cr, cg, cb
+			}
+			out = append(out, c.ch)
+		}
+		out = append(out, "\033[0m"...)
 	}
 	return string(out)
 }

@@ -57,7 +57,7 @@ func (m model) Init() tea.Cmd {
 }
 
 func tick() tea.Cmd {
-	return tea.Tick(time.Second/60, func(t time.Time) tea.Msg {
+	return tea.Tick(time.Millisecond, func(t time.Time) tea.Msg { // uncapped for perf testing
 		return tickMsg(t)
 	})
 }
@@ -99,6 +99,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.renderer.Camera.Target = V(0, 0, 0)
 		m.renderer.Time = m.time
 		m.renderer.Scene = scenes[m.scene].SDF
+		m.renderer.ColorFunc = scenes[m.scene].Color
 
 		// Animated light
 		m.renderer.LightDir = V(
