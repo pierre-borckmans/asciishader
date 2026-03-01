@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"runtime"
 	"runtime/pprof"
 	"strings"
 	"time"
@@ -16,6 +17,8 @@ type tickMsg time.Time
 
 type model struct {
 	renderer   *Renderer
+	gpu        *GPURenderer
+	gpuMode    bool
 	width      int
 	height     int
 	time       float64
@@ -47,7 +50,7 @@ func initialModel() model {
 	return model{
 		renderer:  r,
 		camDist:   4.0,
-		scene:     5,
+		scene:     0,
 		lastFrame: time.Now(),
 	}
 }
@@ -118,7 +121,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		).Normalize()
 
 		// Render frame
-		m.frame = m.renderer.Render()
+		if m.gpuMode && m.gpu != nil {
+			m.frame = m.gpu.Render(m.renderer)
+		} else {
+			m.frame = m.renderer.Render()
+		}
 
 		return m, tick()
 
@@ -187,6 +194,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.paused = !m.paused
 		case "a":
 			m.autoRotate = !m.autoRotate
+		case "g":
+			if m.gpu != nil {
+				m.gpuMode = !m.gpuMode
+			}
 		// Tunable parameters
 		case "[":
 			m.renderer.Contrast = clamp(m.renderer.Contrast-0.25, 0.5, 5.0)
@@ -253,13 +264,18 @@ func (m model) View() string {
 		pauseStr = " ⏸ PAUSED"
 	}
 
-	hud := fmt.Sprintf(" 🎬 [%d/%d] %s%s │ C:%.1f S:%.1f E:%.1f A:%.2f P:%.0f Sh:%d AO:%d │ 🎯 %.0f fps",
-		m.scene+1, len(scenes), scenes[m.scene].Name, pauseStr,
+	gpuStr := "CPU"
+	if m.gpuMode && m.gpu != nil {
+		gpuStr = "GPU"
+	}
+
+	hud := fmt.Sprintf(" 🎬 [%d/%d] %s%s │ %s │ C:%.1f S:%.1f E:%.1f A:%.2f P:%.0f Sh:%d AO:%d │ 🎯 %.0f fps",
+		m.scene+1, len(scenes), scenes[m.scene].Name, pauseStr, gpuStr,
 		m.renderer.Contrast, m.renderer.Spread, m.renderer.ExtDist,
 		m.renderer.Ambient, m.renderer.SpecPower,
 		m.renderer.ShadowSteps, m.renderer.AOSteps, m.fps)
 
-	controls := " []:contrast  1:spread  2:extDist  3:ambient  4:specPow  5:shadow  6:AO  (shift+N to decrease)  r:reset  q:quit"
+	controls := " []:contrast  1:spread  2:extDist  3:ambient  4:specPow  5:shadow  6:AO  g:GPU  (shift+N to decrease)  r:reset  q:quit"
 
 	hudStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245")).
@@ -276,6 +292,8 @@ func (m model) View() string {
 }
 
 func main() {
+	runtime.LockOSThread()
+
 	f, err := os.Create("cpu.prof")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not create CPU profile: %v\n", err)
@@ -287,8 +305,18 @@ func main() {
 		f.Close()
 	}()
 
+	m := initialModel()
+
+	// Try GPU init — fall back to CPU silently
+	gpu, gpuErr := NewGPURenderer()
+	if gpuErr == nil {
+		m.gpu = gpu
+		m.gpuMode = true
+		defer gpu.Destroy()
+	}
+
 	p := tea.NewProgram(
-		initialModel(),
+		m,
 		tea.WithAltScreen(),
 		tea.WithMouseAllMotion(),
 	)
