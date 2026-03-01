@@ -47,215 +47,8 @@ void main() {
 }
 ` + "\x00"
 
-const fragmentShaderSource = `#version 150
-uniform vec2 uResolution;
-uniform float uTime;
-uniform vec3 uCameraPos;
-uniform vec3 uCameraTarget;
-uniform vec3 uLightDir;
-uniform float uFOV;
-uniform float uAmbient;
-uniform float uSpecPower;
-uniform int uShadowSteps;
-uniform int uAOSteps;
-uniform vec2 uTermSize;
-
-out vec4 fragColor;
-
-const int MAX_STEPS = 80;
-const float MAX_DIST = 50.0;
-const float SURF_DIST = 0.005;
-const float NORMAL_EPS = 0.001;
-
-// ---- SDF Primitives ----
-float sdSphere(vec3 p, float r) {
-    return length(p) - r;
-}
-
-float sdTorus(vec3 p, float R, float r) {
-    float q = length(p.xz) - R;
-    return length(vec2(q, p.y)) - r;
-}
-
-// ---- Operations ----
-float opSmoothUnion(float a, float b, float k) {
-    float h = clamp(0.5 + 0.5*(b-a)/k, 0.0, 1.0);
-    return mix(b, a, h) - k*h*(1.0-h);
-}
-
-float opSubtract(float a, float b) {
-    return max(a, -b);
-}
-
-// ---- Rotation ----
-vec3 rotateY(vec3 p, float a) {
-    float c = cos(a), s = sin(a);
-    return vec3(p.x*c + p.z*s, p.y, -p.x*s + p.z*c);
-}
-
-vec3 rotateX(vec3 p, float a) {
-    float c = cos(a), s = sin(a);
-    return vec3(p.x, p.y*c - p.z*s, p.y*s + p.z*c);
-}
-
-// ---- Scene: Plasma Orb ----
-float sceneSDF(vec3 p) {
-    p = rotateY(p, uTime * 0.4);
-    p = rotateX(p, uTime * 0.15);
-
-    float d = sdSphere(p, 1.3);
-
-    float disp1 = sin(p.x*4.0+uTime*1.5) * cos(p.y*3.0+uTime*1.2) * sin(p.z*4.0+uTime*1.8) * 0.15;
-    float disp2 = sin(p.x*8.0+uTime*2.5) * sin(p.y*7.0-uTime*2.0) * cos(p.z*6.0+uTime*1.3) * 0.06;
-    d += disp1 + disp2;
-
-    float inner = sdSphere(p, 0.5 + sin(uTime*1.5)*0.15);
-    d = opSubtract(d, inner);
-
-    for (int i = 0; i < 3; i++) {
-        float a = uTime*1.2 + float(i)*6.283185/3.0;
-        vec3 sp = vec3(cos(a)*1.6, sin(a*0.7)*0.4, sin(a)*1.6);
-        d = opSmoothUnion(d, sdSphere(p - sp, 0.15), 0.3);
-    }
-
-    return d;
-}
-
-// ---- Plasma Orb Color: cyan core, magenta edges ----
-vec3 sceneColor(vec3 p) {
-    p = rotateY(p, uTime * 0.4);
-    p = rotateX(p, uTime * 0.15);
-
-    float dist = length(p);
-    float wave = sin(p.x*4.0+uTime*1.5)*cos(p.y*3.0+uTime*1.2) + sin(p.z*4.0+uTime*1.8);
-    float f = wave*0.25 + 0.5;
-
-    float r = 0.4 + 0.6*f;
-    float g = 0.3 + 0.7*(1.0-f);
-    float b = 0.8 + 0.2*sin(dist*3.0+uTime);
-    return clamp(vec3(r, g, b), 0.0, 1.0);
-}
-
-// ---- Raymarching ----
-float raymarch(vec3 ro, vec3 rd) {
-    float t = 0.0;
-    for (int i = 0; i < MAX_STEPS; i++) {
-        vec3 p = ro + rd * t;
-        float d = sceneSDF(p);
-        if (d < SURF_DIST) return t;
-        t += d;
-        if (t > MAX_DIST) break;
-    }
-    return MAX_DIST;
-}
-
-// ---- Shading ----
-vec3 calcNormal(vec3 p) {
-    float e = NORMAL_EPS;
-    float d = sceneSDF(p);
-    return normalize(vec3(
-        sceneSDF(vec3(p.x+e, p.y, p.z)) - d,
-        sceneSDF(vec3(p.x, p.y+e, p.z)) - d,
-        sceneSDF(vec3(p.x, p.y, p.z+e)) - d
-    ));
-}
-
-float softShadow(vec3 ro, vec3 rd, float mint, float maxt, float k) {
-    if (uShadowSteps <= 0) return 1.0;
-    float res = 1.0;
-    float t = mint;
-    for (int i = 0; i < 48; i++) {
-        if (i >= uShadowSteps) break;
-        vec3 p = ro + rd * t;
-        float d = sceneSDF(p);
-        if (d < SURF_DIST * 0.5) return 0.0;
-        res = min(res, k*d/t);
-        t += clamp(d, 0.02, 0.2);
-        if (t > maxt) break;
-    }
-    return clamp(res, 0.0, 1.0);
-}
-
-float ambientOcclusion(vec3 p, vec3 n) {
-    if (uAOSteps <= 0) return 1.0;
-    float occ = 0.0;
-    float scale = 1.0;
-    for (int i = 0; i < 10; i++) {
-        if (i >= uAOSteps) break;
-        float h = 0.01 + 0.12 * float(i);
-        float d = sceneSDF(p + n * h);
-        occ += (h - d) * scale;
-        scale *= 0.75;
-    }
-    return clamp(1.0 - 1.5*occ, 0.0, 1.0);
-}
-
-// Returns vec4: RGB = material-colored shading, A = lighting-only brightness.
-// Alpha stores the same brightness the CPU shade() returns (no material color),
-// so the CPU-side shape matching uses identical values.
-vec4 shade(vec3 ro, vec3 rd, float t) {
-    vec3 p = ro + rd * t;
-    vec3 n = calcNormal(p);
-    vec3 mat = sceneColor(p);
-
-    float diff = clamp(dot(n, uLightDir), 0.0, 1.0);
-    float shadow = softShadow(p + n*0.02, uLightDir, 0.02, 10.0, 16.0);
-    diff *= shadow;
-
-    float spec = 0.0;
-    if (uShadowSteps > 0) {
-        vec3 half_v = normalize(uLightDir - rd);
-        spec = pow(clamp(dot(n, half_v), 0.0, 1.0), uSpecPower) * shadow;
-    }
-
-    float ao = ambientOcclusion(p, n);
-    float fresnel = 0.0;
-    if (uAOSteps > 0) {
-        fresnel = pow(1.0 - clamp(dot(-rd, n), 0.0, 1.0), 3.0) * 0.3;
-    }
-
-    float ambient = uAmbient * ao;
-    float diffContrib = diff * 0.65 * ao;
-    vec3 col = mat * (ambient + diffContrib);
-    col += vec3(1.0) * spec * 0.25;
-    col += mat * fresnel * ao;
-
-    float fog = exp(-t * t * 0.008);
-    col *= fog;
-
-    // Lighting-only brightness (matches CPU shade())
-    float brightness = (ambient + diffContrib + spec * 0.25 + fresnel * ao) * fog;
-
-    return vec4(clamp(col, 0.0, 1.0), clamp(brightness, 0.0, 1.0));
-}
-
-void main() {
-    vec2 ndc;
-    ndc.x = gl_FragCoord.x / uResolution.x * 2.0 - 1.0;
-    ndc.y = 1.0 - gl_FragCoord.y / uResolution.y * 2.0;
-
-    vec3 fwd = normalize(uCameraTarget - uCameraPos);
-    vec3 right = normalize(cross(fwd, vec3(0, 1, 0)));
-    vec3 up = cross(right, fwd);
-
-    float fovRad = uFOV * 3.14159265 / 180.0;
-    float halfH = tan(fovRad / 2.0);
-    float aspect = uTermSize.x / uTermSize.y * 0.45;
-    float halfW = halfH * aspect;
-
-    vec3 rd = normalize(fwd + right * ndc.x * halfW + up * ndc.y * halfH);
-    vec3 ro = uCameraPos;
-
-    float t = raymarch(ro, rd);
-
-    vec4 result = vec4(0);
-    if (t < MAX_DIST) {
-        result = shade(ro, rd, t);
-    }
-
-    fragColor = result;
-}
-` + "\x00"
+// fragmentShaderSource is assembled from shader_template.go parts.
+// See shader_template.go for shaderPrefix, defaultUserCode, shaderSuffix.
 
 // GPURenderer renders scenes using OpenGL fragment shaders.
 type GPURenderer struct {
@@ -268,6 +61,10 @@ type GPURenderer struct {
 	termW   int // terminal columns
 	termH   int // terminal rows
 	pixels  []byte
+
+	// Hot-reload state
+	userCode   string // current user GLSL code
+	compileErr string // last compile error, empty if OK
 
 	// Cached uniform locations
 	uResolution   int32
@@ -294,7 +91,8 @@ func NewGPURenderer() (*GPURenderer, error) {
 		return nil, fmt.Errorf("GL init failed: %v", err)
 	}
 
-	program, err := createProgram(vertexShaderSource, fragmentShaderSource)
+	fragSrc := assembleShader(defaultUserCode)
+	program, err := createProgram(vertexShaderSource, fragSrc)
 	if err != nil {
 		return nil, fmt.Errorf("shader program: %v", err)
 	}
@@ -302,23 +100,12 @@ func NewGPURenderer() (*GPURenderer, error) {
 	vao := createQuadVAO()
 
 	g := &GPURenderer{
-		program: program,
-		vao:     vao,
+		program:  program,
+		vao:      vao,
+		userCode: defaultUserCode,
 	}
 
-	// Cache uniform locations
-	gl.UseProgram(program)
-	g.uResolution = gl.GetUniformLocation(program, gl.Str("uResolution\x00"))
-	g.uTime = gl.GetUniformLocation(program, gl.Str("uTime\x00"))
-	g.uCameraPos = gl.GetUniformLocation(program, gl.Str("uCameraPos\x00"))
-	g.uCameraTarget = gl.GetUniformLocation(program, gl.Str("uCameraTarget\x00"))
-	g.uLightDir = gl.GetUniformLocation(program, gl.Str("uLightDir\x00"))
-	g.uFOV = gl.GetUniformLocation(program, gl.Str("uFOV\x00"))
-	g.uAmbient = gl.GetUniformLocation(program, gl.Str("uAmbient\x00"))
-	g.uSpecPower = gl.GetUniformLocation(program, gl.Str("uSpecPower\x00"))
-	g.uShadowSteps = gl.GetUniformLocation(program, gl.Str("uShadowSteps\x00"))
-	g.uAOSteps = gl.GetUniformLocation(program, gl.Str("uAOSteps\x00"))
-	g.uTermSize = gl.GetUniformLocation(program, gl.Str("uTermSize\x00"))
+	g.cacheUniforms()
 
 	return g, nil
 }
@@ -514,6 +301,42 @@ func (g *GPURenderer) Destroy() {
 	if g.rbo != 0 {
 		gl.DeleteRenderbuffers(1, &g.rbo)
 	}
+}
+
+// cacheUniforms looks up and caches all uniform locations for the current program.
+func (g *GPURenderer) cacheUniforms() {
+	gl.UseProgram(g.program)
+	g.uResolution = gl.GetUniformLocation(g.program, gl.Str("uResolution\x00"))
+	g.uTime = gl.GetUniformLocation(g.program, gl.Str("uTime\x00"))
+	g.uCameraPos = gl.GetUniformLocation(g.program, gl.Str("uCameraPos\x00"))
+	g.uCameraTarget = gl.GetUniformLocation(g.program, gl.Str("uCameraTarget\x00"))
+	g.uLightDir = gl.GetUniformLocation(g.program, gl.Str("uLightDir\x00"))
+	g.uFOV = gl.GetUniformLocation(g.program, gl.Str("uFOV\x00"))
+	g.uAmbient = gl.GetUniformLocation(g.program, gl.Str("uAmbient\x00"))
+	g.uSpecPower = gl.GetUniformLocation(g.program, gl.Str("uSpecPower\x00"))
+	g.uShadowSteps = gl.GetUniformLocation(g.program, gl.Str("uShadowSteps\x00"))
+	g.uAOSteps = gl.GetUniformLocation(g.program, gl.Str("uAOSteps\x00"))
+	g.uTermSize = gl.GetUniformLocation(g.program, gl.Str("uTermSize\x00"))
+}
+
+// CompileUserCode compiles new user GLSL code into the shader program.
+// On success, swaps in the new program. On failure, keeps the old program
+// and returns the error.
+func (g *GPURenderer) CompileUserCode(code string) error {
+	fragSrc := assembleShader(code)
+	newProg, err := createProgram(vertexShaderSource, fragSrc)
+	if err != nil {
+		g.compileErr = err.Error()
+		return err
+	}
+
+	// Success — swap programs
+	gl.DeleteProgram(g.program)
+	g.program = newProg
+	g.userCode = code
+	g.compileErr = ""
+	g.cacheUniforms()
+	return nil
 }
 
 // --- GL helpers ---

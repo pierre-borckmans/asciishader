@@ -7,6 +7,7 @@ type Scene struct {
 	Name  string
 	SDF   func(p Vec3, time float64) float64
 	Color func(p Vec3, time float64) Vec3 // material color at world point (RGB 0-1), nil = white
+	GLSL  string                          // optional GLSL code for GPU editor (sceneSDF + sceneColor)
 }
 
 var scenes = []Scene{
@@ -54,6 +55,7 @@ var scenes = []Scene{
 		Name:  "Plasma Orb",
 		SDF:   scenePlasma,
 		Color: colorPlasma,
+		GLSL:  defaultUserCode,
 	},
 	{
 		Name:  "Plasma Rainbow",
