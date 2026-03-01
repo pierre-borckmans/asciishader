@@ -40,6 +40,7 @@ type Renderer struct {
 	ExtDist       float64 // external sample distance multiplier (1.0 = default)
 	Ambient       float64 // ambient light level (0-1)
 	SpecPower     float64 // specular exponent
+	CheapSamples  bool    // use cheap shading for sub-samples (faster, less accurate shapes)
 	buf           []byte
 }
 
@@ -242,6 +243,9 @@ func (r *Renderer) sampleBrightness(ro, fwd, right, up Vec3, snx, sny, halfW, ha
 	rd := fwd.Add(right.Mul(snx * halfW)).Add(up.Mul(sny * halfH)).Normalize()
 	t, hit := r.raymarchFrom(ro, rd, hintT)
 	if hit {
+		if r.CheapSamples {
+			return r.shadeCheap(ro, rd, t)
+		}
 		return r.shade(ro, rd, t)
 	}
 	return 0

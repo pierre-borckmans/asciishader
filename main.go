@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"runtime/pprof"
 	"strings"
 	"time"
 
@@ -44,7 +45,7 @@ func initialModel() model {
 	return model{
 		renderer:  r,
 		camDist:   4.0,
-		scene:     0,
+		scene:     5,
 		lastFrame: time.Now(),
 	}
 }
@@ -57,7 +58,7 @@ func (m model) Init() tea.Cmd {
 }
 
 func tick() tea.Cmd {
-	return tea.Tick(time.Millisecond, func(t time.Time) tea.Msg { // uncapped for perf testing
+	return tea.Tick(time.Millisecond, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
 }
@@ -77,6 +78,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		now := time.Now()
 		dt := now.Sub(m.lastFrame).Seconds()
+
+		// Cap at 60fps — skip if less than ~16.6ms elapsed
+		if dt < 1.0/61.0 {
+			return m, tick()
+		}
+
 		if dt > 0 {
 			m.fps = m.fps*0.9 + (1.0/dt)*0.1 // smoothed FPS
 		}
@@ -199,6 +206,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.renderer.SpecPower = clamp(m.renderer.SpecPower*1.5, 4, 128)
 		case "$":
 			m.renderer.SpecPower = clamp(m.renderer.SpecPower/1.5, 4, 128)
+		case "5":
+			m.renderer.CheapSamples = !m.renderer.CheapSamples
 
 		case "r":
 			m.camAngleX = 0
@@ -210,6 +219,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.renderer.ExtDist = 1.0
 			m.renderer.Ambient = 0.15
 			m.renderer.SpecPower = 32.0
+			m.renderer.CheapSamples = false
 			m.time = 0
 		}
 	}
@@ -234,12 +244,17 @@ func (m model) View() string {
 		pauseStr = " ⏸ PAUSED"
 	}
 
-	hud := fmt.Sprintf(" 🎬 [%d/%d] %s%s │ C:%.1f S:%.1f E:%.1f A:%.2f P:%.0f │ 🎯 %.0f fps",
+	cheapStr := "off"
+	if m.renderer.CheapSamples {
+		cheapStr = "on"
+	}
+
+	hud := fmt.Sprintf(" 🎬 [%d/%d] %s%s │ C:%.1f S:%.1f E:%.1f A:%.2f P:%.0f F:%s │ 🎯 %.0f fps",
 		m.scene+1, len(scenes), scenes[m.scene].Name, pauseStr,
 		m.renderer.Contrast, m.renderer.Spread, m.renderer.ExtDist,
-		m.renderer.Ambient, m.renderer.SpecPower, m.fps)
+		m.renderer.Ambient, m.renderer.SpecPower, cheapStr, m.fps)
 
-	controls := " []:contrast  1:spread  2:extDist  3:ambient  4:specPow  (shift+N to decrease)  r:reset  q:quit"
+	controls := " []:contrast  1:spread  2:extDist  3:ambient  4:specPow  5:fastShade  (shift+N to decrease)  r:reset  q:quit"
 
 	hudStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245")).
@@ -256,6 +271,17 @@ func (m model) View() string {
 }
 
 func main() {
+	f, err := os.Create("cpu.prof")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Could not create CPU profile: %v\n", err)
+		os.Exit(1)
+	}
+	pprof.StartCPUProfile(f)
+	defer func() {
+		pprof.StopCPUProfile()
+		f.Close()
+	}()
+
 	p := tea.NewProgram(
 		initialModel(),
 		tea.WithAltScreen(),
