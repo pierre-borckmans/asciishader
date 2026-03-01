@@ -39,7 +39,7 @@ func NewControlsTab() *ControlsTab {
 			{Label: "Contrast", Min: 0.5, Max: 5.0, Step: 0.25, Format: "%.2f"},
 			{Label: "Spread", Min: 0.25, Max: 3.0, Step: 0.25, Format: "%.2f"},
 			{Label: "ExtDist", Min: 0.25, Max: 3.0, Step: 0.25, Format: "%.2f"},
-			{Label: "Ambient", Min: 0.0, Max: 0.5, Step: 0.05, Format: "%.2f"},
+			{Label: "Ambient", Min: 0.0, Max: 1.0, Step: 0.05, Format: "%.2f"},
 			{Label: "SpecPower", Min: 4, Max: 128, Step: 0, Format: "%.0f"}, // uses *1.5 / /1.5
 			{Label: "Shadows", Min: 0, Max: 48, Step: 4, Format: "%.0f"},
 			{Label: "AO Steps", Min: 0, Max: 10, Step: 1, Format: "%.0f"},

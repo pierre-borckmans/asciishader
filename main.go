@@ -37,10 +37,12 @@ type model struct {
 	camAngleY  float64
 	camAngleX  float64
 	camDist    float64
+	camTarget  Vec3
 	autoRotate bool
 	mouseLastX int
 	mouseLastY int
 	mouseDrag  bool
+	mousePan   bool
 	fps        float64
 	lastFrame  time.Time
 	frame      string
@@ -61,7 +63,7 @@ func initialModel() model {
 	r.Contrast = 2.0
 	r.Spread = 1.0
 	r.ExtDist = 1.0
-	r.Ambient = 0.15
+	r.Ambient = 0.4
 	r.SpecPower = 32.0
 	r.ShadowSteps = 32
 	r.AOSteps = 5
@@ -198,13 +200,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.camAngleY += dt * 0.3
 		}
 
-		// Update camera
+		// Update camera (orbit around camTarget)
 		m.renderer.Camera.Pos = Vec3{
-			math.Sin(m.camAngleY) * math.Cos(m.camAngleX) * m.camDist,
-			math.Sin(m.camAngleX) * m.camDist,
-			-math.Cos(m.camAngleY) * math.Cos(m.camAngleX) * m.camDist,
+			m.camTarget.X + math.Sin(m.camAngleY)*math.Cos(m.camAngleX)*m.camDist,
+			m.camTarget.Y + math.Sin(m.camAngleX)*m.camDist,
+			m.camTarget.Z - math.Cos(m.camAngleY)*math.Cos(m.camAngleX)*m.camDist,
 		}
-		m.renderer.Camera.Target = V(0, 0, 0)
+		m.renderer.Camera.Target = m.camTarget
 		m.renderer.Time = m.time
 		m.renderer.Scene = scenes[m.scene].SDF
 		m.renderer.ColorFunc = scenes[m.scene].Color
@@ -315,20 +317,39 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.Action {
 	case tea.MouseActionPress:
-		if msg.Button == tea.MouseButtonLeft && inViewport {
-			m.mouseDrag = true
-			m.mouseLastX = msg.X
-			m.mouseLastY = msg.Y
-			m.autoRotate = false
+		if inViewport {
+			if msg.Button == tea.MouseButtonLeft {
+				m.mouseDrag = true
+				m.mouseLastX = msg.X
+				m.mouseLastY = msg.Y
+				m.autoRotate = false
+			} else if msg.Button == tea.MouseButtonRight {
+				m.mousePan = true
+				m.mouseLastX = msg.X
+				m.mouseLastY = msg.Y
+			}
 		}
 	case tea.MouseActionRelease:
 		m.mouseDrag = false
+		m.mousePan = false
 	case tea.MouseActionMotion:
 		if m.mouseDrag {
 			dx := msg.X - m.mouseLastX
 			dy := msg.Y - m.mouseLastY
 			m.camAngleY += float64(dx) * 0.02
 			m.camAngleX = clamp(m.camAngleX+float64(dy)*0.05, -math.Pi/2+0.1, math.Pi/2-0.1)
+			m.mouseLastX = msg.X
+			m.mouseLastY = msg.Y
+		}
+		if m.mousePan {
+			dx := msg.X - m.mouseLastX
+			dy := msg.Y - m.mouseLastY
+			// Pan in camera's right/up plane
+			right := Vec3{math.Cos(m.camAngleY), 0, math.Sin(m.camAngleY)}
+			up := V(0, 1, 0)
+			panSpeed := m.camDist * 0.01
+			m.camTarget = m.camTarget.Add(right.Mul(float64(dx) * panSpeed))
+			m.camTarget = m.camTarget.Add(up.Mul(float64(dy) * panSpeed * 2.2))
 			m.mouseLastX = msg.X
 			m.mouseLastY = msg.Y
 		}
@@ -456,9 +477,9 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 	case "@":
 		m.renderer.ExtDist = clamp(m.renderer.ExtDist-0.25, 0.25, 3.0)
 	case "3":
-		m.renderer.Ambient = clamp(m.renderer.Ambient+0.05, 0.0, 0.5)
+		m.renderer.Ambient = clamp(m.renderer.Ambient+0.05, 0.0, 1.0)
 	case "#":
-		m.renderer.Ambient = clamp(m.renderer.Ambient-0.05, 0.0, 0.5)
+		m.renderer.Ambient = clamp(m.renderer.Ambient-0.05, 0.0, 1.0)
 	case "4":
 		m.renderer.SpecPower = clamp(m.renderer.SpecPower*1.5, 4, 128)
 	case "$":
@@ -475,11 +496,12 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		m.camAngleX = 0
 		m.camAngleY = 0
 		m.camDist = 4.0
+		m.camTarget = V(0, 0, 0)
 		m.autoRotate = false
 		m.renderer.Contrast = 2.0
 		m.renderer.Spread = 1.0
 		m.renderer.ExtDist = 1.0
-		m.renderer.Ambient = 0.15
+		m.renderer.Ambient = 0.4
 		m.renderer.SpecPower = 32.0
 		m.renderer.ShadowSteps = 32
 		m.renderer.AOSteps = 5

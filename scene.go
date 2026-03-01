@@ -87,6 +87,30 @@ var scenes = []Scene{
 		SDF:   sceneFrozenStar,
 		Color: colorFrozenStar,
 	},
+	{
+		Name:  "Railway Express",
+		SDF:   sceneTrain,
+		Color: colorTrain,
+		GLSL:  railwayExpressGLSL,
+	},
+	{
+		Name:  "Lava Lamp",
+		SDF:   scenePlasma,
+		Color: colorPlasma,
+		GLSL:  lavaLampGLSL,
+	},
+	{
+		Name:  "Mercury",
+		SDF:   scenePlasma,
+		Color: colorPlasma,
+		GLSL:  mercuryGLSL,
+	},
+	{
+		Name:  "Amoeba",
+		SDF:   scenePlasma,
+		Color: colorPlasma,
+		GLSL:  amoebaGLSL,
+	},
 }
 
 // Scene: Bullet train coming at us
