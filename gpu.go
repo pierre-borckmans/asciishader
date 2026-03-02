@@ -184,6 +184,42 @@ func (g *GPURenderer) Render(r *Renderer) string {
 	return g.buildANSIShaped(r)
 }
 
+// RenderToCells does the full GPU render pass and returns the cell grid (no ANSI).
+func (g *GPURenderer) RenderToCells(r *Renderer) [][]cell {
+	w, h := r.Width, r.Height
+	if w <= 0 || h <= 0 {
+		return nil
+	}
+
+	g.resize(w, h)
+
+	gl.BindFramebuffer(gl.FRAMEBUFFER, g.fbo)
+	gl.Viewport(0, 0, int32(g.pixW), int32(g.pixH))
+	gl.Clear(gl.COLOR_BUFFER_BIT)
+
+	gl.UseProgram(g.program)
+
+	gl.Uniform2f(g.uResolution, float32(g.pixW), float32(g.pixH))
+	gl.Uniform2f(g.uTermSize, float32(w), float32(h))
+	gl.Uniform1f(g.uTime, float32(r.Time))
+	gl.Uniform3f(g.uCameraPos, float32(r.Camera.Pos.X), float32(r.Camera.Pos.Y), float32(r.Camera.Pos.Z))
+	gl.Uniform3f(g.uCameraTarget, float32(r.Camera.Target.X), float32(r.Camera.Target.Y), float32(r.Camera.Target.Z))
+	gl.Uniform3f(g.uLightDir, float32(r.LightDir.X), float32(r.LightDir.Y), float32(r.LightDir.Z))
+	gl.Uniform1f(g.uFOV, float32(r.Camera.FOV))
+	gl.Uniform1f(g.uAmbient, float32(r.Ambient))
+	gl.Uniform1f(g.uSpecPower, float32(r.SpecPower))
+	gl.Uniform1i(g.uShadowSteps, int32(r.ShadowSteps))
+	gl.Uniform1i(g.uAOSteps, int32(r.AOSteps))
+
+	gl.BindVertexArray(g.vao)
+	gl.DrawArrays(gl.TRIANGLES, 0, 6)
+
+	gl.ReadPixels(0, 0, int32(g.pixW), int32(g.pixH), gl.RGBA, gl.UNSIGNED_BYTE, unsafe.Pointer(&g.pixels[0]))
+	gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
+
+	return g.RenderCells(r)
+}
+
 // pixelBrightness returns the lighting-only brightness (0-1) stored in the alpha channel.
 func (g *GPURenderer) pixelBrightness(px, py int) float64 {
 	if px < 0 || px >= g.pixW || py < 0 || py >= g.pixH {
@@ -191,6 +227,70 @@ func (g *GPURenderer) pixelBrightness(px, py int) float64 {
 	}
 	off := (py*g.pixW + px) * 4
 	return float64(g.pixels[off+3]) / 255
+}
+
+// RenderCells uses GPU pixel data with shape matching to produce a cell grid.
+func (g *GPURenderer) RenderCells(r *Renderer) [][]cell {
+	tw, th := g.termW, g.termH
+	st := r.ShapeTable
+
+	lines := make([][]cell, th)
+	for cy := 0; cy < th; cy++ {
+		line := make([]cell, tw)
+		for cx := 0; cx < tw; cx++ {
+			bx := cx * 2
+			by := cy * 3
+
+			var sv ShapeVec
+			sv[0] = g.pixelBrightness(bx, by)
+			sv[1] = g.pixelBrightness(bx+1, by)
+			sv[2] = g.pixelBrightness(bx, by+1)
+			sv[3] = g.pixelBrightness(bx+1, by+1)
+			sv[4] = g.pixelBrightness(bx, by+2)
+			sv[5] = g.pixelBrightness(bx+1, by+2)
+
+			avgBright := 0.0
+			for i := 0; i < 6; i++ {
+				avgBright += sv[i]
+			}
+			avgBright /= 6
+
+			if avgBright < 0.01 {
+				line[cx] = cell{' ', Vec3{}}
+				continue
+			}
+
+			var ext ShapeVec
+			ext[0] = g.pixelBrightness(bx-1, by-1)
+			ext[1] = g.pixelBrightness(bx+2, by-1)
+			ext[2] = g.pixelBrightness(bx-1, by+1)
+			ext[3] = g.pixelBrightness(bx+2, by+1)
+			ext[4] = g.pixelBrightness(bx-1, by+3)
+			ext[5] = g.pixelBrightness(bx+2, by+3)
+
+			sv = DirectionalContrast(sv, ext, r.Contrast)
+			sv = EnhanceContrast(sv, r.Contrast)
+			ch := st.Match(sv)
+
+			var colR, colG, colB float64
+			for _, dy := range []int{0, 1, 2} {
+				for _, dx := range []int{0, 1} {
+					px := bx + dx
+					py := by + dy
+					if px >= 0 && px < g.pixW && py >= 0 && py < g.pixH {
+						off := (py*g.pixW + px) * 4
+						colR += float64(g.pixels[off])
+						colG += float64(g.pixels[off+1])
+						colB += float64(g.pixels[off+2])
+					}
+				}
+			}
+
+			line[cx] = cell{ch, Vec3{colR / 6 / 255, colG / 6 / 255, colB / 6 / 255}}
+		}
+		lines[cy] = line
+	}
+	return lines
 }
 
 // buildANSIShaped reads the 2x3 sub-pixel grid per terminal cell,

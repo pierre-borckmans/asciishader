@@ -294,32 +294,27 @@ type cell struct {
 	col Vec3 // RGB 0-1
 }
 
-// Render the full frame, returns ANSI true-color string
-func (r *Renderer) Render() string {
+// RenderCells renders the scene and returns the raw cell grid (no ANSI encoding).
+func (r *Renderer) RenderCells() [][]cell {
 	w, h := r.Width, r.Height
 	if w <= 0 || h <= 0 {
-		return ""
+		return nil
 	}
 
-	// Build camera matrix
 	fwd := r.Camera.Target.Sub(r.Camera.Pos).Normalize()
 	right := fwd.Cross(r.Camera.Up).Normalize()
 	up := right.Cross(fwd)
 
 	fovRad := r.Camera.FOV * math.Pi / 180
 	halfH := math.Tan(fovRad / 2)
-	// Terminal chars are ~2x taller than wide, so adjust aspect
 	aspect := float64(w) / float64(h) * 0.45
 	halfW := halfH * aspect
 
 	ro := r.Camera.Pos
-
-	// Per-pixel step sizes in normalized screen coordinates
 	dx := 2.0 / float64(w-1)
 	dy := 2.0 / float64(h-1)
 	shapeMode := r.ShapeMode && r.ShapeTable != nil
 
-	// Parallel rendering - one goroutine per row
 	var wg sync.WaitGroup
 	lines := make([][]cell, h)
 
@@ -328,17 +323,11 @@ func (r *Renderer) Render() string {
 		go func(y int) {
 			defer wg.Done()
 			line := make([]cell, w)
-			// Normalized y: -1 to 1
 			ny := 1.0 - 2.0*float64(y)/float64(h-1)
 
 			for x := 0; x < w; x++ {
-				// Normalized x: -1 to 1
 				nx := 2.0*float64(x)/float64(w-1) - 1.0
-
-				// Ray direction
 				rd := fwd.Add(right.Mul(nx * halfW)).Add(up.Mul(ny * halfH)).Normalize()
-
-				// Raymarch
 				t, _ := r.raymarch(ro, rd)
 
 				var ch byte
@@ -347,7 +336,6 @@ func (r *Renderer) Render() string {
 					ch, col = r.renderCellShaped(ro, fwd, right, up, nx, ny, dx, dy, halfW, halfH, t, rd)
 				} else if t < maxDist {
 					col = r.shadeColor(ro, rd, t)
-					// Luminance for ASCII ramp lookup
 					brightness := col.X*0.299 + col.Y*0.587 + col.Z*0.114
 					idx := int(brightness * float64(len(asciiRamp)-1))
 					if idx < 0 {
@@ -358,7 +346,6 @@ func (r *Renderer) Render() string {
 					}
 					ch = asciiRamp[idx]
 				} else {
-					// Background - subtle gradient
 					bgBright := 0.02 + 0.03*(ny+1)*0.5
 					idx := int(bgBright * float64(len(asciiRamp)-1))
 					if idx < 0 {
@@ -368,7 +355,7 @@ func (r *Renderer) Render() string {
 						idx = len(asciiRamp) - 1
 					}
 					ch = asciiRamp[idx]
-					col = Vec3{} // black background
+					col = Vec3{}
 				}
 				line[x] = cell{ch, col}
 			}
@@ -376,6 +363,17 @@ func (r *Renderer) Render() string {
 		}(y)
 	}
 	wg.Wait()
+	return lines
+}
+
+// Render the full frame, returns ANSI true-color string
+func (r *Renderer) Render() string {
+	w, h := r.Width, r.Height
+	if w <= 0 || h <= 0 {
+		return ""
+	}
+
+	lines := r.RenderCells()
 
 	// Build ANSI true-color output (zero-alloc inner loop)
 	out := make([]byte, 0, w*h*20+h*10)

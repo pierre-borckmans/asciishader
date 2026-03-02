@@ -54,6 +54,17 @@ type model struct {
 	controls    *ControlsTab
 	editor      *EditorTab
 	focus       FocusZone
+
+	// Recording
+	recorder       *Recorder
+	recState       RecordingState
+	regionSelector *RegionSelector
+	recMessage     string    // transient status message (e.g. "Saved clip.asciirec")
+	recMessageTime time.Time // when message was set (clears after 3s)
+
+	// Playback
+	player   *ClipPlayer
+	playMode bool // --play mode
 }
 
 func initialModel() model {
@@ -225,6 +236,49 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.renderer.Resize(cw, vh)
 		}
 
+		// Recording: capture keyframe during live recording
+		if m.recState == RecordLive && m.recorder != nil {
+			m.recorder.CaptureKeyframe(&m)
+		}
+
+		// Recording: bake step (one frame per tick)
+		if m.recState == RecordBaking && m.recorder != nil {
+			// Save current renderer state
+			savedW, savedH := m.renderer.Width, m.renderer.Height
+			savedTime := m.renderer.Time
+			savedCam := m.renderer.Camera
+			savedLight := m.renderer.LightDir
+			savedContrast := m.renderer.Contrast
+			savedAmbient := m.renderer.Ambient
+			savedSpec := m.renderer.SpecPower
+			savedShadow := m.renderer.ShadowSteps
+			savedAO := m.renderer.AOSteps
+
+			done := m.recorder.BakeStep(&m)
+
+			// Restore renderer state
+			m.renderer.Resize(savedW, savedH)
+			m.renderer.Time = savedTime
+			m.renderer.Camera = savedCam
+			m.renderer.LightDir = savedLight
+			m.renderer.Contrast = savedContrast
+			m.renderer.Ambient = savedAmbient
+			m.renderer.SpecPower = savedSpec
+			m.renderer.ShadowSteps = savedShadow
+			m.renderer.AOSteps = savedAO
+
+			if done {
+				err := m.recorder.Finalize()
+				if err != nil {
+					m.recMessage = fmt.Sprintf("Error: %v", err)
+				} else {
+					m.recMessage = fmt.Sprintf("Saved %s", m.recorder.OutputPath)
+				}
+				m.recMessageTime = time.Now()
+				m.recState = RecordDone
+			}
+		}
+
 		// Render frame
 		if m.gpuMode && m.gpu != nil {
 			m.frame = m.gpu.Render(m.renderer)
@@ -295,6 +349,26 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if m.editor.scrollView.HandleMouse(msg) {
 			return m, nil
 		}
+	}
+
+	// Region selection mouse handling
+	if m.recState == RecordSelecting && m.regionSelector != nil {
+		sidebarWidth := m.sidebar.Width()
+		viewportLeft := sidebarWidth + 2
+		vpX := msg.X - viewportLeft
+		vpY := msg.Y - hh
+
+		switch msg.Action {
+		case tea.MouseActionPress:
+			if msg.Button == tea.MouseButtonLeft {
+				m.regionSelector.HandleMousePress(vpX, vpY)
+			}
+		case tea.MouseActionMotion:
+			m.regionSelector.HandleMouseDrag(vpX, vpY)
+		case tea.MouseActionRelease:
+			m.regionSelector.HandleMouseRelease()
+		}
+		return m, nil
 	}
 
 	// Viewport mouse (camera drag + zoom)
@@ -417,7 +491,55 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
+	// Region selection mode keys
+	if m.recState == RecordSelecting && m.regionSelector != nil {
+		switch key {
+		case "enter":
+			// Confirm selection, start recording
+			rs := m.regionSelector
+			scales := DefaultScales(rs.W, rs.H)
+			m.recorder = NewRecorder(rs.X, rs.Y, rs.W, rs.H, scales)
+			m.recorder.StartLive()
+			m.recState = RecordLive
+			m.regionSelector = nil
+			return m, nil
+		case "esc":
+			// Cancel selection
+			m.recState = RecordIdle
+			m.regionSelector = nil
+			return m, nil
+		case "1":
+			m.regionSelector.SetPreset(1, m.contentWidth(), m.viewportHeight())
+			return m, nil
+		case "2":
+			m.regionSelector.SetPreset(2, m.contentWidth(), m.viewportHeight())
+			return m, nil
+		case "3":
+			m.regionSelector.SetPreset(3, m.contentWidth(), m.viewportHeight())
+			return m, nil
+		case "4":
+			m.regionSelector.SetPreset(4, m.contentWidth(), m.viewportHeight())
+			return m, nil
+		}
+		// Don't fall through to other keys while selecting
+		return m, nil
+	}
+
 	switch key {
+	case "o":
+		switch m.recState {
+		case RecordIdle, RecordDone:
+			// Enter region selection
+			m.regionSelector = NewRegionSelector(m.contentWidth(), m.viewportHeight())
+			m.recState = RecordSelecting
+			m.recMessage = ""
+		case RecordLive:
+			// Stop recording, start bake
+			m.recorder.StartBake()
+			m.recState = RecordBaking
+		}
+		return m, nil
+
 	case "q", "esc":
 		return m, tea.Quit
 	case "left", "h":
@@ -589,7 +711,31 @@ func (m model) View() string {
 	if m.paused {
 		pauseStr = " PAUSED"
 	}
-	rightInfo := fmt.Sprintf("%s | %.0f fps%s", gpuStr, m.fps, pauseStr)
+	// Recording indicator
+	recStr := ""
+	switch m.recState {
+	case RecordSelecting:
+		recStr = " | SELECT REGION"
+	case RecordLive:
+		if m.recorder != nil {
+			dur := m.recorder.RecordingDuration()
+			recStr = fmt.Sprintf(" | ● REC %.1fs", dur.Seconds())
+		}
+	case RecordBaking:
+		if m.recorder != nil {
+			cur, total := m.recorder.BakeProgress()
+			pct := 0
+			if total > 0 {
+				pct = cur * 100 / total
+			}
+			recStr = fmt.Sprintf(" | Baking %d%%", pct)
+		}
+	case RecordDone:
+		if m.recMessage != "" && time.Since(m.recMessageTime) < 3*time.Second {
+			recStr = " | ✓ " + m.recMessage
+		}
+	}
+	rightInfo := fmt.Sprintf("%s | %.0f fps%s%s", gpuStr, m.fps, pauseStr, recStr)
 	header := ComposeHeader(
 		fmt.Sprintf("ASCII Shader  ·  %s", scenes[m.scene].Name),
 		rightInfo,
@@ -603,11 +749,11 @@ func (m model) View() string {
 		{"n/N", "scene"},
 		{"arrows", "camera"},
 		{"+/-", "zoom"},
+		{"o", "record"},
 		{"s", "controls"},
 		{"e", "editor"},
 		{"g", "GPU"},
 		{"tab", "focus"},
-		{"esc", "viewport"},
 		{"space", "pause"},
 		{"a", "auto-rotate"},
 		{"r", "reset"},
@@ -658,6 +804,11 @@ func (m model) View() string {
 		viewLines = viewLines[:vpHeight]
 	}
 
+	// Region selection overlay
+	if m.recState == RecordSelecting && m.regionSelector != nil {
+		viewLines = m.regionSelector.RenderOverlay(viewLines)
+	}
+
 	viewContentBlock := strings.Join(viewLines, "\n")
 
 	// Append bottom panel below viewport content if expanded
@@ -702,6 +853,12 @@ func (m model) View() string {
 func main() {
 	runtime.LockOSThread()
 
+	// Check for --play flag
+	if len(os.Args) >= 3 && os.Args[1] == "--play" {
+		runPlayer(os.Args[2])
+		return
+	}
+
 	f, err := os.Create("cpu.prof")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not create CPU profile: %v\n", err)
@@ -734,4 +891,98 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// runPlayer runs the standalone clip player.
+func runPlayer(path string) {
+	clip, err := LoadClip(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading clip: %v\n", err)
+		os.Exit(1)
+	}
+
+	player := NewClipPlayer(clip)
+	player.SetLoop(true)
+
+	pm := playerModel{
+		player:    player,
+		clipPath:  path,
+		lastFrame: time.Now(),
+	}
+
+	p := tea.NewProgram(
+		pm,
+		tea.WithAltScreen(),
+	)
+	if _, err := p.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// playerModel is the Bubble Tea model for standalone playback.
+type playerModel struct {
+	player    *ClipPlayer
+	clipPath  string
+	width     int
+	height    int
+	lastFrame time.Time
+}
+
+func (pm playerModel) Init() tea.Cmd {
+	return tea.Batch(
+		tick(),
+		tea.EnterAltScreen,
+	)
+}
+
+func (pm playerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		pm.width = msg.Width
+		pm.height = msg.Height
+		pm.player.SetSize(pm.width, pm.height-1) // -1 for status line
+		return pm, nil
+
+	case tickMsg:
+		now := time.Now()
+		dt := now.Sub(pm.lastFrame).Seconds()
+		if dt < 1.0/63.0 {
+			return pm, tick()
+		}
+		pm.lastFrame = now
+		pm.player.Tick(dt)
+		return pm, tick()
+
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "q", "esc", "ctrl+c":
+			return pm, tea.Quit
+		case " ":
+			pm.player.paused = !pm.player.paused
+		case "l":
+			pm.player.SetLoop(!pm.player.loop)
+		}
+		return pm, nil
+	}
+	return pm, nil
+}
+
+func (pm playerModel) View() string {
+	if pm.width == 0 || pm.height == 0 {
+		return "Loading..."
+	}
+
+	frame := pm.player.Render()
+
+	// Status line
+	status := fmt.Sprintf(" Playing: %s | Frame %d/%d | q: quit | space: pause | l: loop",
+		pm.clipPath, pm.player.currentFrame+1, len(pm.player.clip.Tracks[pm.player.scaleIdx].Frames))
+
+	statusStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#333333")).
+		Foreground(lipgloss.Color("#CCCCCC")).
+		Width(pm.width)
+
+	return frame + "\n" + statusStyle.Render(status)
 }
