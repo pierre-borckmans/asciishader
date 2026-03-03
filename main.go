@@ -513,9 +513,9 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	if inViewport {
 		if msg.Button == tea.MouseButtonWheelUp {
-			m.camDist = clamp(m.camDist*0.92, 1.5, 12)
+			m.camDist = clamp(m.camDist*0.92, 0.5, 30)
 		} else if msg.Button == tea.MouseButtonWheelDown {
-			m.camDist = clamp(m.camDist/0.92, 1.5, 12)
+			m.camDist = clamp(m.camDist/0.92, 0.5, 30)
 		}
 	}
 
@@ -699,9 +699,9 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		m.camAngleX = clamp(m.camAngleX-0.1, -math.Pi/2+0.1, math.Pi/2-0.1)
 		m.autoRotate = false
 	case "+", "=":
-		m.camDist = clamp(m.camDist*0.92, 1.5, 12)
+		m.camDist = clamp(m.camDist*0.92, 0.5, 30)
 	case "-", "_":
-		m.camDist = clamp(m.camDist/0.92, 1.5, 12)
+		m.camDist = clamp(m.camDist/0.92, 0.5, 30)
 	case "tab":
 		// Cycle focus: viewport → controls (if open) → editor (if open) → viewport
 		if m.rightPanel.IsExpanded() {
