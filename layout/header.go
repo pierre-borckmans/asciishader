@@ -1,7 +1,9 @@
-package main
+package layout
 
 import (
 	"strings"
+
+	"asciishader/styles"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -13,10 +15,10 @@ func ComposeHeader(title string, rightInfo string, width int, sidebarWidth int, 
 		return title
 	}
 
-	bgColor := ChromeBg
+	bgColor := styles.ChromeBg
 	bgStyle := lipgloss.NewStyle().Background(bgColor)
-	brightStyle := lipgloss.NewStyle().Foreground(ChromeFg).Background(bgColor).Bold(true)
-	mutedStyle := lipgloss.NewStyle().Foreground(ChromeFgMuted).Background(bgColor)
+	brightStyle := lipgloss.NewStyle().Foreground(styles.ChromeFg).Background(bgColor).Bold(true)
+	mutedStyle := lipgloss.NewStyle().Foreground(styles.ChromeFgMuted).Background(bgColor)
 
 	titleText := brightStyle.Render("  " + title)
 	rightText := mutedStyle.Render(rightInfo + "  ")
@@ -35,13 +37,13 @@ func ComposeHeader(title string, rightInfo string, width int, sidebarWidth int, 
 	if innerWidth < 0 {
 		innerWidth = 0
 	}
-	topEdgeStyle := lipgloss.NewStyle().Foreground(bgColor).Background(TermBg)
+	topEdgeStyle := lipgloss.NewStyle().Foreground(bgColor).Background(styles.TermBg)
 	topEdge := topEdgeStyle.Render("▄" + strings.Repeat("▄", innerWidth) + "▄")
 
 	// Bottom edge: junction colors where sidebar and right panel meet
-	sidebarJunctionStyle := lipgloss.NewStyle().Foreground(ChromeBgLight).Background(bgColor)
-	rightJunctionStyle := lipgloss.NewStyle().Foreground(ChromeBgDark).Background(bgColor)
-	restStyle := lipgloss.NewStyle().Foreground(TermBg).Background(bgColor)
+	sidebarJunctionStyle := lipgloss.NewStyle().Foreground(styles.ChromeBgLight).Background(bgColor)
+	rightJunctionStyle := lipgloss.NewStyle().Foreground(styles.ChromeBgDark).Background(bgColor)
+	restStyle := lipgloss.NewStyle().Foreground(styles.TermBg).Background(bgColor)
 
 	var bottomEdge string
 	if sidebarWidth > 0 || rightPanelWidth > 0 {

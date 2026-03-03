@@ -1,4 +1,4 @@
-package main
+package components
 
 import (
 	"fmt"
@@ -9,12 +9,12 @@ import (
 	"github.com/mattn/go-runewidth"
 )
 
-// ansiRegex matches ANSI escape codes
-var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;:]*[a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[PX^_][^\x1b]*\x1b\\|\x1b[@-Z\\-_]|\x1b\[[\?]?[0-9;]*[a-zA-Z]`)
+// AnsiRegex matches ANSI escape codes
+var AnsiRegex = regexp.MustCompile(`\x1b\[[0-9;:]*[a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[PX^_][^\x1b]*\x1b\\|\x1b[@-Z\\-_]|\x1b\[[\?]?[0-9;]*[a-zA-Z]`)
 
-// stripANSI removes ANSI escape codes from a string
-func stripANSI(s string) string {
-	return ansiRegex.ReplaceAllString(s, "")
+// StripANSI removes ANSI escape codes from a string
+func StripANSI(s string) string {
+	return AnsiRegex.ReplaceAllString(s, "")
 }
 
 // ScrollableView is a reusable component for scrolling any content
@@ -97,6 +97,11 @@ func (sv *ScrollableView) ScreenY() int {
 	return sv.screenY
 }
 
+// TotalLines returns the total number of content lines.
+func (sv *ScrollableView) TotalLines() int {
+	return sv.totalLines
+}
+
 // ScrollOffset returns current scroll offset
 func (sv *ScrollableView) ScrollOffset() int {
 	return sv.scrollOffset
@@ -107,7 +112,6 @@ func (sv *ScrollableView) SetScrollOffset(offset int) {
 	sv.scrollOffset = offset
 	sv.clampScroll()
 }
-
 
 // ScrollUp scrolls up by n lines
 func (sv *ScrollableView) ScrollUp(n int) {
@@ -372,7 +376,7 @@ func (sv *ScrollableView) RenderContent(content string) string {
 	// Calculate max line width for horizontal scrolling
 	sv.maxLineWidth = 0
 	for _, line := range lines {
-		w := runewidth.StringWidth(stripANSI(line))
+		w := runewidth.StringWidth(StripANSI(line))
 		if w > sv.maxLineWidth {
 			sv.maxLineWidth = w
 		}
@@ -414,7 +418,7 @@ func (sv *ScrollableView) RenderContent(content string) string {
 	// Apply horizontal scrolling
 	if sv.hScrollOffset > 0 {
 		for i := range visibleLines {
-			visibleLines[i] = horizontalSlice(visibleLines[i], sv.hScrollOffset)
+			visibleLines[i] = HorizontalSlice(visibleLines[i], sv.hScrollOffset)
 		}
 	}
 
@@ -427,7 +431,7 @@ func (sv *ScrollableView) RenderContent(content string) string {
 	// Truncate lines if enabled
 	if sv.truncateLines && !hasVScroll {
 		for i := range visibleLines {
-			visibleLines[i] = truncateOrPadLine(visibleLines[i], contentWidth)
+			visibleLines[i] = TruncateOrPadLine(visibleLines[i], contentWidth)
 		}
 	}
 
@@ -440,7 +444,7 @@ func (sv *ScrollableView) RenderContent(content string) string {
 		}
 
 		for i := 0; i < contentHeight; i++ {
-			visibleLines[i] = truncateOrPadLine(visibleLines[i], contentWidth) + "\x1b[0m " + scrollbar[i]
+			visibleLines[i] = TruncateOrPadLine(visibleLines[i], contentWidth) + "\x1b[0m " + scrollbar[i]
 		}
 	}
 
@@ -490,8 +494,8 @@ func (sv *ScrollableView) renderHScrollbar(width int) string {
 	return result.String()
 }
 
-// horizontalSlice removes the first n visible characters from a line, preserving ANSI codes
-func horizontalSlice(line string, offset int) string {
+// HorizontalSlice removes the first n visible characters from a line, preserving ANSI codes
+func HorizontalSlice(line string, offset int) string {
 	if offset <= 0 {
 		return line
 	}
@@ -530,8 +534,8 @@ func horizontalSlice(line string, offset int) string {
 	return result.String()
 }
 
-// truncateOrPadLine ensures line is exactly targetWidth visible characters
-func truncateOrPadLine(line string, targetWidth int) string {
+// TruncateOrPadLine ensures line is exactly targetWidth visible characters
+func TruncateOrPadLine(line string, targetWidth int) string {
 	if targetWidth <= 0 {
 		return ""
 	}
@@ -558,7 +562,7 @@ func truncateOrPadLine(line string, targetWidth int) string {
 	}
 
 	if isASCII && hasANSI {
-		stripped := stripANSI(line)
+		stripped := StripANSI(line)
 		currentWidth := len(stripped)
 
 		if currentWidth <= targetWidth {
@@ -611,7 +615,7 @@ func truncateWithANSIASCII(line string, targetWidth int) string {
 }
 
 func truncateWithANSIUnicode(line string, targetWidth int) string {
-	stripped := stripANSI(line)
+	stripped := StripANSI(line)
 	currentWidth := runewidth.StringWidth(stripped)
 
 	if currentWidth <= targetWidth {

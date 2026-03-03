@@ -4,16 +4,20 @@ import (
 	"fmt"
 	"strings"
 
+	"asciishader/components"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
 // RegionSelector handles the interactive region selection overlay.
 type RegionSelector struct {
-	X, Y   int // top-left corner in viewport coordinates
-	W, H   int // dimensions
-	MaxW   int // viewport width limit
-	MaxH   int // viewport height limit
-	Active bool
+	X, Y      int // top-left corner in viewport coordinates
+	W, H      int // dimensions
+	MaxW      int // viewport width limit
+	MaxH      int // viewport height limit
+	Active    bool
+	Recording bool   // true when showing overlay during live recording
+	RecLabel  string // e.g. "● REC 2.3s" — shown in top border while recording
 
 	// Drag state
 	dragMode   regionDragMode
@@ -34,10 +38,6 @@ const (
 	dragResizeNE
 	dragResizeSW
 	dragResizeSE
-	dragResizeN
-	dragResizeS
-	dragResizeW
-	dragResizeE
 )
 
 // NewRegionSelector creates a region selector centered in the viewport.
@@ -143,14 +143,6 @@ func (rs *RegionSelector) HandleMousePress(x, y int) bool {
 		rs.dragMode = dragResizeSW
 	case inRight && inBottom:
 		rs.dragMode = dragResizeSE
-	case inTop && x >= rs.X && x < rs.X+rs.W:
-		rs.dragMode = dragResizeN
-	case inBottom && x >= rs.X && x < rs.X+rs.W:
-		rs.dragMode = dragResizeS
-	case inLeft && y >= rs.Y && y < rs.Y+rs.H:
-		rs.dragMode = dragResizeW
-	case inRight && y >= rs.Y && y < rs.Y+rs.H:
-		rs.dragMode = dragResizeE
 	case x >= rs.X && x < rs.X+rs.W && y >= rs.Y && y < rs.Y+rs.H:
 		rs.dragMode = dragMove
 	default:
@@ -185,18 +177,13 @@ func (rs *RegionSelector) HandleMouseDrag(x, y int) {
 	case dragResizeSE:
 		rs.W = rs.dragOrigW + dx
 		rs.H = rs.dragOrigH + dy
-	case dragResizeN:
-		rs.Y = rs.dragOrigY + dy
-		rs.H = rs.dragOrigH - dy
-	case dragResizeS:
-		rs.H = rs.dragOrigH + dy
-	case dragResizeW:
-		rs.X = rs.dragOrigX + dx
-		rs.W = rs.dragOrigW - dx
-	case dragResizeE:
-		rs.W = rs.dragOrigW + dx
 	}
 	rs.clamp()
+}
+
+// IsDragging returns whether a region drag is in progress.
+func (rs *RegionSelector) IsDragging() bool {
+	return rs.dragMode != dragNone
 }
 
 // HandleMouseRelease ends any drag.
@@ -206,6 +193,7 @@ func (rs *RegionSelector) HandleMouseRelease() {
 
 // RenderOverlay renders the region selection overlay on top of the viewport frame lines.
 // vpLines should be the split viewport lines (before joining). Returns modified lines.
+// Content inside the selection preserves ANSI colors; everything outside is dimmed.
 func (rs *RegionSelector) RenderOverlay(vpLines []string) []string {
 	if len(vpLines) == 0 {
 		return vpLines
@@ -216,82 +204,113 @@ func (rs *RegionSelector) RenderOverlay(vpLines []string) []string {
 		Bold(true)
 
 	dimStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#666666"))
+		Foreground(lipgloss.Color("#555555"))
 
-	infoStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#FF6600")).
-		Bold(true)
-
-	// Draw dim overlay outside the region by replacing chars
 	result := make([]string, len(vpLines))
+
 	for y, line := range vpLines {
-		runes := []rune(line)
-		_ = runes // We'll work with the raw ANSI string
-
-		// For simplicity, overlay the border characters directly
-		// We render a new line with the overlay applied
-		if y < rs.Y || y >= rs.Y+rs.H {
-			// Outside region vertically — dim the line
-			result[y] = dimStyle.Render(stripANSI(line))
-		} else {
-			result[y] = line
+		vis := []rune(components.StripANSI(line))
+		// Pad visible chars to cover the selection area
+		for len(vis) < rs.X+rs.W+1 {
+			vis = append(vis, ' ')
 		}
-	}
 
-	// Draw border
-	for y := rs.Y; y < rs.Y+rs.H && y < len(result); y++ {
+		if y < rs.Y || y >= rs.Y+rs.H {
+			// Fully outside the selection — dim everything
+			result[y] = dimStyle.Render(string(vis))
+			continue
+		}
+
+		// Left and right dim portions (from stripped visible text)
+		left := dimStyle.Render(string(vis[:rs.X]))
+		rightStart := rs.X + rs.W
+		if rightStart > len(vis) {
+			rightStart = len(vis)
+		}
+		right := dimStyle.Render(string(vis[rightStart:]))
+
+		innerW := rs.W - 2
+		if innerW < 0 {
+			innerW = 0
+		}
+
 		if y == rs.Y {
-			// Top border
-			top := "+" + strings.Repeat("-", rs.W-2) + "+"
-			// Add size info in the middle
+			// Top border with size info or recording label
 			info := fmt.Sprintf(" %dx%d ", rs.W, rs.H)
-			if len(info) < rs.W-2 {
-				mid := (rs.W - 2 - len(info)) / 2
-				top = "+" + strings.Repeat("-", mid) + info + strings.Repeat("-", rs.W-2-mid-len(info)) + "+"
+			if rs.Recording && rs.RecLabel != "" {
+				info = " " + rs.RecLabel + " "
 			}
-			result[y] = padToCol(result[y], rs.X, borderStyle.Render(top))
+			infoW := len([]rune(info))
+			var border string
+			if infoW <= innerW {
+				ld := (innerW - infoW) / 2
+				rd := innerW - ld - infoW
+				border = "╭" + strings.Repeat("─", ld) + info + strings.Repeat("─", rd) + "╮"
+			} else {
+				border = "╭" + strings.Repeat("─", innerW) + "╮"
+			}
+			result[y] = left + borderStyle.Render(border) + right
 		} else if y == rs.Y+rs.H-1 {
-			// Bottom border
-			hint := " Enter:record  1-4:preset  Esc:cancel "
-			bottom := "+" + strings.Repeat("-", rs.W-2) + "+"
-			if len(hint) < rs.W-2 {
-				mid := (rs.W - 2 - len(hint)) / 2
-				bottom = "+" + strings.Repeat("-", mid) + hint + strings.Repeat("-", rs.W-2-mid-len(hint)) + "+"
+			// Bottom border with hints
+			hint := " Enter:rec  1-4:preset  Esc:cancel "
+			if rs.Recording {
+				hint = " o:stop recording "
 			}
-			result[y] = padToCol(result[y], rs.X, infoStyle.Render(bottom))
+			hintW := len([]rune(hint))
+			var border string
+			if hintW <= innerW {
+				ld := (innerW - hintW) / 2
+				rd := innerW - ld - hintW
+				border = "╰" + strings.Repeat("─", ld) + hint + strings.Repeat("─", rd) + "╯"
+			} else {
+				border = "╰" + strings.Repeat("─", innerW) + "╯"
+			}
+			result[y] = left + borderStyle.Render(border) + right
 		} else {
-			// Side borders only
-			leftBorder := borderStyle.Render("|")
-			rightBorder := borderStyle.Render("|")
-			result[y] = padToCol(result[y], rs.X, leftBorder)
-			result[y] = padToCol(result[y], rs.X+rs.W-1, rightBorder)
+			// Side borders — preserve original ANSI colors inside
+			mid := ansiCut(line, rs.X+1, rs.X+rs.W-1)
+			result[y] = left + borderStyle.Render("│") + mid + borderStyle.Render("│") + right
 		}
 	}
 
 	return result
 }
 
-// padToCol overwrites content at column col in the line.
-func padToCol(line string, col int, content string) string {
-	// Strip ANSI to count visible width
-	vis := stripANSI(line)
-	visRunes := []rune(vis)
+// ansiCut extracts visible columns [start, end) from an ANSI string,
+// preserving ANSI escape sequences that affect those columns.
+func ansiCut(s string, start, end int) string {
+	var buf strings.Builder
+	col := 0
+	runes := []rune(s)
+	i := 0
 
-	// Ensure line is wide enough
-	for len(visRunes) <= col+lipgloss.Width(content) {
-		visRunes = append(visRunes, ' ')
+	for i < len(runes) {
+		if runes[i] == '\x1b' && i+1 < len(runes) && runes[i+1] == '[' {
+			// ANSI escape sequence — collect until terminator letter
+			j := i + 2
+			for j < len(runes) {
+				if (runes[j] >= 'A' && runes[j] <= 'Z') || (runes[j] >= 'a' && runes[j] <= 'z') {
+					j++
+					break
+				}
+				j++
+			}
+			// Include escape sequences that precede or fall within the range
+			if col < end {
+				for k := i; k < j; k++ {
+					buf.WriteRune(runes[k])
+				}
+			}
+			i = j
+		} else {
+			if col >= start && col < end {
+				buf.WriteRune(runes[i])
+			}
+			col++
+			i++
+		}
 	}
-
-	// Build: prefix (plain) + content + suffix (plain)
-	prefix := string(visRunes[:col])
-	contentWidth := lipgloss.Width(content)
-	suffixStart := col + contentWidth
-	if suffixStart > len(visRunes) {
-		suffixStart = len(visRunes)
-	}
-	suffix := string(visRunes[suffixStart:])
-
-	return prefix + content + suffix
+	buf.WriteString("\033[0m")
+	return buf.String()
 }
 
-// stripANSI is defined in scrollable_view.go

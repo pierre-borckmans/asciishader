@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 
+	"asciishader/components"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
@@ -11,10 +13,10 @@ import (
 
 // ControlsTab manages the 7 parameter sliders + scene selector + renderer toggles.
 type ControlsTab struct {
-	sliders     []*Slider
+	sliders     []*components.Slider
 	focus       int // which item is focused (0-9: 7 sliders + scene + gpu + blocks)
 	numItems    int
-	zoned       *ZonedInteraction
+	zoned       *components.ZonedInteraction
 	renderWidth int // last render width
 }
 
@@ -35,8 +37,8 @@ const (
 func NewControlsTab() *ControlsTab {
 	ct := &ControlsTab{
 		numItems: 10,
-		zoned:    NewZonedInteraction("ctrl"),
-		sliders: []*Slider{
+		zoned:    components.NewZonedInteraction("ctrl"),
+		sliders: []*components.Slider{
 			{Label: "Contrast", Min: 0.5, Max: 5.0, Step: 0.25, Format: "%.2f"},
 			{Label: "Spread", Min: 0.25, Max: 3.0, Step: 0.25, Format: "%.2f"},
 			{Label: "ExtDist", Min: 0.25, Max: 3.0, Step: 0.25, Format: "%.2f"},
@@ -155,7 +157,7 @@ func (ct *ControlsTab) zoneIDs() []string {
 func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m *model) bool {
 	// Delegate to sliders first (they own drag/hover state)
 	for i, s := range ct.sliders {
-		zi := zone.Get(ct.zoned.zoneID("slider-" + strconv.Itoa(i)))
+		zi := zone.Get(ct.zoned.ZoneID("slider-" + strconv.Itoa(i)))
 		if !zi.IsZero() {
 			s.SetScreenX(zi.StartX)
 		}
@@ -197,7 +199,7 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m *model) bool {
 	// Scene click — left half = prev, right half = next
 	if clicked == "scene" {
 		ct.focus = ctrlScene
-		zi := zone.Get(ct.zoned.zoneID("scene"))
+		zi := zone.Get(ct.zoned.ZoneID("scene"))
 		if !zi.IsZero() {
 			mid := (zi.StartX + zi.EndX) / 2
 			if msg.X < mid {
@@ -205,7 +207,6 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m *model) bool {
 			} else {
 				m.scene = (m.scene + 1) % len(scenes)
 			}
-			m.sidebar.SetActiveID(fmt.Sprintf("scene-%d", m.scene))
 			m.time = 0
 			m.syncSceneGLSL()
 		}

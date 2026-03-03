@@ -1,7 +1,9 @@
-package main
+package layout
 
 import (
 	"strings"
+
+	"asciishader/styles"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -20,18 +22,18 @@ func RenderFooter(bindings []FooterBinding, width int, rightText string) string 
 
 	keyStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(ChromeFg).
-		Background(ChromeBg)
+		Foreground(styles.ChromeFg).
+		Background(styles.ChromeBg)
 
 	descStyle := lipgloss.NewStyle().
-		Foreground(ChromeFgMuted).
-		Background(ChromeBg)
+		Foreground(styles.ChromeFgMuted).
+		Background(styles.ChromeBg)
 
 	sepStyle := lipgloss.NewStyle().
-		Foreground(ChromeFgAccent).
-		Background(ChromeBg)
+		Foreground(styles.ChromeFgAccent).
+		Background(styles.ChromeBg)
 
-	bgStyle := lipgloss.NewStyle().Background(ChromeBg)
+	bgStyle := lipgloss.NewStyle().Background(styles.ChromeBg)
 
 	separator := " · "
 	separatorWidth := lipgloss.Width(separator)
@@ -94,7 +96,7 @@ func RenderFooter(bindings []FooterBinding, width int, rightText string) string 
 	}
 
 	barStyle := lipgloss.NewStyle().
-		Background(ChromeBg).
+		Background(styles.ChromeBg).
 		Width(width)
 
 	return barStyle.Render(content)

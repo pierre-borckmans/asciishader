@@ -1,45 +1,50 @@
-package main
+package clip
 
 import (
 	"strconv"
 	"strings"
 )
 
-// ClipPlayer plays back a loaded .asciirec clip.
-type ClipPlayer struct {
+// Player plays back a loaded .asciirec clip.
+type Player struct {
 	clip         *Clip
-	scaleIdx     int     // which scale track to use
-	currentFrame int     // current frame index
+	ScaleIdx     int     // which scale track to use
+	CurrentFrame int     // current frame index
 	timeAcc      float64 // accumulated time in seconds
 	frameDur     float64 // duration of one frame in seconds
-	loop         bool
-	paused       bool
+	Loop         bool
+	Paused       bool
 	width        int // available display width
 	height       int // available display height
 }
 
-// NewClipPlayer creates a player for the given clip.
-func NewClipPlayer(clip *Clip) *ClipPlayer {
-	fps := float64(clip.Header.FPS)
+// NewPlayer creates a player for the given clip.
+func NewPlayer(c *Clip) *Player {
+	fps := float64(c.Header.FPS)
 	if fps <= 0 {
 		fps = 30
 	}
-	return &ClipPlayer{
-		clip:     clip,
+	return &Player{
+		clip:     c,
 		frameDur: 1.0 / fps,
 	}
 }
 
 // SetSize sets the available display area and selects the best scale track.
-func (p *ClipPlayer) SetSize(w, h int) {
+func (p *Player) SetSize(w, h int) {
 	p.width = w
 	p.height = h
 	p.pickScale()
 }
 
+// Clip returns the underlying clip.
+func (p *Player) Clip() *Clip {
+	return p.clip
+}
+
 // pickScale selects the largest scale track that fits within (width, height).
 // If none fits, uses the smallest scale.
-func (p *ClipPlayer) pickScale() {
+func (p *Player) pickScale() {
 	bestIdx := 0
 	bestArea := 0
 
@@ -67,21 +72,21 @@ func (p *ClipPlayer) pickScale() {
 		}
 	}
 
-	p.scaleIdx = bestIdx
+	p.ScaleIdx = bestIdx
 }
 
 // SetLoop toggles looping.
-func (p *ClipPlayer) SetLoop(loop bool) {
-	p.loop = loop
+func (p *Player) SetLoop(loop bool) {
+	p.Loop = loop
 }
 
 // Tick advances playback by dt seconds.
-func (p *ClipPlayer) Tick(dt float64) {
-	if p.paused {
+func (p *Player) Tick(dt float64) {
+	if p.Paused {
 		return
 	}
 
-	track := p.clip.Tracks[p.scaleIdx]
+	track := p.clip.Tracks[p.ScaleIdx]
 	numFrames := len(track.Frames)
 	if numFrames == 0 {
 		return
@@ -90,39 +95,39 @@ func (p *ClipPlayer) Tick(dt float64) {
 	p.timeAcc += dt
 	for p.timeAcc >= p.frameDur {
 		p.timeAcc -= p.frameDur
-		p.currentFrame++
-		if p.currentFrame >= numFrames {
-			if p.loop {
-				p.currentFrame = 0
+		p.CurrentFrame++
+		if p.CurrentFrame >= numFrames {
+			if p.Loop {
+				p.CurrentFrame = 0
 			} else {
-				p.currentFrame = numFrames - 1
-				p.paused = true
+				p.CurrentFrame = numFrames - 1
+				p.Paused = true
 			}
 		}
 	}
 }
 
 // Seek jumps to a specific frame.
-func (p *ClipPlayer) Seek(frame int) {
-	track := p.clip.Tracks[p.scaleIdx]
+func (p *Player) Seek(frame int) {
+	track := p.clip.Tracks[p.ScaleIdx]
 	if frame < 0 {
 		frame = 0
 	}
 	if frame >= len(track.Frames) {
 		frame = len(track.Frames) - 1
 	}
-	p.currentFrame = frame
+	p.CurrentFrame = frame
 	p.timeAcc = 0
 }
 
 // Render builds the ANSI string for the current frame.
-func (p *ClipPlayer) Render() string {
-	track := p.clip.Tracks[p.scaleIdx]
-	if len(track.Frames) == 0 || p.currentFrame >= len(track.Frames) {
+func (p *Player) Render() string {
+	track := p.clip.Tracks[p.ScaleIdx]
+	if len(track.Frames) == 0 || p.CurrentFrame >= len(track.Frames) {
 		return ""
 	}
 
-	frame := track.Frames[p.currentFrame]
+	frame := track.Frames[p.CurrentFrame]
 	w := track.Width
 	h := track.Height
 
@@ -172,7 +177,7 @@ func (p *ClipPlayer) Render() string {
 }
 
 // centerContent centers the rendered frame in the available display area.
-func (p *ClipPlayer) centerContent(content string, contentW, contentH int) string {
+func (p *Player) centerContent(content string, contentW, contentH int) string {
 	lines := strings.Split(content, "\n")
 
 	// Vertical centering

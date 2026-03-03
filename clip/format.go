@@ -1,4 +1,4 @@
-package main
+package clip
 
 import (
 	"bytes"
@@ -60,11 +60,21 @@ type ClipCell struct {
 // ClipCellBytes is the on-disk size of one cell.
 const ClipCellBytes = 3
 
+func clampF(v, lo, hi float64) float64 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
 // RGB565Encode converts 0-1 float RGB to RGB565.
 func RGB565Encode(r, g, b float64) uint16 {
-	ri := uint16(clamp(r, 0, 1) * 31)
-	gi := uint16(clamp(g, 0, 1) * 63)
-	bi := uint16(clamp(b, 0, 1) * 31)
+	ri := uint16(clampF(r, 0, 1) * 31)
+	gi := uint16(clampF(g, 0, 1) * 63)
+	bi := uint16(clampF(b, 0, 1) * 31)
 	return (ri << 11) | (gi << 5) | bi
 }
 
@@ -77,14 +87,6 @@ func RGB565Decode(c uint16) (r, g, b uint8) {
 	g = uint8((g6*255 + 31) / 63)
 	b = uint8((b5*255 + 15) / 31)
 	return
-}
-
-// CellToClipCell converts a render cell to a clip cell.
-func CellToClipCell(c cell) ClipCell {
-	return ClipCell{
-		Ch:    byte(c.ch),
-		Color: RGB565Encode(c.col.X, c.col.Y, c.col.Z),
-	}
 }
 
 // ScaleTrack holds the decompressed frame data for one scale.
@@ -200,7 +202,7 @@ func LoadClipFromBytes(data []byte) (*Clip, error) {
 	// Frame data section starts here
 	frameDataStart, _ := r.Seek(0, io.SeekCurrent)
 
-	clip := &Clip{
+	c := &Clip{
 		Header:    header,
 		Scales:    scales,
 		Keyframes: keyframes,
@@ -237,14 +239,14 @@ func LoadClipFromBytes(data []byte) (*Clip, error) {
 			return nil, fmt.Errorf("decode scale %d: %w", i, err)
 		}
 
-		clip.Tracks[i] = ScaleTrack{
+		c.Tracks[i] = ScaleTrack{
 			Width:  w,
 			Height: h,
 			Frames: frames,
 		}
 	}
 
-	return clip, nil
+	return c, nil
 }
 
 // CompressTrack zlib-compresses raw frame data for one scale.

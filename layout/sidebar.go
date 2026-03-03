@@ -1,7 +1,10 @@
-package main
+package layout
 
 import (
 	"strings"
+
+	"asciishader/components"
+	"asciishader/styles"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -15,7 +18,6 @@ type SidebarItem struct {
 }
 
 // Sidebar renders a vertical navigation panel on the left side.
-// Adapted from Railway TUI's sidebar — simplified (no ZonedInteraction).
 type Sidebar struct {
 	items    []SidebarItem
 	activeID string
@@ -26,12 +28,15 @@ type Sidebar struct {
 	collapsedWidth int
 
 	// Animation
-	animator *PanelAnimator
+	animator *components.PanelAnimator
+
+	// Mouse interaction
+	zoned *components.ZonedInteraction
 }
 
 // Sidebar styles
 var (
-	sidebarBg = ChromeBgLight
+	sidebarBg = styles.ChromeBgLight
 
 	sidebarActiveIndicator = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("218")). // Soft vivid pink
@@ -43,7 +48,7 @@ var (
 				Background(sidebarBg)
 
 	sidebarInactiveText = lipgloss.NewStyle().
-				Foreground(ChromeFgMuted).
+				Foreground(styles.ChromeFgMuted).
 				Background(sidebarBg)
 
 	sidebarSepStyle = lipgloss.NewStyle().
@@ -61,7 +66,8 @@ func NewSidebar() *Sidebar {
 	return &Sidebar{
 		items:    []SidebarItem{},
 		expanded: false,
-		animator: NewPanelAnimator("sidebar", 6),
+		animator: components.NewPanelAnimator("sidebar", 6),
+		zoned:    components.NewZonedInteraction("sidebar"),
 	}
 }
 
@@ -81,6 +87,11 @@ func (s *Sidebar) SetActiveID(id string) {
 // ActiveID returns the currently active item ID.
 func (s *Sidebar) ActiveID() string {
 	return s.activeID
+}
+
+// Items returns the sidebar items.
+func (s *Sidebar) Items() []SidebarItem {
+	return s.items
 }
 
 // ToggleExpanded toggles between expanded and collapsed states with animation.
@@ -185,7 +196,10 @@ func (s *Sidebar) Render(height int) string {
 	if !expanded {
 		toggleIcon = "»"
 	}
-	toggleStyle := lipgloss.NewStyle().Foreground(ChromeFgMuted).Background(sidebarBg)
+	toggleStyle := lipgloss.NewStyle().Foreground(styles.ChromeFgMuted).Background(sidebarBg)
+	if s.zoned.IsHovered("toggle") {
+		toggleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Background(sidebarBg)
+	}
 
 	{
 		fillWidth := iw - 1
@@ -214,7 +228,8 @@ func (s *Sidebar) Render(height int) string {
 		}
 
 		// Item content row
-		rows = append(rows, leftEdge+s.renderItemRow(item, iw)+rightEdge)
+		itemRow := leftEdge + s.renderItemRow(item, iw) + rightEdge
+		rows = append(rows, itemRow)
 	}
 
 	// Trailing spacer
@@ -266,6 +281,10 @@ func (s *Sidebar) renderItemRow(item SidebarItem, innerWidth int) string {
 	var textStyle lipgloss.Style
 	if isActive {
 		textStyle = sidebarActiveText
+	} else if s.zoned.IsHovered(item.ID) {
+		textStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("252")).
+			Background(sidebarBg)
 	} else {
 		textStyle = sidebarInactiveText
 	}
@@ -320,6 +339,60 @@ func (s *Sidebar) PrevItem() string {
 	}
 	s.activeID = s.items[0].ID
 	return s.activeID
+}
+
+// SidebarMouseResult describes what happened from a sidebar mouse event.
+type SidebarMouseResult struct {
+	ToggleClicked bool   // The expand/collapse toggle was clicked
+	ItemClicked   string // ID of the item that was clicked (empty if none)
+	HoverChanged  bool   // Hover state changed (needs redraw)
+}
+
+// HandleMouse processes a mouse event using coordinate-based detection.
+// offsetY is the screen Y coordinate where the sidebar starts (e.g. headerHeight).
+func (s *Sidebar) HandleMouse(msg tea.MouseMsg, offsetY int) SidebarMouseResult {
+	w := s.Width()
+	hitTest := func(x, y int) string {
+		if x < 0 || x >= w {
+			return ""
+		}
+		relY := y - offsetY
+		if relY < 0 {
+			return ""
+		}
+		// Row 0 = toggle
+		if relY == 0 {
+			return "toggle"
+		}
+		// Items at rows 2, 4, 6, 8, ... (spacer + item pairs)
+		for i, item := range s.items {
+			if relY == 2+i*2 {
+				return item.ID
+			}
+		}
+		return ""
+	}
+
+	result := s.zoned.HandleMouseCoords(msg, hitTest)
+
+	var out SidebarMouseResult
+	out.HoverChanged = result.HoverChanged
+
+	clicked := result.Clicked
+	if clicked == "" {
+		clicked = result.DoubleClicked
+	}
+	if clicked == "toggle" {
+		out.ToggleClicked = true
+	} else if clicked != "" {
+		out.ItemClicked = clicked
+	}
+	return out
+}
+
+// IsHovered returns whether the given zone ID is hovered.
+func (s *Sidebar) IsHovered(id string) bool {
+	return s.zoned.IsHovered(id)
 }
 
 // ActiveIndex returns the index of the active item, or -1 if not found.

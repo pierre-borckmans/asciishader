@@ -1,4 +1,4 @@
-package main
+package clip
 
 import (
 	"encoding/binary"

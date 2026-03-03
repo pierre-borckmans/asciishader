@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"time"
+
+	"asciishader/clip"
 )
 
 // RecordingState is the state machine for the recording system.
@@ -34,14 +36,14 @@ type Recorder struct {
 	Scales []RecordScale
 
 	// Captured keyframes during live recording
-	Keyframes []Keyframe
+	Keyframes []clip.Keyframe
 	StartTime time.Time
 
 	// Bake state
 	bakeScaleIdx int
 	bakeFrameIdx int
-	bakeFrames   [][][]ClipCell // [scaleIdx][frameIdx] = flat cell grid
-	bakeTrackRaw [][]byte       // compressed track data per scale
+	bakeFrames   [][][]clip.ClipCell // [scaleIdx][frameIdx] = flat cell grid
+	bakeTrackRaw [][]byte            // compressed track data per scale
 
 	// Output
 	OutputPath string
@@ -72,7 +74,7 @@ func DefaultScales(baseW, baseH int) []RecordScale {
 // CaptureKeyframe snapshots the current model state as a keyframe.
 func (rec *Recorder) CaptureKeyframe(m *model) {
 	elapsed := time.Since(rec.StartTime)
-	kf := Keyframe{
+	kf := clip.Keyframe{
 		TimeMs:      uint32(elapsed.Milliseconds()),
 		ShaderTime:  float32(m.time),
 		CamAngleX:   float32(m.camAngleX),
@@ -100,9 +102,9 @@ func (rec *Recorder) StartLive() {
 func (rec *Recorder) StartBake() {
 	rec.bakeScaleIdx = 0
 	rec.bakeFrameIdx = 0
-	rec.bakeFrames = make([][][]ClipCell, len(rec.Scales))
+	rec.bakeFrames = make([][][]clip.ClipCell, len(rec.Scales))
 	for i := range rec.bakeFrames {
-		rec.bakeFrames[i] = make([][]ClipCell, len(rec.Keyframes))
+		rec.bakeFrames[i] = make([][]clip.ClipCell, len(rec.Keyframes))
 	}
 	rec.bakeTrackRaw = nil
 }
@@ -155,7 +157,7 @@ func (rec *Recorder) BakeStep(m *model) bool {
 }
 
 // applyKeyframe configures the renderer from a keyframe for baking.
-func (rec *Recorder) applyKeyframe(m *model, kf Keyframe, w, h int) {
+func (rec *Recorder) applyKeyframe(m *model, kf clip.Keyframe, w, h int) {
 	m.renderer.Resize(w, h)
 	m.renderer.Time = float64(kf.ShaderTime)
 	m.renderer.Contrast = float64(kf.Contrast)
@@ -188,8 +190,8 @@ func (rec *Recorder) applyKeyframe(m *model, kf Keyframe, w, h int) {
 
 // extractRegion converts the full cell grid to a flat ClipCell slice at the given dimensions.
 // During baking, the renderer is already sized to the scale dimensions, so we take the full grid.
-func (rec *Recorder) extractRegion(cells [][]cell, w, h int) []ClipCell {
-	out := make([]ClipCell, w*h)
+func (rec *Recorder) extractRegion(cells [][]cell, w, h int) []clip.ClipCell {
+	out := make([]clip.ClipCell, w*h)
 	for y := 0; y < h && y < len(cells); y++ {
 		for x := 0; x < w && x < len(cells[y]); x++ {
 			out[y*w+x] = CellToClipCell(cells[y][x])
@@ -209,7 +211,7 @@ func (rec *Recorder) Finalize() error {
 
 	// Build header
 	lastKf := rec.Keyframes[numFrames-1]
-	header := ClipHeader{
+	header := clip.ClipHeader{
 		FPS:        30,
 		NumFrames:  uint16(numFrames),
 		NumScales:  uint8(numScales),
@@ -219,20 +221,20 @@ func (rec *Recorder) Finalize() error {
 	}
 
 	// Build scale table and compress tracks
-	scales := make([]ScaleEntry, numScales)
+	scales := make([]clip.ScaleEntry, numScales)
 	trackData := make([][]byte, numScales)
 
 	for i, sc := range rec.Scales {
-		scales[i] = ScaleEntry{
+		scales[i] = clip.ScaleEntry{
 			Width:  uint16(sc.Width),
 			Height: uint16(sc.Height),
 		}
 
 		// Delta-encode the frames for this scale
-		raw := EncodeTrack(rec.bakeFrames[i])
+		raw := clip.EncodeTrack(rec.bakeFrames[i])
 
 		// Zlib compress
-		compressed, err := CompressTrack(raw)
+		compressed, err := clip.CompressTrack(raw)
 		if err != nil {
 			return fmt.Errorf("compress scale %d: %w", i, err)
 		}
@@ -244,7 +246,7 @@ func (rec *Recorder) Finalize() error {
 		rec.OutputPath = fmt.Sprintf("recording_%s.asciirec", time.Now().Format("20060102_150405"))
 	}
 
-	return WriteClip(rec.OutputPath, header, scales, rec.Keyframes, trackData)
+	return clip.WriteClip(rec.OutputPath, header, scales, rec.Keyframes, trackData)
 }
 
 // RecordingDuration returns the elapsed time since recording started.

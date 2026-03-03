@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"asciishader/components"
+
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -16,7 +18,7 @@ import (
 // truncation.
 type EditorTab struct {
 	textarea   textarea.Model
-	scrollView *ScrollableView
+	scrollView *components.ScrollableView
 	status     string // status bar text
 	statusErr  bool   // true if status is an error
 	width      int
@@ -35,7 +37,7 @@ func NewEditorTab() *EditorTab {
 	ta.SetHeight(len(strings.Split(defaultUserCode, "\n")) + 1)
 	ta.Focus()
 
-	sv := NewScrollableView()
+	sv := components.NewScrollableView()
 	sv.SetTruncate(true)
 
 	return &EditorTab{
@@ -161,7 +163,7 @@ func (et *EditorTab) Render(width int) string {
 		}
 	}
 	for i, line := range rawLines {
-		stripped := stripANSI(line)
+		stripped := components.StripANSI(line)
 		trimmed := strings.TrimRight(stripped, " ")
 		keepWidth := len(trimmed)
 		if i == cursorLine {

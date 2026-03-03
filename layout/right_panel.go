@@ -1,31 +1,33 @@
-package main
+package layout
 
 import (
 	"strings"
+
+	"asciishader/components"
+	"asciishader/styles"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
 // RightPanel renders a panel on the right side of the TUI.
-// Adapted from Railway TUI's right_panel.go.
 type RightPanel struct {
 	expanded bool
 	width    int // fixed width when expanded
 
 	// Scrollable view for content
-	scrollView *ScrollableView
+	scrollView *components.ScrollableView
 
 	// Animation
-	animator *PanelAnimator
+	animator *components.PanelAnimator
 
 	// Drag-to-resize
-	resizer *PanelResizer
+	resizer *components.PanelResizer
 }
 
 // Right panel styles
 var (
-	rightPanelBg = ChromeBgDark
+	rightPanelBg = styles.ChromeBgDark
 
 	rightPanelBgANSI = "\x1b[48;5;233m"
 
@@ -34,7 +36,7 @@ var (
 				Background(rightPanelBg)
 
 	rightPanelEdgeActiveStyle = lipgloss.NewStyle().
-					Foreground(ChromeResizeEdge).
+					Foreground(styles.ChromeResizeEdge).
 					Background(rightPanelBg)
 
 	rightPanelRowBg = lipgloss.NewStyle().
@@ -43,14 +45,14 @@ var (
 
 // NewRightPanel creates a new right panel.
 func NewRightPanel() *RightPanel {
-	sv := NewScrollableView()
+	sv := components.NewScrollableView()
 	sv.SetTruncate(true)
 	return &RightPanel{
 		expanded:   true,
 		width:      42,
 		scrollView: sv,
-		animator:   NewPanelAnimator("right-panel", 6),
-		resizer:    NewPanelResizer(ResizeHorizontal, 28),
+		animator:   components.NewPanelAnimator("right-panel", 6),
+		resizer:    components.NewPanelResizer(components.ResizeHorizontal, 28),
 	}
 }
 
@@ -113,12 +115,12 @@ func (rp *RightPanel) InnerWidth() int {
 }
 
 // ScrollView returns the scrollable view for external mouse/key handling.
-func (rp *RightPanel) ScrollView() *ScrollableView {
+func (rp *RightPanel) ScrollView() *components.ScrollableView {
 	return rp.scrollView
 }
 
 // Resizer returns the panel resizer for external mouse handling.
-func (rp *RightPanel) Resizer() *PanelResizer {
+func (rp *RightPanel) Resizer() *components.PanelResizer {
 	return rp.resizer
 }
 

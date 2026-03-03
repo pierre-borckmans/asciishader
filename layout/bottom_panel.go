@@ -1,29 +1,31 @@
-package main
+package layout
 
 import (
 	"strings"
+
+	"asciishader/components"
+	"asciishader/styles"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
 // BottomPanel renders a panel at the bottom of the content area.
-// Adapted from Railway TUI's bottom_panel.go.
 type BottomPanel struct {
 	expanded bool
 	height   int // fixed height when expanded
 	title    string
 
 	// Animation
-	animator *PanelAnimator
+	animator *components.PanelAnimator
 
 	// Drag-to-resize
-	resizer *PanelResizer
+	resizer *components.PanelResizer
 }
 
 // Bottom panel styles
 var (
-	bottomPanelBg = ChromeBgDark
+	bottomPanelBg = styles.ChromeBgDark
 
 	bottomPanelBgANSI = "\x1b[48;5;233m"
 
@@ -31,19 +33,19 @@ var (
 				Foreground(bottomPanelBg)
 
 	bottomPanelEdgeActiveStyle = lipgloss.NewStyle().
-					Foreground(ChromeResizeEdge).
+					Foreground(styles.ChromeResizeEdge).
 					Background(bottomPanelBg)
 
 	bottomPanelRowBg = lipgloss.NewStyle().
 				Background(bottomPanelBg)
 
 	bottomPanelTitleStyle = lipgloss.NewStyle().
-				Foreground(ChromeFgAccent).
+				Foreground(styles.ChromeFgAccent).
 				Background(bottomPanelBg).
 				Bold(true)
 
 	bottomPanelHintStyle = lipgloss.NewStyle().
-				Foreground(ChromeFgMuted).
+				Foreground(styles.ChromeFgMuted).
 				Background(bottomPanelBg)
 )
 
@@ -53,8 +55,8 @@ func NewBottomPanel() *BottomPanel {
 		expanded: false,
 		height:   12,
 		title:    "",
-		animator: NewPanelAnimator("bottom-panel", 6),
-		resizer:  NewPanelResizer(ResizeVertical, 6),
+		animator: components.NewPanelAnimator("bottom-panel", 6),
+		resizer:  components.NewPanelResizer(components.ResizeVertical, 6),
 	}
 }
 
@@ -101,7 +103,7 @@ func (bp *BottomPanel) SetHeight(height int) {
 }
 
 // Resizer returns the panel resizer for external mouse handling.
-func (bp *BottomPanel) Resizer() *PanelResizer {
+func (bp *BottomPanel) Resizer() *components.PanelResizer {
 	return bp.resizer
 }
 
@@ -162,7 +164,7 @@ func (bp *BottomPanel) Render(width int, content string) string {
 		rightPart := strings.Repeat("╌", width-mid-1)
 		topEdge = bottomPanelEdgeActiveStyle.Render(leftPart + "↕" + rightPart)
 	} else {
-		topEdge = bottomPanelSepStyle.Background(TermBg).Render(strings.Repeat("▄", width))
+		topEdge = bottomPanelSepStyle.Background(styles.TermBg).Render(strings.Repeat("▄", width))
 	}
 
 	// Title bar row

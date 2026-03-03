@@ -9,6 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"asciishader/clip"
+	"asciishader/components"
+	"asciishader/layout"
+	"asciishader/views"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
@@ -23,6 +28,16 @@ const (
 	FocusViewport FocusZone = iota
 	FocusControls
 	FocusEditor
+)
+
+// ViewMode identifies which top-level view is active.
+type ViewMode int
+
+const (
+	ViewShader  ViewMode = iota // current raymarching (default)
+	ViewPlayer                  // clip player
+	ViewGallery                 // scene browser
+	ViewHelp                    // keybindings reference
 )
 
 type model struct {
@@ -48,12 +63,18 @@ type model struct {
 	frame      string
 
 	// Layout components
-	sidebar     *Sidebar
-	rightPanel  *RightPanel
-	bottomPanel *BottomPanel
+	sidebar     *layout.Sidebar
+	rightPanel  *layout.RightPanel
+	bottomPanel *layout.BottomPanel
 	controls    *ControlsTab
 	editor      *EditorTab
 	focus       FocusZone
+
+	// View switching
+	viewMode   ViewMode
+	gallery    *views.GalleryView
+	helpView   *views.HelpView
+	playerView *views.PlayerView
 
 	// Recording
 	recorder       *Recorder
@@ -63,7 +84,7 @@ type model struct {
 	recMessageTime time.Time // when message was set (clears after 3s)
 
 	// Playback
-	player   *ClipPlayer
+	player   *clip.Player
 	playMode bool // --play mode
 }
 
@@ -78,24 +99,20 @@ func initialModel() model {
 	r.ShadowSteps = 32
 	r.AOSteps = 5
 
-	// Build sidebar items from scenes
-	sb := NewSidebar()
-	items := make([]SidebarItem, len(scenes))
-	for i, s := range scenes {
-		icon := string([]rune(s.Name)[0:1])
-		items[i] = SidebarItem{
-			ID:   fmt.Sprintf("scene-%d", i),
-			Icon: icon,
-			Name: s.Name,
-		}
-	}
-	sb.SetItems(items)
-	sb.SetActiveID("scene-0")
+	// Build sidebar items for view switching
+	sb := layout.NewSidebar()
+	sb.SetItems([]layout.SidebarItem{
+		{ID: "view-shader", Icon: "◆", Name: "Shader"},
+		{ID: "view-player", Icon: "▶", Name: "Player"},
+		{ID: "view-gallery", Icon: "◫", Name: "Gallery"},
+		{ID: "view-help", Icon: "?", Name: "Help"},
+	})
+	sb.SetActiveID("view-shader")
 
-	rp := NewRightPanel()
+	rp := layout.NewRightPanel()
 	rp.SetExpanded(false)
 
-	bp := NewBottomPanel()
+	bp := layout.NewBottomPanel()
 	bp.SetTitle("GLSL Editor")
 
 	return model{
@@ -109,6 +126,10 @@ func initialModel() model {
 		controls:    NewControlsTab(),
 		editor:      NewEditorTab(),
 		focus:       FocusViewport,
+		viewMode:    ViewShader,
+		gallery:     views.NewGalleryView(),
+		helpView:    views.NewHelpView(),
+		playerView:  views.NewPlayerView(),
 	}
 }
 
@@ -138,7 +159,7 @@ func footerHeight() int {
 // contentWidth returns the width available for the main content area.
 func (m model) contentWidth() int {
 	w := m.width - m.sidebar.Width() - 2 // sidebar + left gap
-	if m.rightPanel.Width() > 0 {
+	if m.viewMode == ViewShader && m.rightPanel.Width() > 0 {
 		w -= m.rightPanel.Width() + 2 // right panel + right gap
 	}
 	if w < 1 {
@@ -153,7 +174,7 @@ func (m model) viewportHeight() int {
 	if middleHeight < 1 {
 		middleHeight = 1
 	}
-	if m.bottomPanel.Height() > 0 {
+	if m.viewMode == ViewShader && m.bottomPanel.Height() > 0 {
 		middleHeight -= m.bottomPanel.Height()
 	}
 	if middleHeight < 1 {
@@ -171,7 +192,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resizeViewport()
 		return m, nil
 
-	case PanelAnimTickMsg:
+	case components.PanelAnimTickMsg:
 		switch msg.ID {
 		case "sidebar":
 			cmd := m.sidebar.AnimTick()
@@ -201,6 +222,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.fps = m.fps*0.9 + (1.0/dt)*0.1
 		}
 		m.lastFrame = now
+
+		// Player view: tick playback
+		if m.viewMode == ViewPlayer {
+			m.playerView.Tick(dt)
+			return m, tick()
+		}
+
+		// Non-shader views: no rendering needed
+		if m.viewMode != ViewShader {
+			return m, tick()
+		}
 
 		if !m.paused {
 			m.time += dt
@@ -300,6 +332,49 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	hh := headerHeight()
 
+	// Sidebar mouse interaction (all views)
+	sidebarWidth := m.sidebar.Width()
+	sbResult := m.sidebar.HandleMouse(msg, hh)
+	if sbResult.ToggleClicked {
+		cmd := m.sidebar.ToggleExpanded()
+		m.resizeViewport()
+		return m, cmd
+	}
+	if sbResult.ItemClicked != "" {
+		for i, item := range m.sidebar.Items() {
+			if item.ID == sbResult.ItemClicked {
+				m.switchView(ViewMode(i))
+				return m, nil
+			}
+		}
+	}
+	if sbResult.HoverChanged {
+		return m, nil
+	}
+
+	// Non-shader views: forward mouse to the active view's scrollable content
+	if m.viewMode != ViewShader {
+		viewportLeft := sidebarWidth + 2
+		viewportTop := hh
+		switch m.viewMode {
+		case ViewGallery:
+			sv := m.gallery.ScrollView()
+			sv.SetPosition(viewportLeft, viewportTop)
+			sv.HandleMouse(msg)
+		case ViewHelp:
+			sv := m.helpView.ScrollView()
+			sv.SetPosition(viewportLeft, viewportTop)
+			sv.HandleMouse(msg)
+		case ViewPlayer:
+			if !m.playerView.Loaded {
+				sv := m.playerView.ScrollView()
+				sv.SetPosition(viewportLeft, viewportTop)
+				sv.HandleMouse(msg)
+			}
+		}
+		return m, nil
+	}
+
 	// Right panel resize
 	if m.rightPanel.Width() > 0 || m.rightPanel.Animating() {
 		rpEdgeX := m.width - m.rightPanel.Width()
@@ -342,17 +417,15 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.bottomPanel.IsExpanded() {
 		middleH := m.height - hh - footerHeight()
 		bpY := hh + middleH - m.bottomPanel.Height() + 2 // +2 for separator + title row
-		sidebarW := m.sidebar.Width()
-		bpX := sidebarW + 2 + 1 // sidebar + left gap + left padding
+		bpX := sidebarWidth + 2 + 1                       // sidebar + left gap + left padding
 		m.editor.scrollView.SetPosition(bpX, bpY)
 		if m.editor.scrollView.HandleMouse(msg) {
 			return m, nil
 		}
 	}
 
-	// Region selection mouse handling
+	// Region selection mouse handling — only consume if interacting with the region
 	if m.recState == RecordSelecting && m.regionSelector != nil {
-		sidebarWidth := m.sidebar.Width()
 		viewportLeft := sidebarWidth + 2
 		vpX := msg.X - viewportLeft
 		vpY := msg.Y - hh
@@ -360,19 +433,25 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		switch msg.Action {
 		case tea.MouseActionPress:
 			if msg.Button == tea.MouseButtonLeft {
-				m.regionSelector.HandleMousePress(vpX, vpY)
+				if m.regionSelector.HandleMousePress(vpX, vpY) {
+					return m, nil
+				}
 			}
 		case tea.MouseActionMotion:
-			m.regionSelector.HandleMouseDrag(vpX, vpY)
+			if m.regionSelector.IsDragging() {
+				m.regionSelector.HandleMouseDrag(vpX, vpY)
+				return m, nil
+			}
 		case tea.MouseActionRelease:
-			m.regionSelector.HandleMouseRelease()
+			if m.regionSelector.IsDragging() {
+				m.regionSelector.HandleMouseRelease()
+				return m, nil
+			}
 		}
-		return m, nil
 	}
 
 	// Viewport mouse (camera drag + zoom)
 	// Only handle if within viewport area
-	sidebarWidth := m.sidebar.Width()
 	viewportLeft := sidebarWidth + 2
 	viewportRight := m.width - m.rightPanel.Width()
 	if m.rightPanel.Width() > 0 {
@@ -442,10 +521,63 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
-	// Global keys
+	// Global keys (all views)
 	switch key {
 	case "ctrl+c":
 		return m, tea.Quit
+	case "f1":
+		m.switchView(ViewShader)
+		return m, nil
+	case "f2":
+		m.switchView(ViewPlayer)
+		return m, nil
+	case "f3":
+		m.switchView(ViewGallery)
+		return m, nil
+	case "f4":
+		m.switchView(ViewHelp)
+		return m, nil
+	}
+
+	// Non-shader views: dispatch to view-specific handler
+	switch m.viewMode {
+	case ViewGallery:
+		switch key {
+		case "q", "esc":
+			return m, tea.Quit
+		}
+		sel := m.gallery.HandleKey(key, len(scenes))
+		if sel >= 0 {
+			m.scene = sel
+			m.time = 0
+			m.syncSceneGLSL()
+			m.switchView(ViewShader)
+		}
+		return m, nil
+	case ViewHelp:
+		switch key {
+		case "q", "esc":
+			return m, tea.Quit
+		}
+		m.helpView.HandleKey(key)
+		return m, nil
+	case ViewPlayer:
+		switch key {
+		case "q":
+			return m, tea.Quit
+		case "esc":
+			if m.playerView.Loaded {
+				m.playerView.HandleKey(key)
+				return m, nil
+			}
+			return m, tea.Quit
+		}
+		m.playerView.HandleKey(key)
+		return m, nil
+	}
+
+	// Shader view: existing behavior
+	switch key {
 	case "s":
 		if m.focus == FocusEditor {
 			// Don't intercept 's' when typing in editor
@@ -476,7 +608,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	// Focus-dependent routing
+	// Focus-dependent routing (shader view only)
 	switch m.focus {
 	case FocusViewport:
 		return m.handleViewportKey(key)
@@ -500,7 +632,7 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 			m.recorder = NewRecorder(rs.X, rs.Y, rs.W, rs.H, scales)
 			m.recorder.StartLive()
 			m.recState = RecordLive
-			m.regionSelector = nil
+			rs.Recording = true
 			return m, nil
 		case "esc":
 			// Cancel selection
@@ -536,6 +668,7 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 			// Stop recording, start bake
 			m.recorder.StartBake()
 			m.recState = RecordBaking
+			m.regionSelector = nil
 		}
 		return m, nil
 
@@ -569,12 +702,10 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		}
 	case "n":
 		m.scene = (m.scene + 1) % len(scenes)
-		m.sidebar.SetActiveID(fmt.Sprintf("scene-%d", m.scene))
 		m.time = 0
 		m.syncSceneGLSL()
 	case "shift+tab", "N":
 		m.scene = (m.scene - 1 + len(scenes)) % len(scenes)
-		m.sidebar.SetActiveID(fmt.Sprintf("scene-%d", m.scene))
 		m.time = 0
 		m.syncSceneGLSL()
 	case " ":
@@ -672,6 +803,21 @@ func (m model) handleEditorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// switchView changes the active view mode and updates the sidebar.
+func (m *model) switchView(mode ViewMode) {
+	m.viewMode = mode
+	ids := []string{"view-shader", "view-player", "view-gallery", "view-help"}
+	if int(mode) < len(ids) {
+		m.sidebar.SetActiveID(ids[mode])
+	}
+	if mode == ViewPlayer {
+		m.playerView.ScanFiles()
+	}
+	if mode == ViewGallery {
+		m.gallery.Selected = m.scene
+	}
+}
+
 // syncSceneGLSL populates the editor with scene GLSL if available.
 func (m *model) syncSceneGLSL() {
 	if m.scene >= 0 && m.scene < len(scenes) {
@@ -704,77 +850,121 @@ func (m model) View() string {
 	}
 
 	// --- Header ---
-	gpuStr := "CPU"
-	if m.gpuMode && m.gpu != nil {
-		gpuStr = "GPU"
-	}
-	switch m.renderer.RenderMode {
-	case RenderBlocks:
-		gpuStr += " BLOCK"
-	case RenderDual:
-		gpuStr += " DUAL"
-	}
-	pauseStr := ""
-	if m.paused {
-		pauseStr = " PAUSED"
-	}
-	// Recording indicator
-	recStr := ""
-	switch m.recState {
-	case RecordSelecting:
-		recStr = " | SELECT REGION"
-	case RecordLive:
-		if m.recorder != nil {
-			dur := m.recorder.RecordingDuration()
-			recStr = fmt.Sprintf(" | ● REC %.1fs", dur.Seconds())
+	var headerTitle, rightInfo string
+	rpWidth := 0 // right panel width for header layout
+
+	switch m.viewMode {
+	case ViewShader:
+		gpuStr := "CPU"
+		if m.gpuMode && m.gpu != nil {
+			gpuStr = "GPU"
 		}
-	case RecordBaking:
-		if m.recorder != nil {
-			cur, total := m.recorder.BakeProgress()
-			pct := 0
-			if total > 0 {
-				pct = cur * 100 / total
+		switch m.renderer.RenderMode {
+		case RenderBlocks:
+			gpuStr += " BLOCK"
+		case RenderDual:
+			gpuStr += " DUAL"
+		}
+		pauseStr := ""
+		if m.paused {
+			pauseStr = " PAUSED"
+		}
+		// Recording indicator
+		recStr := ""
+		recStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6600")).Bold(true)
+		switch m.recState {
+		case RecordSelecting:
+			recStr = " | " + recStyle.Render("SELECT REGION")
+		case RecordLive:
+			if m.recorder != nil {
+				dur := m.recorder.RecordingDuration()
+				recStr = " | " + recStyle.Render(fmt.Sprintf("● REC %.1fs", dur.Seconds()))
 			}
-			recStr = fmt.Sprintf(" | Baking %d%%", pct)
+		case RecordBaking:
+			if m.recorder != nil {
+				cur, total := m.recorder.BakeProgress()
+				pct := 0
+				if total > 0 {
+					pct = cur * 100 / total
+				}
+				recStr = " | " + recStyle.Render(fmt.Sprintf("Baking %d%%", pct))
+			}
+		case RecordDone:
+			if m.recMessage != "" && time.Since(m.recMessageTime) < 3*time.Second {
+				recStr = " | " + recStyle.Render("✓ "+m.recMessage)
+			}
 		}
-	case RecordDone:
-		if m.recMessage != "" && time.Since(m.recMessageTime) < 3*time.Second {
-			recStr = " | ✓ " + m.recMessage
-		}
+		headerTitle = fmt.Sprintf("ASCII Shader  ·  %s", scenes[m.scene].Name)
+		rightInfo = fmt.Sprintf("%s | %.0f fps%s%s", gpuStr, m.fps, pauseStr, recStr)
+		rpWidth = m.rightPanel.Width()
+	case ViewPlayer:
+		headerTitle = "ASCII Shader  ·  Player"
+	case ViewGallery:
+		headerTitle = "ASCII Shader  ·  Gallery"
+	case ViewHelp:
+		headerTitle = "ASCII Shader  ·  Help"
 	}
-	rightInfo := fmt.Sprintf("%s | %.0f fps%s%s", gpuStr, m.fps, pauseStr, recStr)
-	header := ComposeHeader(
-		fmt.Sprintf("ASCII Shader  ·  %s", scenes[m.scene].Name),
-		rightInfo,
-		m.width,
-		m.sidebar.Width(),
-		m.rightPanel.Width(),
-	)
+
+	header := layout.ComposeHeader(headerTitle, rightInfo, m.width, m.sidebar.Width(), rpWidth)
 
 	// --- Footer ---
-	bindings := []FooterBinding{
-		{"n/N", "scene"},
-		{"arrows", "camera"},
-		{"+/-", "zoom"},
-		{"o", "record"},
-		{"s", "controls"},
-		{"e", "editor"},
-		{"m", "mode"},
-		{"g", "GPU"},
-		{"tab", "focus"},
-		{"space", "pause"},
-		{"a", "auto-rotate"},
-		{"r", "reset"},
-		{"q", "quit"},
-	}
+	var bindings []layout.FooterBinding
 	focusStr := ""
-	switch m.focus {
-	case FocusControls:
-		focusStr = "[Controls]"
-	case FocusEditor:
-		focusStr = "[Editor]"
+
+	switch m.viewMode {
+	case ViewShader:
+		bindings = []layout.FooterBinding{
+			{Key: "F1-F4", Desc: "views"},
+			{Key: "n/N", Desc: "scene"},
+			{Key: "arrows", Desc: "camera"},
+			{Key: "+/-", Desc: "zoom"},
+			{Key: "o", Desc: "record"},
+			{Key: "s", Desc: "controls"},
+			{Key: "e", Desc: "editor"},
+			{Key: "m", Desc: "mode"},
+			{Key: "g", Desc: "GPU"},
+			{Key: "tab", Desc: "focus"},
+			{Key: "space", Desc: "pause"},
+			{Key: "q", Desc: "quit"},
+		}
+		switch m.focus {
+		case FocusControls:
+			focusStr = "[Controls]"
+		case FocusEditor:
+			focusStr = "[Editor]"
+		}
+	case ViewGallery:
+		bindings = []layout.FooterBinding{
+			{Key: "F1-F4", Desc: "views"},
+			{Key: "↑/↓", Desc: "navigate"},
+			{Key: "enter", Desc: "select"},
+			{Key: "q", Desc: "quit"},
+		}
+	case ViewHelp:
+		bindings = []layout.FooterBinding{
+			{Key: "F1-F4", Desc: "views"},
+			{Key: "↑/↓", Desc: "scroll"},
+			{Key: "q", Desc: "quit"},
+		}
+	case ViewPlayer:
+		if m.playerView.Loaded {
+			bindings = []layout.FooterBinding{
+				{Key: "F1-F4", Desc: "views"},
+				{Key: "space", Desc: "pause"},
+				{Key: "l", Desc: "loop"},
+				{Key: "esc", Desc: "back"},
+				{Key: "q", Desc: "quit"},
+			}
+		} else {
+			bindings = []layout.FooterBinding{
+				{Key: "F1-F4", Desc: "views"},
+				{Key: "↑/↓", Desc: "navigate"},
+				{Key: "enter", Desc: "load"},
+				{Key: "q", Desc: "quit"},
+			}
+		}
 	}
-	footer := RenderFooter(bindings, m.width, focusStr)
+	footer := layout.RenderFooter(bindings, m.width, focusStr)
 
 	// --- Middle section ---
 	hh := headerHeight()
@@ -786,57 +976,77 @@ func (m model) View() string {
 
 	cw := m.contentWidth()
 
-	// Build viewport content
+	// Build viewport content based on view mode
 	vpHeight := middleHeight
-	if m.bottomPanel.Height() > 0 {
+	if m.viewMode == ViewShader && m.bottomPanel.Height() > 0 {
 		vpHeight -= m.bottomPanel.Height()
 	}
 	if vpHeight < 1 {
 		vpHeight = 1
 	}
 
-	// Viewport content — pad/truncate each line to content width
-	viewContent := m.frame
-	viewLines := strings.Split(viewContent, "\n")
-	for i, line := range viewLines {
-		lineWidth := lipgloss.Width(line)
-		if lineWidth < cw {
-			viewLines[i] = line + strings.Repeat(" ", cw-lineWidth)
+	var viewContentBlock string
+
+	switch m.viewMode {
+	case ViewShader:
+		// Viewport content — pad/truncate each line to content width
+		viewContent := m.frame
+		viewLines := strings.Split(viewContent, "\n")
+		for i, line := range viewLines {
+			lineWidth := lipgloss.Width(line)
+			if lineWidth < cw {
+				viewLines[i] = line + strings.Repeat(" ", cw-lineWidth)
+			}
 		}
-	}
-	// Pad to fill viewport height
-	for len(viewLines) < vpHeight {
-		viewLines = append(viewLines, strings.Repeat(" ", cw))
-	}
-	if len(viewLines) > vpHeight {
-		viewLines = viewLines[:vpHeight]
-	}
-
-	// Region selection overlay
-	if m.recState == RecordSelecting && m.regionSelector != nil {
-		viewLines = m.regionSelector.RenderOverlay(viewLines)
-	}
-
-	viewContentBlock := strings.Join(viewLines, "\n")
-
-	// Append bottom panel below viewport content if expanded
-	if m.bottomPanel.Height() > 0 {
-		// Size editor to fit bottom panel (-1 for panel's left padding space)
-		editorWidth := cw - 1
-		if editorWidth < 1 {
-			editorWidth = 1
+		// Pad to fill viewport height
+		for len(viewLines) < vpHeight {
+			viewLines = append(viewLines, strings.Repeat(" ", cw))
 		}
-		editorHeight := m.bottomPanel.ContentHeight()
-		m.editor.SetSize(editorWidth, editorHeight)
-		editorContent := m.editor.Render(editorWidth)
+		if len(viewLines) > vpHeight {
+			viewLines = viewLines[:vpHeight]
+		}
 
-		bottomPanelStr := m.bottomPanel.Render(cw, editorContent)
-		viewContentBlock = viewContentBlock + "\n" + bottomPanelStr
+		// Region selection / recording overlay
+		if m.regionSelector != nil && (m.recState == RecordSelecting || m.recState == RecordLive) {
+			if m.recState == RecordLive && m.recorder != nil {
+				dur := m.recorder.RecordingDuration()
+				m.regionSelector.RecLabel = fmt.Sprintf("● REC %.1fs", dur.Seconds())
+			}
+			viewLines = m.regionSelector.RenderOverlay(viewLines)
+		}
+
+		viewContentBlock = strings.Join(viewLines, "\n")
+
+		// Append bottom panel below viewport content if expanded
+		if m.bottomPanel.Height() > 0 {
+			editorWidth := cw - 1
+			if editorWidth < 1 {
+				editorWidth = 1
+			}
+			editorHeight := m.bottomPanel.ContentHeight()
+			m.editor.SetSize(editorWidth, editorHeight)
+			editorContent := m.editor.Render(editorWidth)
+			bottomPanelStr := m.bottomPanel.Render(cw, editorContent)
+			viewContentBlock = viewContentBlock + "\n" + bottomPanelStr
+		}
+
+	case ViewGallery:
+		sceneNames := make([]string, len(scenes))
+		for i, s := range scenes {
+			sceneNames[i] = s.Name
+		}
+		viewContentBlock = m.gallery.Render(cw, vpHeight, sceneNames)
+
+	case ViewHelp:
+		viewContentBlock = m.helpView.Render(cw, vpHeight)
+
+	case ViewPlayer:
+		viewContentBlock = m.playerView.Render(cw, vpHeight)
 	}
 
-	// Right panel content
+	// Right panel content (shader view only)
 	var rightPanelStr string
-	if m.rightPanel.Width() > 0 {
+	if m.viewMode == ViewShader && m.rightPanel.Width() > 0 {
 		m.controls.SyncFromRenderer(m.renderer)
 		controlsContent := m.controls.Render(m.rightPanel.InnerWidth()-1, &m)
 		rightPanelStr = m.rightPanel.Render(middleHeight, controlsContent)
@@ -903,13 +1113,13 @@ func main() {
 
 // runPlayer runs the standalone clip player.
 func runPlayer(path string) {
-	clip, err := LoadClip(path)
+	c, err := clip.LoadClip(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading clip: %v\n", err)
 		os.Exit(1)
 	}
 
-	player := NewClipPlayer(clip)
+	player := clip.NewPlayer(c)
 	player.SetLoop(true)
 
 	pm := playerModel{
@@ -930,7 +1140,7 @@ func runPlayer(path string) {
 
 // playerModel is the Bubble Tea model for standalone playback.
 type playerModel struct {
-	player    *ClipPlayer
+	player    *clip.Player
 	clipPath  string
 	width     int
 	height    int
@@ -967,9 +1177,9 @@ func (pm playerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc", "ctrl+c":
 			return pm, tea.Quit
 		case " ":
-			pm.player.paused = !pm.player.paused
+			pm.player.Paused = !pm.player.Paused
 		case "l":
-			pm.player.SetLoop(!pm.player.loop)
+			pm.player.SetLoop(!pm.player.Loop)
 		}
 		return pm, nil
 	}
@@ -985,7 +1195,7 @@ func (pm playerModel) View() string {
 
 	// Status line
 	status := fmt.Sprintf(" Playing: %s | Frame %d/%d | q: quit | space: pause | l: loop",
-		pm.clipPath, pm.player.currentFrame+1, len(pm.player.clip.Tracks[pm.player.scaleIdx].Frames))
+		pm.clipPath, pm.player.CurrentFrame+1, len(pm.player.Clip().Tracks[pm.player.ScaleIdx].Frames))
 
 	statusStyle := lipgloss.NewStyle().
 		Background(lipgloss.Color("#333333")).

@@ -1,4 +1,4 @@
-package main
+package components
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-const sliderLabelWidth = 12
+const SliderLabelWidth = 12
 
 // Slider is a widget for adjusting a numeric parameter with mouse support.
 type Slider struct {
@@ -62,12 +62,12 @@ func (s *Slider) thumbScreenX() int {
 	if pos >= s.barW {
 		pos = s.barW - 1
 	}
-	return s.screenX + 1 + sliderLabelWidth + pos
+	return s.screenX + 1 + SliderLabelWidth + pos
 }
 
 // barStartX returns the screen X where the bar begins.
 func (s *Slider) barStartX() int {
-	return s.screenX + 1 + sliderLabelWidth
+	return s.screenX + 1 + SliderLabelWidth
 }
 
 // HandleMouse processes a mouse event for this slider.
@@ -120,7 +120,7 @@ func (s *Slider) setValueFromX(x int) {
 	if s.Step > 0 {
 		s.Value = math.Round(s.Value/s.Step) * s.Step
 	}
-	s.Value = clamp(s.Value, s.Min, s.Max)
+	s.Value = math.Max(s.Min, math.Min(s.Max, s.Value))
 }
 
 // ClearHover resets hover state (call when mouse leaves the zone).
@@ -140,7 +140,7 @@ func (s *Slider) Render(width int, focused bool) string {
 
 	// Layout: " Label       ━━━●─── val"
 	valW := len(valStr)
-	barW := width - sliderLabelWidth - valW - 3
+	barW := width - SliderLabelWidth - valW - 3
 	if barW < 4 {
 		barW = 4
 	}
@@ -172,17 +172,17 @@ func (s *Slider) Render(width int, focused bool) string {
 
 	// Pad label
 	label := s.Label
-	for len(label) < sliderLabelWidth {
+	for len(label) < SliderLabelWidth {
 		label += " "
 	}
-	if len(label) > sliderLabelWidth {
-		label = label[:sliderLabelWidth]
+	if len(label) > SliderLabelWidth {
+		label = label[:SliderLabelWidth]
 	}
 
 	line := fmt.Sprintf(" %s%s %s", label, bar.String(), valStr)
 
 	// Pad to full width
-	visibleWidth := 1 + sliderLabelWidth + barW + 1 + valW
+	visibleWidth := 1 + SliderLabelWidth + barW + 1 + valW
 	if visibleWidth < width {
 		line += strings.Repeat(" ", width-visibleWidth)
 	}

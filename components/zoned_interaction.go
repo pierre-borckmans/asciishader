@@ -1,4 +1,4 @@
-package main
+package components
 
 import (
 	"fmt"
@@ -12,7 +12,6 @@ import (
 const DoubleClickThreshold = 400 * time.Millisecond
 
 // ZonedInteraction handles mouse interactions (hover, click, double-click) for zoned elements.
-// Adapted from Railway TUI's components/zoned_interaction.go.
 type ZonedInteraction struct {
 	prefix        string    // Zone ID prefix to avoid collisions between components
 	hoveredID     string    // Currently hovered item ID
@@ -30,8 +29,8 @@ func NewZonedInteraction(prefix string) *ZonedInteraction {
 	}
 }
 
-// zoneID returns the full zone ID for an item.
-func (z *ZonedInteraction) zoneID(id string) string {
+// ZoneID returns the full zone ID for an item.
+func (z *ZonedInteraction) ZoneID(id string) string {
 	return fmt.Sprintf("%s-%s", z.prefix, id)
 }
 
@@ -51,7 +50,7 @@ func (z *ZonedInteraction) HandleMouse(msg tea.MouseMsg, zoneIDs []string) Mouse
 	if msg.Action == tea.MouseActionMotion {
 		newHovered := ""
 		for _, id := range zoneIDs {
-			if zone.Get(z.zoneID(id)).InBounds(msg) {
+			if zone.Get(z.ZoneID(id)).InBounds(msg) {
 				newHovered = id
 				break
 			}
@@ -66,7 +65,7 @@ func (z *ZonedInteraction) HandleMouse(msg tea.MouseMsg, zoneIDs []string) Mouse
 	// Handle click
 	if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft {
 		for _, id := range zoneIDs {
-			if zone.Get(z.zoneID(id)).InBounds(msg) {
+			if zone.Get(z.ZoneID(id)).InBounds(msg) {
 				now := time.Now()
 				isDoubleClick := z.lastClickID == id && now.Sub(z.lastClickTime) < DoubleClickThreshold
 				z.lastClickTime = now
@@ -87,7 +86,7 @@ func (z *ZonedInteraction) HandleMouse(msg tea.MouseMsg, zoneIDs []string) Mouse
 
 // Mark wraps content in a zone marker for the given item ID.
 func (z *ZonedInteraction) Mark(id, content string) string {
-	return zone.Mark(z.zoneID(id), content)
+	return zone.Mark(z.ZoneID(id), content)
 }
 
 // IsHovered returns true if the given item ID is currently hovered.
@@ -103,4 +102,39 @@ func (z *ZonedInteraction) HoveredID() string {
 // ClearHover clears the current hover state.
 func (z *ZonedInteraction) ClearHover() {
 	z.hoveredID = ""
+}
+
+// HandleMouseCoords processes a mouse event using a caller-provided hit test function
+// instead of bubblezone markers. This is useful when zone markers don't survive
+// lipgloss composition functions (e.g. JoinHorizontal).
+// hitTest should return the zone ID at the given screen coordinates, or "" if none.
+func (z *ZonedInteraction) HandleMouseCoords(msg tea.MouseMsg, hitTest func(x, y int) string) MouseResult {
+	var result MouseResult
+
+	if msg.Action == tea.MouseActionMotion {
+		newHovered := hitTest(msg.X, msg.Y)
+		if newHovered != z.hoveredID {
+			z.hoveredID = newHovered
+			result.HoverChanged = true
+		}
+		return result
+	}
+
+	if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft {
+		id := hitTest(msg.X, msg.Y)
+		if id != "" {
+			now := time.Now()
+			isDoubleClick := z.lastClickID == id && now.Sub(z.lastClickTime) < DoubleClickThreshold
+			z.lastClickTime = now
+			z.lastClickID = id
+
+			if isDoubleClick {
+				result.DoubleClicked = id
+			} else {
+				result.Clicked = id
+			}
+		}
+	}
+
+	return result
 }
