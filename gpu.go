@@ -34,7 +34,6 @@ import "C"
 import (
 	"fmt"
 	"runtime"
-	"strconv"
 	"unsafe"
 
 	"github.com/go-gl/gl/v4.1-core/gl"
@@ -56,11 +55,12 @@ type GPURenderer struct {
 	vao     uint32
 	fbo     uint32
 	rbo     uint32
-	pixW    int // pixel width (termW * 2)
-	pixH    int // pixel height (termH * 3)
-	termW   int // terminal columns
-	termH   int // terminal rows
-	pixels  []byte
+	pixW     int // pixel width (termW * 2)
+	pixH     int // pixel height (termH * subH)
+	termW    int // terminal columns
+	termH    int // terminal rows
+	subH     int // sub-pixel rows per cell (3 for shape, 2 for quadrant)
+	pixels   []byte
 
 	// Hot-reload state
 	userCode   string // current user GLSL code
@@ -110,14 +110,15 @@ func NewGPURenderer() (*GPURenderer, error) {
 	return g, nil
 }
 
-func (g *GPURenderer) resize(termW, termH int) {
-	if termW == g.termW && termH == g.termH {
+func (g *GPURenderer) resize(termW, termH, subH int) {
+	if termW == g.termW && termH == g.termH && subH == g.subH {
 		return
 	}
 	g.termW = termW
 	g.termH = termH
+	g.subH = subH
 	g.pixW = termW * 2
-	g.pixH = termH * 3
+	g.pixH = termH * subH
 	g.pixels = make([]byte, g.pixW*g.pixH*4)
 
 	// Delete old FBO/RBO
@@ -143,15 +144,17 @@ func (g *GPURenderer) resize(termW, termH int) {
 }
 
 // Render uses the GPU to raytrace and returns an ANSI-colored string.
-// Renders at 2x3 sub-pixel resolution per terminal cell, then uses
-// CPU-side shape matching for high-quality character selection.
 func (g *GPURenderer) Render(r *Renderer) string {
 	w, h := r.Width, r.Height
 	if w <= 0 || h <= 0 {
 		return ""
 	}
 
-	g.resize(w, h)
+	subH := 3
+	if r.QuadrantMode {
+		subH = 2
+	}
+	g.resize(w, h, subH)
 
 	gl.BindFramebuffer(gl.FRAMEBUFFER, g.fbo)
 	gl.Viewport(0, 0, int32(g.pixW), int32(g.pixH))
@@ -180,8 +183,8 @@ func (g *GPURenderer) Render(r *Renderer) string {
 	gl.ReadPixels(0, 0, int32(g.pixW), int32(g.pixH), gl.RGBA, gl.UNSIGNED_BYTE, unsafe.Pointer(&g.pixels[0]))
 	gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
 
-	// Shape matching on CPU using GPU pixel data
-	return g.buildANSIShaped(r)
+	// Build cells then convert to ANSI
+	return buildANSI(g.RenderCells(r))
 }
 
 // RenderToCells does the full GPU render pass and returns the cell grid (no ANSI).
@@ -191,7 +194,11 @@ func (g *GPURenderer) RenderToCells(r *Renderer) [][]cell {
 		return nil
 	}
 
-	g.resize(w, h)
+	subH := 3
+	if r.QuadrantMode {
+		subH = 2
+	}
+	g.resize(w, h, subH)
 
 	gl.BindFramebuffer(gl.FRAMEBUFFER, g.fbo)
 	gl.Viewport(0, 0, int32(g.pixW), int32(g.pixH))
@@ -229,9 +236,31 @@ func (g *GPURenderer) pixelBrightness(px, py int) float64 {
 	return float64(g.pixels[off+3]) / 255
 }
 
-// RenderCells uses GPU pixel data with shape matching to produce a cell grid.
+// pixelColor returns the RGB color (0-1) at the given pixel coordinate.
+func (g *GPURenderer) pixelColor(px, py int) Vec3 {
+	if px < 0 || px >= g.pixW || py < 0 || py >= g.pixH {
+		return Vec3{}
+	}
+	off := (py*g.pixW + px) * 4
+	return Vec3{
+		float64(g.pixels[off]) / 255,
+		float64(g.pixels[off+1]) / 255,
+		float64(g.pixels[off+2]) / 255,
+	}
+}
+
+// RenderCells uses GPU pixel data to produce a cell grid.
 func (g *GPURenderer) RenderCells(r *Renderer) [][]cell {
 	tw, th := g.termW, g.termH
+
+	if r.QuadrantMode {
+		return g.renderCellsQuadrant(tw, th)
+	}
+	return g.renderCellsShaped(r, tw, th)
+}
+
+// renderCellsShaped uses shape matching on GPU pixel data (2×3 sub-pixels per cell).
+func (g *GPURenderer) renderCellsShaped(r *Renderer, tw, th int) [][]cell {
 	st := r.ShapeTable
 
 	lines := make([][]cell, th)
@@ -256,7 +285,7 @@ func (g *GPURenderer) RenderCells(r *Renderer) [][]cell {
 			avgBright /= 6
 
 			if avgBright < 0.01 {
-				line[cx] = cell{' ', Vec3{}}
+				line[cx] = cell{ch: ' '}
 				continue
 			}
 
@@ -286,107 +315,116 @@ func (g *GPURenderer) RenderCells(r *Renderer) [][]cell {
 				}
 			}
 
-			line[cx] = cell{ch, Vec3{colR / 6 / 255, colG / 6 / 255, colB / 6 / 255}}
+			line[cx] = cell{ch: rune(ch), col: Vec3{colR / 6 / 255, colG / 6 / 255, colB / 6 / 255}}
 		}
 		lines[cy] = line
 	}
 	return lines
 }
 
-// buildANSIShaped reads the 2x3 sub-pixel grid per terminal cell,
-// applies shape matching (same as CPU renderer), and outputs ANSI-colored text.
-func (g *GPURenderer) buildANSIShaped(r *Renderer) string {
-	tw, th := g.termW, g.termH
-	st := r.ShapeTable
-
-	out := make([]byte, 0, tw*th*20+th*10)
-	prevR, prevG, prevB := -1, -1, -1
-
+// renderCellsQuadrant uses 2×2 sub-pixels per cell to produce quadrant block characters.
+func (g *GPURenderer) renderCellsQuadrant(tw, th int) [][]cell {
+	lines := make([][]cell, th)
 	for cy := 0; cy < th; cy++ {
-		if cy > 0 {
-			out = append(out, '\n')
-		}
-		prevR, prevG, prevB = -1, -1, -1
-
+		line := make([]cell, tw)
 		for cx := 0; cx < tw; cx++ {
-			// Base pixel coordinates for this cell's 2x3 block
 			bx := cx * 2
-			by := cy * 3
+			by := cy * 2
 
-			// Internal samples: 2 cols x 3 rows = ShapeVec [TL,TR,ML,MR,BL,BR]
-			var sv ShapeVec
-			sv[0] = g.pixelBrightness(bx, by)     // TL
-			sv[1] = g.pixelBrightness(bx+1, by)   // TR
-			sv[2] = g.pixelBrightness(bx, by+1)   // ML
-			sv[3] = g.pixelBrightness(bx+1, by+1) // MR
-			sv[4] = g.pixelBrightness(bx, by+2)   // BL
-			sv[5] = g.pixelBrightness(bx+1, by+2) // BR
-
-			// Average brightness for background detection
-			avgBright := 0.0
-			for i := 0; i < 6; i++ {
-				avgBright += sv[i]
-			}
-			avgBright /= 6
-
-			if avgBright < 0.01 {
-				out = append(out, ' ')
-				continue
+			// Read 4 pixel colors in 2×2 grid: TL, TR, BL, BR
+			colors := [4]Vec3{
+				g.pixelColor(bx, by),     // TL
+				g.pixelColor(bx+1, by),   // TR
+				g.pixelColor(bx, by+1),   // BL
+				g.pixelColor(bx+1, by+1), // BR
 			}
 
-			// External samples: one pixel outside cell boundary in each direction
-			var ext ShapeVec
-			ext[0] = g.pixelBrightness(bx-1, by-1) // TL external
-			ext[1] = g.pixelBrightness(bx+2, by-1) // TR external
-			ext[2] = g.pixelBrightness(bx-1, by+1) // ML external
-			ext[3] = g.pixelBrightness(bx+2, by+1) // MR external
-			ext[4] = g.pixelBrightness(bx-1, by+3) // BL external
-			ext[5] = g.pixelBrightness(bx+2, by+3) // BR external
-
-			// Shape matching (same pipeline as CPU)
-			sv = DirectionalContrast(sv, ext, r.Contrast)
-			sv = EnhanceContrast(sv, r.Contrast)
-			ch := st.Match(sv)
-
-			// Color: average the 6 sub-pixels for a smooth cell color
-			var colR, colG, colB float64
-			for _, dy := range []int{0, 1, 2} {
-				for _, dx := range []int{0, 1} {
-					px := bx + dx
-					py := by + dy
-					if px >= 0 && px < g.pixW && py >= 0 && py < g.pixH {
-						off := (py*g.pixW + px) * 4
-						colR += float64(g.pixels[off])
-						colG += float64(g.pixels[off+1])
-						colB += float64(g.pixels[off+2])
+			// Compute brightness per pixel and detect hits via alpha
+			var bright [4]float64
+			hit := [4]bool{}
+			hitCount := 0
+			for i := 0; i < 4; i++ {
+				bright[i] = colors[i].X*0.299 + colors[i].Y*0.587 + colors[i].Z*0.114
+				// Use alpha channel to detect actual surface hits
+				px := bx + (i % 2)
+				py := by + (i / 2)
+				if px >= 0 && px < g.pixW && py >= 0 && py < g.pixH {
+					off := (py*g.pixW + px) * 4
+					if g.pixels[off+3] > 2 {
+						hit[i] = true
+						hitCount++
 					}
 				}
 			}
-			cr := int(colR / 6)
-			cg := int(colG / 6)
-			cb := int(colB / 6)
 
-			if ch == ' ' {
-				out = append(out, ' ')
+			// Mean brightness across all 4 (misses contribute 0)
+			mean := (bright[0] + bright[1] + bright[2] + bright[3]) / 4
+
+			if mean < 0.01 {
+				line[cx] = cell{ch: ' '}
 				continue
 			}
 
-			if cr != prevR || cg != prevG || cb != prevB {
-				out = append(out, "\033[38;2;"...)
-				out = strconv.AppendInt(out, int64(cr), 10)
-				out = append(out, ';')
-				out = strconv.AppendInt(out, int64(cg), 10)
-				out = append(out, ';')
-				out = strconv.AppendInt(out, int64(cb), 10)
-				out = append(out, 'm')
-				prevR, prevG, prevB = cr, cg, cb
+			// Uniform surface check: all 4 hit with similar brightness → full block
+			if hitCount == 4 {
+				minB, maxB := bright[0], bright[0]
+				for i := 1; i < 4; i++ {
+					if bright[i] < minB {
+						minB = bright[i]
+					}
+					if bright[i] > maxB {
+						maxB = bright[i]
+					}
+				}
+				if maxB-minB < 0.08 {
+					avg := colors[0].Add(colors[1]).Add(colors[2]).Add(colors[3]).Mul(0.25)
+					line[cx] = cell{ch: '█', col: V(clamp(avg.X, 0, 1), clamp(avg.Y, 0, 1), clamp(avg.Z, 0, 1))}
+					continue
+				}
 			}
-			out = append(out, ch)
+
+			// Threshold each pixel around mean
+			var pattern int
+			var onCount int
+			var fgCol, bgCol Vec3
+			bgHitCount := 0
+			for i := 0; i < 4; i++ {
+				bit := 3 - i // TL=bit3, TR=bit2, BL=bit1, BR=bit0
+				if hit[i] && bright[i] > mean {
+					pattern |= 1 << uint(bit)
+					fgCol = fgCol.Add(colors[i])
+					onCount++
+				} else if hit[i] {
+					bgCol = bgCol.Add(colors[i])
+					bgHitCount++
+				}
+			}
+
+			if onCount == 0 {
+				line[cx] = cell{ch: ' '}
+				continue
+			}
+
+			ch := quadrantChars[pattern]
+			fg := fgCol.Mul(1.0 / float64(onCount))
+			fg = V(clamp(fg.X, 0, 1), clamp(fg.Y, 0, 1), clamp(fg.Z, 0, 1))
+
+			// Only set bg when off-pixels hit actual geometry
+			if bgHitCount == 0 {
+				line[cx] = cell{ch: ch, col: fg}
+				continue
+			}
+
+			bg := bgCol.Mul(1.0 / float64(bgHitCount))
+			bg = V(clamp(bg.X, 0, 1), clamp(bg.Y, 0, 1), clamp(bg.Z, 0, 1))
+
+			line[cx] = cell{ch: ch, col: fg, bg: bg, hasBg: true}
 		}
-		out = append(out, "\033[0m"...)
+		lines[cy] = line
 	}
-	return string(out)
+	return lines
 }
+
 
 func (g *GPURenderer) Destroy() {
 	if g.program != 0 {

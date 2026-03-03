@@ -82,7 +82,7 @@ func RGB565Decode(c uint16) (r, g, b uint8) {
 // CellToClipCell converts a render cell to a clip cell.
 func CellToClipCell(c cell) ClipCell {
 	return ClipCell{
-		Ch:    c.ch,
+		Ch:    byte(c.ch),
 		Color: RGB565Encode(c.col.X, c.col.Y, c.col.Z),
 	}
 }

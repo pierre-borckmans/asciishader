@@ -9,10 +9,10 @@ import (
 	zone "github.com/lrstanley/bubblezone"
 )
 
-// ControlsTab manages the 7 parameter sliders + scene selector + GPU toggle.
+// ControlsTab manages the 7 parameter sliders + scene selector + renderer toggles.
 type ControlsTab struct {
 	sliders     []*Slider
-	focus       int // which item is focused (0-8: 7 sliders + scene + gpu)
+	focus       int // which item is focused (0-9: 7 sliders + scene + gpu + blocks)
 	numItems    int
 	zoned       *ZonedInteraction
 	renderWidth int // last render width
@@ -28,12 +28,13 @@ const (
 	ctrlAOSteps     = 6
 	ctrlScene       = 7
 	ctrlGPU         = 8
+	ctrlBlocks      = 9
 )
 
 // NewControlsTab creates the controls tab with default slider values.
 func NewControlsTab() *ControlsTab {
 	ct := &ControlsTab{
-		numItems: 9,
+		numItems: 10,
 		zoned:    NewZonedInteraction("ctrl"),
 		sliders: []*Slider{
 			{Label: "Contrast", Min: 0.5, Max: 5.0, Step: 0.25, Format: "%.2f"},
@@ -108,6 +109,9 @@ func (ct *ControlsTab) adjustValue(dir int, m *model) bool {
 			m.gpuMode = !m.gpuMode
 		}
 		return true
+	case ctrlBlocks:
+		m.renderer.QuadrantMode = !m.renderer.QuadrantMode
+		return true
 	case ctrlSpecPower:
 		s := ct.sliders[ctrlSpecPower]
 		if dir > 0 {
@@ -138,7 +142,7 @@ func (ct *ControlsTab) zoneIDs() []string {
 	for i := range ct.sliders {
 		ids = append(ids, "slider-"+strconv.Itoa(i))
 	}
-	ids = append(ids, "scene", "gpu")
+	ids = append(ids, "scene", "gpu", "blocks")
 	return ids
 }
 
@@ -210,6 +214,13 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m *model) bool {
 		if m.gpu != nil {
 			m.gpuMode = !m.gpuMode
 		}
+		return true
+	}
+
+	// Blocks toggle
+	if clicked == "blocks" {
+		ct.focus = ctrlBlocks
+		m.renderer.QuadrantMode = !m.renderer.QuadrantMode
 		return true
 	}
 
@@ -289,6 +300,24 @@ func (ct *ControlsTab) Render(width int, m *model) string {
 			Render(gpuLine)
 	}
 	lines += ct.zoned.Mark("gpu", gpuLine) + "\n"
+
+	// Blocks toggle — wrapped in zone
+	blocksLabel := " Shapes"
+	if m.renderer.QuadrantMode {
+		blocksLabel = " Blocks"
+	}
+	blocksLine := pad(blocksLabel, width)
+	if ct.focus == ctrlBlocks {
+		style := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("15")).
+			Background(lipgloss.Color("240"))
+		blocksLine = style.Render(blocksLine)
+	} else if ct.zoned.IsHovered("blocks") {
+		blocksLine = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("252")).
+			Render(blocksLine)
+	}
+	lines += ct.zoned.Mark("blocks", blocksLine) + "\n"
 
 	return lines
 }

@@ -4,6 +4,7 @@ import (
 	"math"
 	"strconv"
 	"sync"
+	"unicode/utf8"
 )
 
 const (
@@ -33,6 +34,7 @@ type Renderer struct {
 	Time          float64
 	LightDir      Vec3
 	ShapeMode     bool
+	QuadrantMode  bool
 	ShapeTable    *ShapeTable
 	Contrast      float64
 	Spread        float64 // sub-sample spread multiplier (1.0 = default)
@@ -288,10 +290,107 @@ func (r *Renderer) renderCellShaped(ro, fwd, right, up Vec3, nx, ny, dx, dy, hal
 	return ch, V(clamp(col.X, 0, 1), clamp(col.Y, 0, 1), clamp(col.Z, 0, 1))
 }
 
-// cell holds a character and its foreground color.
+// quadrantChars maps 4-bit patterns (TL=bit3, TR=bit2, BL=bit1, BR=bit0) to Unicode quadrant block characters.
+var quadrantChars = [16]rune{
+	' ', '▗', '▖', '▄', '▝', '▐', '▞', '▟',
+	'▘', '▚', '▌', '▙', '▀', '▜', '▛', '█',
+}
+
+// renderCellQuadrant casts 4 rays in a 2×2 pattern via raymarchFrom,
+// thresholds brightness, picks a quadrant block character, and computes fg/bg colors.
+func (r *Renderer) renderCellQuadrant(ro, fwd, right, up Vec3, nx, ny, dx, dy, halfW, halfH, centerT float64) cell {
+	if centerT >= maxDist {
+		return cell{ch: ' '}
+	}
+
+	// 2×2 sub-pixel offsets within the cell
+	offX := [2]float64{-0.25, 0.25}
+	offY := [2]float64{0.25, -0.25} // top, bottom (positive ny = up)
+
+	var bright [4]float64
+	var colors [4]Vec3
+	hit := [4]bool{}
+
+	// Sample order: TL(0), TR(1), BL(2), BR(3)
+	idx := 0
+	for row := 0; row < 2; row++ {
+		for col := 0; col < 2; col++ {
+			snx := nx + offX[col]*dx
+			sny := ny + offY[row]*dy
+			rd := fwd.Add(right.Mul(snx * halfW)).Add(up.Mul(sny * halfH)).Normalize()
+			t, ok := r.raymarchFrom(ro, rd, centerT)
+			if ok {
+				colors[idx] = r.shadeColor(ro, rd, t)
+				bright[idx] = colors[idx].X*0.299 + colors[idx].Y*0.587 + colors[idx].Z*0.114
+				hit[idx] = true
+			}
+			idx++
+		}
+	}
+
+	// Mean brightness across all 4 (misses contribute 0, pulling mean down
+	// so that hit pixels are above mean → correct silhouette pattern)
+	mean := (bright[0] + bright[1] + bright[2] + bright[3]) / 4
+
+	// Uniform surface check: all 4 hit with similar brightness → full block
+	if hit[0] && hit[1] && hit[2] && hit[3] {
+		minB, maxB := bright[0], bright[0]
+		for i := 1; i < 4; i++ {
+			if bright[i] < minB {
+				minB = bright[i]
+			}
+			if bright[i] > maxB {
+				maxB = bright[i]
+			}
+		}
+		if maxB-minB < 0.08 {
+			avg := colors[0].Add(colors[1]).Add(colors[2]).Add(colors[3]).Mul(0.25)
+			return cell{ch: '█', col: V(clamp(avg.X, 0, 1), clamp(avg.Y, 0, 1), clamp(avg.Z, 0, 1))}
+		}
+	}
+
+	// Threshold each pixel around mean
+	var pattern int
+	var onCount int
+	var fgCol, bgCol Vec3
+	bgHitCount := 0
+	for i := 0; i < 4; i++ {
+		bit := 3 - i // TL=bit3, TR=bit2, BL=bit1, BR=bit0
+		if hit[i] && bright[i] > mean {
+			pattern |= 1 << uint(bit)
+			fgCol = fgCol.Add(colors[i])
+			onCount++
+		} else if hit[i] {
+			bgCol = bgCol.Add(colors[i])
+			bgHitCount++
+		}
+	}
+
+	if onCount == 0 {
+		return cell{ch: ' '}
+	}
+
+	ch := quadrantChars[pattern]
+	fg := fgCol.Mul(1.0 / float64(onCount))
+	fg = V(clamp(fg.X, 0, 1), clamp(fg.Y, 0, 1), clamp(fg.Z, 0, 1))
+
+	// Only set bg when off-pixels hit actual geometry (not ray misses)
+	if bgHitCount == 0 {
+		return cell{ch: ch, col: fg}
+	}
+
+	bg := bgCol.Mul(1.0 / float64(bgHitCount))
+	bg = V(clamp(bg.X, 0, 1), clamp(bg.Y, 0, 1), clamp(bg.Z, 0, 1))
+
+	return cell{ch: ch, col: fg, bg: bg, hasBg: true}
+}
+
+// cell holds a character and its foreground/background colors.
 type cell struct {
-	ch  byte
-	col Vec3 // RGB 0-1
+	ch    rune
+	col   Vec3 // foreground RGB 0-1
+	bg    Vec3 // background RGB 0-1
+	hasBg bool // whether to emit background color escape
 }
 
 // RenderCells renders the scene and returns the raw cell grid (no ANSI encoding).
@@ -314,6 +413,7 @@ func (r *Renderer) RenderCells() [][]cell {
 	dx := 2.0 / float64(w-1)
 	dy := 2.0 / float64(h-1)
 	shapeMode := r.ShapeMode && r.ShapeTable != nil
+	quadrantMode := r.QuadrantMode
 
 	var wg sync.WaitGroup
 	lines := make([][]cell, h)
@@ -329,6 +429,11 @@ func (r *Renderer) RenderCells() [][]cell {
 				nx := 2.0*float64(x)/float64(w-1) - 1.0
 				rd := fwd.Add(right.Mul(nx * halfW)).Add(up.Mul(ny * halfH)).Normalize()
 				t, _ := r.raymarch(ro, rd)
+
+				if quadrantMode {
+					line[x] = r.renderCellQuadrant(ro, fwd, right, up, nx, ny, dx, dy, halfW, halfH, t)
+					continue
+				}
 
 				var ch byte
 				var col Vec3
@@ -357,7 +462,7 @@ func (r *Renderer) RenderCells() [][]cell {
 					ch = asciiRamp[idx]
 					col = Vec3{}
 				}
-				line[x] = cell{ch, col}
+				line[x] = cell{ch: rune(ch), col: col}
 			}
 			lines[y] = line
 		}(y)
@@ -366,46 +471,90 @@ func (r *Renderer) RenderCells() [][]cell {
 	return lines
 }
 
-// Render the full frame, returns ANSI true-color string
-func (r *Renderer) Render() string {
-	w, h := r.Width, r.Height
-	if w <= 0 || h <= 0 {
+// buildANSI converts a cell grid to an ANSI true-color string with fg+bg support.
+func buildANSI(lines [][]cell) string {
+	if len(lines) == 0 {
 		return ""
 	}
-
-	lines := r.RenderCells()
-
-	// Build ANSI true-color output (zero-alloc inner loop)
+	w := len(lines[0])
+	h := len(lines)
 	out := make([]byte, 0, w*h*20+h*10)
-	prevR, prevG, prevB := -1, -1, -1
+	prevFR, prevFG, prevFB := -1, -1, -1
+	prevBR, prevBG, prevBB := -1, -1, -1
+	var runeBuf [utf8.UTFMax]byte
 	for y := 0; y < h; y++ {
 		if y > 0 {
 			out = append(out, '\n')
 		}
-		prevR, prevG, prevB = -1, -1, -1 // reset after line break
-		for x := 0; x < w; x++ {
+		prevFR, prevFG, prevFB = -1, -1, -1
+		prevBR, prevBG, prevBB = -1, -1, -1
+		for x := 0; x < len(lines[y]); x++ {
 			c := lines[y][x]
-			if c.ch == ' ' {
+			if c.ch == ' ' && !c.hasBg {
+				if prevBR != -1 || prevBG != -1 || prevBB != -1 {
+					out = append(out, "\033[0m"...)
+					prevFR, prevFG, prevFB = -1, -1, -1
+					prevBR, prevBG, prevBB = -1, -1, -1
+				}
 				out = append(out, ' ')
 				continue
 			}
+			// If previous cell set a bg but this cell doesn't use bg, reset it
+			if !c.hasBg && (prevBR != -1 || prevBG != -1 || prevBB != -1) {
+				out = append(out, "\033[0m"...)
+				prevFR, prevFG, prevFB = -1, -1, -1
+				prevBR, prevBG, prevBB = -1, -1, -1
+			}
+
 			cr := int(c.col.X * 255)
 			cg := int(c.col.Y * 255)
 			cb := int(c.col.Z * 255)
-			// Only emit ANSI escape when color changes
-			if cr != prevR || cg != prevG || cb != prevB {
-				out = append(out, "\033[38;2;"...)
-				out = strconv.AppendInt(out, int64(cr), 10)
-				out = append(out, ';')
-				out = strconv.AppendInt(out, int64(cg), 10)
-				out = append(out, ';')
-				out = strconv.AppendInt(out, int64(cb), 10)
-				out = append(out, 'm')
-				prevR, prevG, prevB = cr, cg, cb
+			fgChanged := cr != prevFR || cg != prevFG || cb != prevFB
+			bgChanged := false
+			var br, bg2, bb int
+			if c.hasBg {
+				br = int(c.bg.X * 255)
+				bg2 = int(c.bg.Y * 255)
+				bb = int(c.bg.Z * 255)
+				bgChanged = br != prevBR || bg2 != prevBG || bb != prevBB
 			}
-			out = append(out, c.ch)
+			if fgChanged || bgChanged {
+				out = append(out, "\033["...)
+				if fgChanged {
+					out = append(out, "38;2;"...)
+					out = strconv.AppendInt(out, int64(cr), 10)
+					out = append(out, ';')
+					out = strconv.AppendInt(out, int64(cg), 10)
+					out = append(out, ';')
+					out = strconv.AppendInt(out, int64(cb), 10)
+					prevFR, prevFG, prevFB = cr, cg, cb
+				}
+				if bgChanged {
+					if fgChanged {
+						out = append(out, ';')
+					}
+					out = append(out, "48;2;"...)
+					out = strconv.AppendInt(out, int64(br), 10)
+					out = append(out, ';')
+					out = strconv.AppendInt(out, int64(bg2), 10)
+					out = append(out, ';')
+					out = strconv.AppendInt(out, int64(bb), 10)
+					prevBR, prevBG, prevBB = br, bg2, bb
+				}
+				out = append(out, 'm')
+			}
+			n := utf8.EncodeRune(runeBuf[:], c.ch)
+			out = append(out, runeBuf[:n]...)
 		}
 		out = append(out, "\033[0m"...)
 	}
 	return string(out)
+}
+
+// Render the full frame, returns ANSI true-color string
+func (r *Renderer) Render() string {
+	if r.Width <= 0 || r.Height <= 0 {
+		return ""
+	}
+	return buildANSI(r.RenderCells())
 }

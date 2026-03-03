@@ -582,6 +582,8 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		m.paused = !m.paused
 	case "a":
 		m.autoRotate = !m.autoRotate
+	case "m":
+		m.renderer.QuadrantMode = !m.renderer.QuadrantMode
 	case "g":
 		if m.gpu != nil {
 			m.gpuMode = !m.gpuMode
@@ -707,6 +709,9 @@ func (m model) View() string {
 	if m.gpuMode && m.gpu != nil {
 		gpuStr = "GPU"
 	}
+	if m.renderer.QuadrantMode {
+		gpuStr += " BLOCK"
+	}
 	pauseStr := ""
 	if m.paused {
 		pauseStr = " PAUSED"
@@ -752,6 +757,7 @@ func (m model) View() string {
 		{"o", "record"},
 		{"s", "controls"},
 		{"e", "editor"},
+		{"m", "blocks"},
 		{"g", "GPU"},
 		{"tab", "focus"},
 		{"space", "pause"},
