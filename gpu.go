@@ -62,6 +62,9 @@ type GPURenderer struct {
 	subH     int // sub-pixel rows per cell (3 for shape, 2 for quadrant)
 	pixels   []byte
 
+	// Reusable cell buffer (avoids per-frame allocation)
+	cellBuf [][]cell
+
 	// Hot-reload state
 	userCode   string // current user GLSL code
 	compileErr string // last compile error, empty if OK
@@ -255,6 +258,24 @@ func (g *GPURenderer) pixelColor(px, py int) Vec3 {
 	}
 }
 
+// getCellBuf returns a zeroed tw×th cell grid, reusing the internal buffer.
+func (g *GPURenderer) getCellBuf(tw, th int) [][]cell {
+	if cap(g.cellBuf) >= th {
+		g.cellBuf = g.cellBuf[:th]
+	} else {
+		g.cellBuf = make([][]cell, th)
+	}
+	for i := range g.cellBuf {
+		if cap(g.cellBuf[i]) >= tw {
+			g.cellBuf[i] = g.cellBuf[i][:tw]
+			clear(g.cellBuf[i])
+		} else {
+			g.cellBuf[i] = make([]cell, tw)
+		}
+	}
+	return g.cellBuf
+}
+
 // RenderCells uses GPU pixel data to produce a cell grid.
 func (g *GPURenderer) RenderCells(r *Renderer) [][]cell {
 	tw, th := g.termW, g.termH
@@ -273,9 +294,9 @@ func (g *GPURenderer) RenderCells(r *Renderer) [][]cell {
 func (g *GPURenderer) renderCellsShaped(r *Renderer, tw, th int) [][]cell {
 	st := r.ShapeTable
 
-	lines := make([][]cell, th)
+	lines := g.getCellBuf(tw, th)
 	for cy := 0; cy < th; cy++ {
-		line := make([]cell, tw)
+		line := lines[cy]
 		for cx := 0; cx < tw; cx++ {
 			bx := cx * 2
 			by := cy * 3
@@ -327,7 +348,6 @@ func (g *GPURenderer) renderCellsShaped(r *Renderer, tw, th int) [][]cell {
 
 			line[cx] = cell{ch: rune(ch), col: Vec3{colR / 6 / 255, colG / 6 / 255, colB / 6 / 255}}
 		}
-		lines[cy] = line
 	}
 	return lines
 }
@@ -337,9 +357,9 @@ func (g *GPURenderer) renderCellsShaped(r *Renderer, tw, th int) [][]cell {
 func (g *GPURenderer) renderCellsDual(r *Renderer, tw, th int) [][]cell {
 	st := r.ShapeTable
 
-	lines := make([][]cell, th)
+	lines := g.getCellBuf(tw, th)
 	for cy := 0; cy < th; cy++ {
-		line := make([]cell, tw)
+		line := lines[cy]
 		for cx := 0; cx < tw; cx++ {
 			bx := cx * 4
 			by := cy * 6
@@ -396,16 +416,15 @@ func (g *GPURenderer) renderCellsDual(r *Renderer, tw, th int) [][]cell {
 
 			line[cx] = cell{ch: rune(ch), col: Vec3{colR / 24 / 255, colG / 24 / 255, colB / 24 / 255}}
 		}
-		lines[cy] = line
 	}
 	return lines
 }
 
 // renderCellsQuadrant uses 2×2 sub-pixels per cell to produce quadrant block characters.
 func (g *GPURenderer) renderCellsQuadrant(tw, th int) [][]cell {
-	lines := make([][]cell, th)
+	lines := g.getCellBuf(tw, th)
 	for cy := 0; cy < th; cy++ {
-		line := make([]cell, tw)
+		line := lines[cy]
 		for cx := 0; cx < tw; cx++ {
 			bx := cx * 2
 			by := cy * 2
@@ -499,7 +518,6 @@ func (g *GPURenderer) renderCellsQuadrant(tw, th int) [][]cell {
 
 			line[cx] = cell{ch: ch, col: fg, bg: bg, hasBg: true}
 		}
-		lines[cy] = line
 	}
 	return lines
 }

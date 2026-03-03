@@ -1,6 +1,12 @@
 package main
 
-import "math"
+import (
+	"fmt"
+	"math"
+	"os"
+	"path/filepath"
+	"strings"
+)
 
 // Scene is a distance function + description
 type Scene struct {
@@ -55,7 +61,6 @@ var scenes = []Scene{
 		Name:  "Plasma Orb",
 		SDF:   scenePlasma,
 		Color: colorPlasma,
-		GLSL:  defaultUserCode,
 	},
 	{
 		Name:  "Plasma Rainbow",
@@ -91,25 +96,21 @@ var scenes = []Scene{
 		Name:  "Railway Express",
 		SDF:   sceneTrain,
 		Color: colorTrain,
-		GLSL:  railwayExpressGLSL,
 	},
 	{
 		Name:  "Lava Lamp",
 		SDF:   scenePlasma,
 		Color: colorPlasma,
-		GLSL:  lavaLampGLSL,
 	},
 	{
 		Name:  "Mercury",
 		SDF:   scenePlasma,
 		Color: colorPlasma,
-		GLSL:  mercuryGLSL,
 	},
 	{
 		Name:  "Amoeba",
 		SDF:   scenePlasma,
 		Color: colorPlasma,
-		GLSL:  amoebaGLSL,
 	},
 }
 
@@ -800,4 +801,87 @@ func hueToRGB(h float64) Vec3 {
 	default:
 		return V(1, 0, 1-f)
 	}
+}
+
+// loadShaderFiles scans the shaders/ directory for .glsl files and associates
+// them with scenes. For each file, if a built-in scene with a matching name
+// exists, its GLSL field is set. Otherwise a new GPU-only scene is appended
+// (using scenePlasma/colorPlasma as CPU fallback).
+//
+// File naming: snake_case.glsl → "Title Case" scene name.
+// A "// Scene: Custom Name" header line overrides the filename-derived name.
+func loadShaderFiles() {
+	exePath, err := os.Executable()
+	if err != nil {
+		return
+	}
+	dir := filepath.Dir(exePath)
+	pattern := filepath.Join(dir, "shaders", "*.glsl")
+
+	// Also try current working directory
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) == 0 {
+		cwdPattern := filepath.Join("shaders", "*.glsl")
+		matches, err = filepath.Glob(cwdPattern)
+		if err != nil || len(matches) == 0 {
+			return
+		}
+	}
+
+	for _, path := range matches {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: cannot read %s: %v\n", path, err)
+			continue
+		}
+		content := string(data)
+		name := shaderFileName(path, content)
+
+		// Try to match an existing scene by name
+		found := false
+		for i := range scenes {
+			if scenes[i].Name == name {
+				scenes[i].GLSL = content
+				found = true
+				break
+			}
+		}
+		if !found {
+			// New GPU-only scene with CPU fallback
+			scenes = append(scenes, Scene{
+				Name:  name,
+				SDF:   scenePlasma,
+				Color: colorPlasma,
+				GLSL:  content,
+			})
+		}
+	}
+}
+
+// shaderFileName derives a scene name from a .glsl file path.
+// If the file contains a "// Scene: Name" header, that name is used.
+// Otherwise the filename is converted from snake_case to Title Case.
+func shaderFileName(path, content string) string {
+	// Check for "// Scene: ..." header in first 5 lines
+	lines := strings.SplitN(content, "\n", 6)
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "// Scene:") {
+			name := strings.TrimSpace(strings.TrimPrefix(line, "// Scene:"))
+			if name != "" {
+				return name
+			}
+		}
+	}
+
+	// Fall back to filename → title case
+	base := filepath.Base(path)
+	base = strings.TrimSuffix(base, ".glsl")
+	words := strings.Split(base, "_")
+	for i, w := range words {
+		if len(w) > 0 {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, " ")
 }

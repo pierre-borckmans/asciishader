@@ -119,6 +119,7 @@ func (h *HelpView) Render(width, height int) string {
 	lines = append(lines, binding("4/$", "SpecPower +/-"))
 	lines = append(lines, binding("5/%", "Shadow steps +/-"))
 	lines = append(lines, binding("6/^", "AO steps +/-"))
+	lines = append(lines, binding("p", "Toggle CPU profile"))
 	lines = append(lines, "")
 
 	// Panels

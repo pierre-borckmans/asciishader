@@ -105,7 +105,7 @@ func (et *EditorTab) Compile(gpu *GPURenderer) {
 	err := gpu.CompileUserCode(code)
 	if err != nil {
 		errMsg := err.Error()
-		prefixLines := ShaderPrefixLineCount()
+		prefixLines := PrefixLineCount(code)
 		errMsg = adjustErrorLineNumbers(errMsg, prefixLines)
 		et.status = fmt.Sprintf("Error: %s", errMsg)
 		et.statusErr = true

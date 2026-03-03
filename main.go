@@ -86,18 +86,22 @@ type model struct {
 	// Playback
 	player   *clip.Player
 	playMode bool // --play mode
+
+	// Profiling
+	profiling bool
+	profFile  *os.File
 }
 
 func initialModel() model {
 	r := NewRenderer(80, 24)
 	r.ShapeTable = NewShapeTable()
-	r.Contrast = 2.0
-	r.Spread = 1.0
+	r.Contrast = 1.25
+	r.Spread = 0.75
 	r.ExtDist = 1.0
-	r.Ambient = 0.4
-	r.SpecPower = 32.0
-	r.ShadowSteps = 32
-	r.AOSteps = 5
+	r.Ambient = 0.6
+	r.SpecPower = 9.0
+	r.ShadowSteps = 8
+	r.AOSteps = 2
 
 	// Build sidebar items for view switching
 	sb := layout.NewSidebar()
@@ -524,6 +528,10 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Global keys (all views)
 	switch key {
 	case "ctrl+c":
+		if m.profiling {
+			pprof.StopCPUProfile()
+			m.profFile.Close()
+		}
 		return m, tea.Quit
 	case "f1":
 		m.switchView(ViewShader)
@@ -673,6 +681,10 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "q", "esc":
+		if m.profiling {
+			pprof.StopCPUProfile()
+			m.profFile.Close()
+		}
 		return m, tea.Quit
 	case "left", "h":
 		m.camAngleY -= 0.15
@@ -718,6 +730,29 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		if m.gpu != nil {
 			m.gpuMode = !m.gpuMode
 		}
+	case "p":
+		if !m.profiling {
+			fname := fmt.Sprintf("cpu_%d.prof", time.Now().Unix())
+			f, err := os.Create(fname)
+			if err != nil {
+				m.recMessage = fmt.Sprintf("Profile error: %v", err)
+				m.recMessageTime = time.Now()
+				break
+			}
+			pprof.StartCPUProfile(f)
+			m.profiling = true
+			m.profFile = f
+			m.recMessage = fmt.Sprintf("Profiling started → %s", fname)
+			m.recMessageTime = time.Now()
+		} else {
+			pprof.StopCPUProfile()
+			fname := m.profFile.Name()
+			m.profFile.Close()
+			m.profiling = false
+			m.profFile = nil
+			m.recMessage = fmt.Sprintf("Saved %s", fname)
+			m.recMessageTime = time.Now()
+		}
 	case "[":
 		m.renderer.Contrast = clamp(m.renderer.Contrast-0.25, 0.5, 5.0)
 	case "]":
@@ -752,13 +787,13 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		m.camDist = 4.0
 		m.camTarget = V(0, 0, 0)
 		m.autoRotate = false
-		m.renderer.Contrast = 2.0
-		m.renderer.Spread = 1.0
+		m.renderer.Contrast = 1.25
+		m.renderer.Spread = 0.75
 		m.renderer.ExtDist = 1.0
-		m.renderer.Ambient = 0.4
-		m.renderer.SpecPower = 32.0
-		m.renderer.ShadowSteps = 32
-		m.renderer.AOSteps = 5
+		m.renderer.Ambient = 0.6
+		m.renderer.SpecPower = 9.0
+		m.renderer.ShadowSteps = 8
+		m.renderer.AOSteps = 2
 		m.time = 0
 	}
 	return m, nil
@@ -824,8 +859,17 @@ func (m *model) syncSceneGLSL() {
 		glsl := scenes[m.scene].GLSL
 		if glsl != "" {
 			m.editor.SetCode(glsl)
-			if m.gpu != nil && m.gpuMode {
-				m.editor.Compile(m.gpu)
+			if m.gpu != nil {
+				// Compile directly from the source, not via textarea
+				// (textarea may not be initialized yet at startup).
+				err := m.gpu.CompileUserCode(glsl)
+				if err != nil {
+					m.editor.status = fmt.Sprintf("Error: %s", err.Error())
+					m.editor.statusErr = true
+				} else {
+					m.editor.status = "Compiled OK"
+					m.editor.statusErr = false
+				}
 			}
 		}
 	}
@@ -893,6 +937,10 @@ func (m model) View() string {
 			if m.recMessage != "" && time.Since(m.recMessageTime) < 3*time.Second {
 				recStr = " | " + recStyle.Render("✓ "+m.recMessage)
 			}
+		}
+		// Show transient messages (e.g. profiling) when no recording status is displayed
+		if recStr == "" && m.recMessage != "" && time.Since(m.recMessageTime) < 3*time.Second {
+			recStr = " | " + recStyle.Render(m.recMessage)
 		}
 		headerTitle = fmt.Sprintf("ASCII Shader  ·  %s", scenes[m.scene].Name)
 		rightInfo = fmt.Sprintf("%s | %.0f fps%s%s", gpuStr, m.fps, pauseStr, recStr)
@@ -1077,18 +1125,9 @@ func main() {
 		return
 	}
 
-	f, err := os.Create("cpu.prof")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Could not create CPU profile: %v\n", err)
-		os.Exit(1)
-	}
-	pprof.StartCPUProfile(f)
-	defer func() {
-		pprof.StopCPUProfile()
-		f.Close()
-	}()
-
 	zone.NewGlobal()
+
+	loadShaderFiles()
 
 	m := initialModel()
 
@@ -1097,6 +1136,7 @@ func main() {
 	if gpuErr == nil {
 		m.gpu = gpu
 		m.gpuMode = true
+		m.syncSceneGLSL()
 		defer gpu.Destroy()
 	}
 
