@@ -14,6 +14,13 @@ const (
 	normalEps = 0.001
 )
 
+// Render modes
+const (
+	RenderShapes = 0 // shape matching, fg only (default)
+	RenderBlocks = 1 // quadrant blocks, fg+bg
+	RenderDual   = 2 // shape matching, fg+bg
+)
+
 // ASCII ramp from dark to bright
 var asciiRamp = []byte(" .`'^\",:;Il!i><~+_-?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$")
 
@@ -33,8 +40,7 @@ type Renderer struct {
 	ColorFunc     func(Vec3, float64) Vec3 // material color at point (nil = white)
 	Time          float64
 	LightDir      Vec3
-	ShapeMode     bool
-	QuadrantMode  bool
+	RenderMode    int // RenderShapes, RenderBlocks, or RenderDual
 	ShapeTable    *ShapeTable
 	Contrast      float64
 	Spread        float64 // sub-sample spread multiplier (1.0 = default)
@@ -290,6 +296,52 @@ func (r *Renderer) renderCellShaped(ro, fwd, right, up Vec3, nx, ny, dx, dy, hal
 	return ch, V(clamp(col.X, 0, 1), clamp(col.Y, 0, 1), clamp(col.Z, 0, 1))
 }
 
+// renderCellDual is like renderCellShaped but over a double-sized cell.
+// dx/dy should be the cell spacing of the dual grid (2× normal).
+func (r *Renderer) renderCellDual(ro, fwd, right, up Vec3, nx, ny, dx, dy, halfW, halfH, centerT float64, centerRd Vec3) (byte, Vec3) {
+	if centerT >= maxDist {
+		return ' ', Vec3{}
+	}
+
+	s := r.Spread
+	colOff := [2]float64{-0.25 * s, 0.25 * s}
+	rowOff := [3]float64{1.0 / 3.0 * s, 0, -1.0 / 3.0 * s}
+
+	e := r.ExtDist
+	extColOff := [2]float64{-0.75 * e, 0.75 * e}
+	extRowOff := [3]float64{1.0 * e, 0, -1.0 * e}
+
+	var sv, ext ShapeVec
+	idx := 0
+	for row := 0; row < 3; row++ {
+		for c := 0; c < 2; c++ {
+			sv[idx] = r.sampleBrightness(ro, fwd, right, up,
+				nx+colOff[c]*dx, ny+rowOff[row]*dy, halfW, halfH, centerT)
+			ext[idx] = r.sampleBrightness(ro, fwd, right, up,
+				nx+extColOff[c]*dx, ny+extRowOff[row]*dy, halfW, halfH, centerT)
+			idx++
+		}
+	}
+
+	avgBright := 0.0
+	for i := 0; i < 6; i++ {
+		avgBright += sv[i]
+	}
+	avgBright /= 6
+
+	sv = DirectionalContrast(sv, ext, r.Contrast)
+	sv = EnhanceContrast(sv, r.Contrast)
+	ch := r.ShapeTable.Match(sv)
+
+	mat := V(1, 1, 1)
+	if r.ColorFunc != nil {
+		p := ro.Add(centerRd.Mul(centerT))
+		mat = r.ColorFunc(p, r.Time)
+	}
+	col := mat.Mul(avgBright)
+	return ch, V(clamp(col.X, 0, 1), clamp(col.Y, 0, 1), clamp(col.Z, 0, 1))
+}
+
 // quadrantChars maps 4-bit patterns (TL=bit3, TR=bit2, BL=bit1, BR=bit0) to Unicode quadrant block characters.
 var quadrantChars = [16]rune{
 	' ', '▗', '▖', '▄', '▝', '▐', '▞', '▟',
@@ -400,6 +452,11 @@ func (r *Renderer) RenderCells() [][]cell {
 		return nil
 	}
 
+	// Dual mode: half-resolution grid, each cell covers 2×2 normal cells
+	if r.RenderMode == RenderDual && r.ShapeTable != nil {
+		return r.renderCellsDualGrid()
+	}
+
 	fwd := r.Camera.Target.Sub(r.Camera.Pos).Normalize()
 	right := fwd.Cross(r.Camera.Up).Normalize()
 	up := right.Cross(fwd)
@@ -412,8 +469,7 @@ func (r *Renderer) RenderCells() [][]cell {
 	ro := r.Camera.Pos
 	dx := 2.0 / float64(w-1)
 	dy := 2.0 / float64(h-1)
-	shapeMode := r.ShapeMode && r.ShapeTable != nil
-	quadrantMode := r.QuadrantMode
+	shapeMode := r.ShapeTable != nil
 
 	var wg sync.WaitGroup
 	lines := make([][]cell, h)
@@ -430,38 +486,80 @@ func (r *Renderer) RenderCells() [][]cell {
 				rd := fwd.Add(right.Mul(nx * halfW)).Add(up.Mul(ny * halfH)).Normalize()
 				t, _ := r.raymarch(ro, rd)
 
-				if quadrantMode {
+				if r.RenderMode == RenderBlocks {
 					line[x] = r.renderCellQuadrant(ro, fwd, right, up, nx, ny, dx, dy, halfW, halfH, t)
-					continue
-				}
-
-				var ch byte
-				var col Vec3
-				if shapeMode {
-					ch, col = r.renderCellShaped(ro, fwd, right, up, nx, ny, dx, dy, halfW, halfH, t, rd)
-				} else if t < maxDist {
-					col = r.shadeColor(ro, rd, t)
-					brightness := col.X*0.299 + col.Y*0.587 + col.Z*0.114
-					idx := int(brightness * float64(len(asciiRamp)-1))
-					if idx < 0 {
-						idx = 0
-					}
-					if idx >= len(asciiRamp) {
-						idx = len(asciiRamp) - 1
-					}
-					ch = asciiRamp[idx]
 				} else {
-					bgBright := 0.02 + 0.03*(ny+1)*0.5
-					idx := int(bgBright * float64(len(asciiRamp)-1))
-					if idx < 0 {
-						idx = 0
+					var ch byte
+					var col Vec3
+					if shapeMode {
+						ch, col = r.renderCellShaped(ro, fwd, right, up, nx, ny, dx, dy, halfW, halfH, t, rd)
+					} else if t < maxDist {
+						col = r.shadeColor(ro, rd, t)
+						brightness := col.X*0.299 + col.Y*0.587 + col.Z*0.114
+						idx := int(brightness * float64(len(asciiRamp)-1))
+						if idx < 0 {
+							idx = 0
+						}
+						if idx >= len(asciiRamp) {
+							idx = len(asciiRamp) - 1
+						}
+						ch = asciiRamp[idx]
+					} else {
+						bgBright := 0.02 + 0.03*(ny+1)*0.5
+						idx := int(bgBright * float64(len(asciiRamp)-1))
+						if idx < 0 {
+							idx = 0
+						}
+						if idx >= len(asciiRamp) {
+							idx = len(asciiRamp) - 1
+						}
+						ch = asciiRamp[idx]
+						col = Vec3{}
 					}
-					if idx >= len(asciiRamp) {
-						idx = len(asciiRamp) - 1
-					}
-					ch = asciiRamp[idx]
-					col = Vec3{}
+					line[x] = cell{ch: rune(ch), col: col}
 				}
+			}
+			lines[y] = line
+		}(y)
+	}
+	wg.Wait()
+	return lines
+}
+
+// renderCellsDualGrid renders W × H cells (fills viewport) but each cell's
+// sub-pixel grid covers 2× the normal area, capturing broader spatial features.
+func (r *Renderer) renderCellsDualGrid() [][]cell {
+	w, h := r.Width, r.Height
+
+	fwd := r.Camera.Target.Sub(r.Camera.Pos).Normalize()
+	right := fwd.Cross(r.Camera.Up).Normalize()
+	up := right.Cross(fwd)
+
+	fovRad := r.Camera.FOV * math.Pi / 180
+	halfH := math.Tan(fovRad / 2)
+	aspect := float64(w) / float64(h) * 0.45
+	halfW := halfH * aspect
+
+	ro := r.Camera.Pos
+	// 2× the normal cell spacing so sub-pixels spread wider
+	dx := 2.0 / float64(w-1) * 2
+	dy := 2.0 / float64(h-1) * 2
+
+	var wg sync.WaitGroup
+	lines := make([][]cell, h)
+
+	for y := 0; y < h; y++ {
+		wg.Add(1)
+		go func(y int) {
+			defer wg.Done()
+			line := make([]cell, w)
+			ny := 1.0 - 2.0*float64(y)/float64(h-1)
+
+			for x := 0; x < w; x++ {
+				nx := 2.0*float64(x)/float64(w-1) - 1.0
+				rd := fwd.Add(right.Mul(nx * halfW)).Add(up.Mul(ny * halfH)).Normalize()
+				t, _ := r.raymarch(ro, rd)
+				ch, col := r.renderCellDual(ro, fwd, right, up, nx, ny, dx, dy, halfW, halfH, t, rd)
 				line[x] = cell{ch: rune(ch), col: col}
 			}
 			lines[y] = line

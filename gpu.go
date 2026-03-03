@@ -110,15 +110,17 @@ func NewGPURenderer() (*GPURenderer, error) {
 	return g, nil
 }
 
-func (g *GPURenderer) resize(termW, termH, subH int) {
-	if termW == g.termW && termH == g.termH && subH == g.subH {
+func (g *GPURenderer) resize(termW, termH, subW, subH int) {
+	pixW := termW * subW
+	pixH := termH * subH
+	if termW == g.termW && termH == g.termH && pixW == g.pixW && pixH == g.pixH {
 		return
 	}
 	g.termW = termW
 	g.termH = termH
 	g.subH = subH
-	g.pixW = termW * 2
-	g.pixH = termH * subH
+	g.pixW = pixW
+	g.pixH = pixH
 	g.pixels = make([]byte, g.pixW*g.pixH*4)
 
 	// Delete old FBO/RBO
@@ -150,11 +152,13 @@ func (g *GPURenderer) Render(r *Renderer) string {
 		return ""
 	}
 
-	subH := 3
-	if r.QuadrantMode {
-		subH = 2
+	subW, subH := 2, 3
+	if r.RenderMode == RenderBlocks {
+		subW, subH = 2, 2
+	} else if r.RenderMode == RenderDual {
+		subW, subH = 4, 6
 	}
-	g.resize(w, h, subH)
+	g.resize(w, h, subW, subH)
 
 	gl.BindFramebuffer(gl.FRAMEBUFFER, g.fbo)
 	gl.Viewport(0, 0, int32(g.pixW), int32(g.pixH))
@@ -194,11 +198,13 @@ func (g *GPURenderer) RenderToCells(r *Renderer) [][]cell {
 		return nil
 	}
 
-	subH := 3
-	if r.QuadrantMode {
-		subH = 2
+	subW, subH := 2, 3
+	if r.RenderMode == RenderBlocks {
+		subW, subH = 2, 2
+	} else if r.RenderMode == RenderDual {
+		subW, subH = 4, 6
 	}
-	g.resize(w, h, subH)
+	g.resize(w, h, subW, subH)
 
 	gl.BindFramebuffer(gl.FRAMEBUFFER, g.fbo)
 	gl.Viewport(0, 0, int32(g.pixW), int32(g.pixH))
@@ -253,10 +259,14 @@ func (g *GPURenderer) pixelColor(px, py int) Vec3 {
 func (g *GPURenderer) RenderCells(r *Renderer) [][]cell {
 	tw, th := g.termW, g.termH
 
-	if r.QuadrantMode {
+	switch r.RenderMode {
+	case RenderBlocks:
 		return g.renderCellsQuadrant(tw, th)
+	case RenderDual:
+		return g.renderCellsDual(r, tw, th)
+	default:
+		return g.renderCellsShaped(r, tw, th)
 	}
-	return g.renderCellsShaped(r, tw, th)
 }
 
 // renderCellsShaped uses shape matching on GPU pixel data (2×3 sub-pixels per cell).
@@ -316,6 +326,75 @@ func (g *GPURenderer) renderCellsShaped(r *Renderer, tw, th int) [][]cell {
 			}
 
 			line[cx] = cell{ch: rune(ch), col: Vec3{colR / 6 / 255, colG / 6 / 255, colB / 6 / 255}}
+		}
+		lines[cy] = line
+	}
+	return lines
+}
+
+// renderCellsDual uses 4×6 pixel blocks per cell for broader shape matching.
+// Output grid: tw × th (fills viewport). Pixel buffer is subW=4, subH=6.
+func (g *GPURenderer) renderCellsDual(r *Renderer, tw, th int) [][]cell {
+	st := r.ShapeTable
+
+	lines := make([][]cell, th)
+	for cy := 0; cy < th; cy++ {
+		line := make([]cell, tw)
+		for cx := 0; cx < tw; cx++ {
+			bx := cx * 4
+			by := cy * 6
+
+			// Downsample 4×6 to 2×3 shape vector: each element = average of 2×2 pixel block
+			var sv ShapeVec
+			for si := 0; si < 6; si++ {
+				r0 := si / 2
+				c0 := si % 2
+				px := bx + c0*2
+				py := by + r0*2
+				sv[si] = (g.pixelBrightness(px, py) + g.pixelBrightness(px+1, py) +
+					g.pixelBrightness(px, py+1) + g.pixelBrightness(px+1, py+1)) / 4
+			}
+
+			avgBright := 0.0
+			for i := 0; i < 6; i++ {
+				avgBright += sv[i]
+			}
+			avgBright /= 6
+
+			if avgBright < 0.01 {
+				line[cx] = cell{ch: ' '}
+				continue
+			}
+
+			// External samples: just outside the 4×6 block
+			var ext ShapeVec
+			ext[0] = g.pixelBrightness(bx-1, by-1)
+			ext[1] = g.pixelBrightness(bx+4, by-1)
+			ext[2] = g.pixelBrightness(bx-1, by+3)
+			ext[3] = g.pixelBrightness(bx+4, by+3)
+			ext[4] = g.pixelBrightness(bx-1, by+6)
+			ext[5] = g.pixelBrightness(bx+4, by+6)
+
+			sv = DirectionalContrast(sv, ext, r.Contrast)
+			sv = EnhanceContrast(sv, r.Contrast)
+			ch := st.Match(sv)
+
+			// Average color from all 24 pixels (4×6)
+			var colR, colG, colB float64
+			for dy := 0; dy < 6; dy++ {
+				for dx := 0; dx < 4; dx++ {
+					px := bx + dx
+					py := by + dy
+					if px >= 0 && px < g.pixW && py >= 0 && py < g.pixH {
+						off := (py*g.pixW + px) * 4
+						colR += float64(g.pixels[off])
+						colG += float64(g.pixels[off+1])
+						colB += float64(g.pixels[off+2])
+					}
+				}
+			}
+
+			line[cx] = cell{ch: rune(ch), col: Vec3{colR / 24 / 255, colG / 24 / 255, colB / 24 / 255}}
 		}
 		lines[cy] = line
 	}

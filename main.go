@@ -70,7 +70,6 @@ type model struct {
 func initialModel() model {
 	r := NewRenderer(80, 24)
 	r.ShapeTable = NewShapeTable()
-	r.ShapeMode = true
 	r.Contrast = 2.0
 	r.Spread = 1.0
 	r.ExtDist = 1.0
@@ -583,7 +582,7 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 	case "a":
 		m.autoRotate = !m.autoRotate
 	case "m":
-		m.renderer.QuadrantMode = !m.renderer.QuadrantMode
+		m.renderer.RenderMode = (m.renderer.RenderMode + 1) % 3
 	case "g":
 		if m.gpu != nil {
 			m.gpuMode = !m.gpuMode
@@ -709,8 +708,11 @@ func (m model) View() string {
 	if m.gpuMode && m.gpu != nil {
 		gpuStr = "GPU"
 	}
-	if m.renderer.QuadrantMode {
+	switch m.renderer.RenderMode {
+	case RenderBlocks:
 		gpuStr += " BLOCK"
+	case RenderDual:
+		gpuStr += " DUAL"
 	}
 	pauseStr := ""
 	if m.paused {
@@ -757,7 +759,7 @@ func (m model) View() string {
 		{"o", "record"},
 		{"s", "controls"},
 		{"e", "editor"},
-		{"m", "blocks"},
+		{"m", "mode"},
 		{"g", "GPU"},
 		{"tab", "focus"},
 		{"space", "pause"},

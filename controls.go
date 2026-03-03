@@ -110,7 +110,11 @@ func (ct *ControlsTab) adjustValue(dir int, m *model) bool {
 		}
 		return true
 	case ctrlBlocks:
-		m.renderer.QuadrantMode = !m.renderer.QuadrantMode
+		if dir > 0 {
+			m.renderer.RenderMode = (m.renderer.RenderMode + 1) % 3
+		} else {
+			m.renderer.RenderMode = (m.renderer.RenderMode + 2) % 3
+		}
 		return true
 	case ctrlSpecPower:
 		s := ct.sliders[ctrlSpecPower]
@@ -217,10 +221,10 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m *model) bool {
 		return true
 	}
 
-	// Blocks toggle
+	// Render mode cycle
 	if clicked == "blocks" {
 		ct.focus = ctrlBlocks
-		m.renderer.QuadrantMode = !m.renderer.QuadrantMode
+		m.renderer.RenderMode = (m.renderer.RenderMode + 1) % 3
 		return true
 	}
 
@@ -301,10 +305,13 @@ func (ct *ControlsTab) Render(width int, m *model) string {
 	}
 	lines += ct.zoned.Mark("gpu", gpuLine) + "\n"
 
-	// Blocks toggle — wrapped in zone
+	// Render mode — wrapped in zone
 	blocksLabel := " Shapes"
-	if m.renderer.QuadrantMode {
+	switch m.renderer.RenderMode {
+	case RenderBlocks:
 		blocksLabel = " Blocks"
+	case RenderDual:
+		blocksLabel = " Dual"
 	}
 	blocksLine := pad(blocksLabel, width)
 	if ct.focus == ctrlBlocks {
