@@ -571,12 +571,22 @@ func (r *Renderer) renderCellsDualGrid() [][]cell {
 
 // buildANSI converts a cell grid to an ANSI true-color string with fg+bg support.
 func buildANSI(lines [][]cell) string {
+	return string(appendANSI(nil, lines))
+}
+
+// appendANSI appends ANSI-encoded cell grid to buf and returns the result.
+// Reuses buf capacity to avoid allocation when the caller retains the buffer.
+func appendANSI(buf []byte, lines [][]cell) []byte {
 	if len(lines) == 0 {
-		return ""
+		return buf
 	}
 	w := len(lines[0])
 	h := len(lines)
-	out := make([]byte, 0, w*h*20+h*10)
+	need := w*h*20 + h*10
+	if cap(buf) < need {
+		buf = make([]byte, 0, need)
+	}
+	out := buf
 	prevFR, prevFG, prevFB := -1, -1, -1
 	prevBR, prevBG, prevBB := -1, -1, -1
 	var runeBuf [utf8.UTFMax]byte
@@ -646,7 +656,7 @@ func buildANSI(lines [][]cell) string {
 		}
 		out = append(out, "\033[0m"...)
 	}
-	return string(out)
+	return out
 }
 
 // Render the full frame, returns ANSI true-color string

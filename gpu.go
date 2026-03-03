@@ -62,8 +62,9 @@ type GPURenderer struct {
 	subH     int // sub-pixel rows per cell (3 for shape, 2 for quadrant)
 	pixels   []byte
 
-	// Reusable cell buffer (avoids per-frame allocation)
+	// Reusable buffers (avoid per-frame allocation)
 	cellBuf [][]cell
+	ansiBuf []byte
 
 	// Hot-reload state
 	userCode   string // current user GLSL code
@@ -191,7 +192,8 @@ func (g *GPURenderer) Render(r *Renderer) string {
 	gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
 
 	// Build cells then convert to ANSI
-	return buildANSI(g.RenderCells(r))
+	g.ansiBuf = appendANSI(g.ansiBuf[:0], g.RenderCells(r))
+	return string(g.ansiBuf)
 }
 
 // RenderToCells does the full GPU render pass and returns the cell grid (no ANSI).
@@ -293,6 +295,10 @@ func (g *GPURenderer) RenderCells(r *Renderer) [][]cell {
 // renderCellsShaped uses shape matching on GPU pixel data (2×3 sub-pixels per cell).
 func (g *GPURenderer) renderCellsShaped(r *Renderer, tw, th int) [][]cell {
 	st := r.ShapeTable
+	pixels := g.pixels
+	stride := g.pixW * 4
+	contrast := r.Contrast
+	const inv255 = 1.0 / 255.0
 
 	lines := g.getCellBuf(tw, th)
 	for cy := 0; cy < th; cy++ {
@@ -301,25 +307,29 @@ func (g *GPURenderer) renderCellsShaped(r *Renderer, tw, th int) [][]cell {
 			bx := cx * 2
 			by := cy * 3
 
+			// Interior 2×3 block: always in bounds (pixel buffer = termW*2 × termH*3)
+			off00 := by*stride + bx*4
+			off10 := off00 + 4
+			off01 := off00 + stride
+			off11 := off01 + 4
+			off02 := off01 + stride
+			off12 := off02 + 4
+
 			var sv ShapeVec
-			sv[0] = g.pixelBrightness(bx, by)
-			sv[1] = g.pixelBrightness(bx+1, by)
-			sv[2] = g.pixelBrightness(bx, by+1)
-			sv[3] = g.pixelBrightness(bx+1, by+1)
-			sv[4] = g.pixelBrightness(bx, by+2)
-			sv[5] = g.pixelBrightness(bx+1, by+2)
+			sv[0] = float64(pixels[off00+3]) * inv255
+			sv[1] = float64(pixels[off10+3]) * inv255
+			sv[2] = float64(pixels[off01+3]) * inv255
+			sv[3] = float64(pixels[off11+3]) * inv255
+			sv[4] = float64(pixels[off02+3]) * inv255
+			sv[5] = float64(pixels[off12+3]) * inv255
 
-			avgBright := 0.0
-			for i := 0; i < 6; i++ {
-				avgBright += sv[i]
-			}
-			avgBright /= 6
-
-			if avgBright < 0.01 {
+			avgBright := (sv[0] + sv[1] + sv[2] + sv[3] + sv[4] + sv[5])
+			if avgBright < 0.06 { // 0.01 * 6
 				line[cx] = cell{ch: ' '}
 				continue
 			}
 
+			// External boundary samples (need bounds checks for edge cells)
 			var ext ShapeVec
 			ext[0] = g.pixelBrightness(bx-1, by-1)
 			ext[1] = g.pixelBrightness(bx+2, by-1)
@@ -328,25 +338,23 @@ func (g *GPURenderer) renderCellsShaped(r *Renderer, tw, th int) [][]cell {
 			ext[4] = g.pixelBrightness(bx-1, by+3)
 			ext[5] = g.pixelBrightness(bx+2, by+3)
 
-			sv = DirectionalContrast(sv, ext, r.Contrast)
-			sv = EnhanceContrast(sv, r.Contrast)
+			sv = DirectionalContrast(sv, ext, contrast)
+			sv = EnhanceContrast(sv, contrast)
 			ch := st.Match(sv)
 
-			var colR, colG, colB float64
-			for _, dy := range []int{0, 1, 2} {
-				for _, dx := range []int{0, 1} {
-					px := bx + dx
-					py := by + dy
-					if px >= 0 && px < g.pixW && py >= 0 && py < g.pixH {
-						off := (py*g.pixW + px) * 4
-						colR += float64(g.pixels[off])
-						colG += float64(g.pixels[off+1])
-						colB += float64(g.pixels[off+2])
-					}
-				}
-			}
+			// Average color from the 6 interior pixels (already bounds-safe)
+			colR := float64(pixels[off00]) + float64(pixels[off10]) +
+				float64(pixels[off01]) + float64(pixels[off11]) +
+				float64(pixels[off02]) + float64(pixels[off12])
+			colG := float64(pixels[off00+1]) + float64(pixels[off10+1]) +
+				float64(pixels[off01+1]) + float64(pixels[off11+1]) +
+				float64(pixels[off02+1]) + float64(pixels[off12+1])
+			colB := float64(pixels[off00+2]) + float64(pixels[off10+2]) +
+				float64(pixels[off01+2]) + float64(pixels[off11+2]) +
+				float64(pixels[off02+2]) + float64(pixels[off12+2])
 
-			line[cx] = cell{ch: rune(ch), col: Vec3{colR / 6 / 255, colG / 6 / 255, colB / 6 / 255}}
+			const inv6x255 = 1.0 / (6 * 255)
+			line[cx] = cell{ch: rune(ch), col: Vec3{colR * inv6x255, colG * inv6x255, colB * inv6x255}}
 		}
 	}
 	return lines

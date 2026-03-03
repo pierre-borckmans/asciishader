@@ -114,20 +114,21 @@ var _ draw.Image = (*image.Gray)(nil)
 // EnhanceContrast applies global contrast enhancement to a shape vector.
 // Uses pow(v[i]/maxComp, exponent) * maxComp to sharpen differences.
 func EnhanceContrast(sv ShapeVec, exponent float64) ShapeVec {
-	maxComp := 0.0
-	for _, v := range sv {
-		if v > maxComp {
-			maxComp = v
+	maxComp := sv[0]
+	for i := 1; i < 6; i++ {
+		if sv[i] > maxComp {
+			maxComp = sv[i]
 		}
 	}
 	if maxComp < 1e-10 {
 		return sv
 	}
 
+	invMax := 1.0 / maxComp
 	var out ShapeVec
-	for i, v := range sv {
-		normalized := v / maxComp
-		out[i] = math.Pow(normalized, exponent) * maxComp
+	for i := 0; i < 6; i++ {
+		n := sv[i] * invMax
+		out[i] = math.Exp(exponent*math.Log(n)) * maxComp
 	}
 	return out
 }
@@ -138,11 +139,14 @@ func EnhanceContrast(sv ShapeVec, exponent float64) ShapeVec {
 func DirectionalContrast(sv ShapeVec, ext ShapeVec, exponent float64) ShapeVec {
 	var out ShapeVec
 	for i := 0; i < 6; i++ {
-		maxVal := math.Max(sv[i], ext[i])
+		maxVal := sv[i]
+		if ext[i] > maxVal {
+			maxVal = ext[i]
+		}
 		if maxVal < 1e-10 {
 			continue
 		}
-		out[i] = math.Pow(sv[i]/maxVal, exponent) * maxVal
+		out[i] = math.Exp(exponent*math.Log(sv[i]/maxVal)) * maxVal
 	}
 	return out
 }
@@ -154,11 +158,27 @@ func (st *ShapeTable) Match(sv ShapeVec) byte {
 	bestDist := math.MaxFloat64
 
 	for _, cs := range st.Chars {
-		dist := 0.0
-		for i := 0; i < 6; i++ {
-			d := sv[i] - cs.Vec[i]
-			dist += d * d
+		d0 := sv[0] - cs.Vec[0]
+		dist := d0 * d0
+		if dist >= bestDist {
+			continue
 		}
+		d1 := sv[1] - cs.Vec[1]
+		dist += d1 * d1
+		if dist >= bestDist {
+			continue
+		}
+		d2 := sv[2] - cs.Vec[2]
+		dist += d2 * d2
+		if dist >= bestDist {
+			continue
+		}
+		d3 := sv[3] - cs.Vec[3]
+		dist += d3 * d3
+		d4 := sv[4] - cs.Vec[4]
+		dist += d4 * d4
+		d5 := sv[5] - cs.Vec[5]
+		dist += d5 * d5
 		if dist < bestDist {
 			bestDist = dist
 			bestChar = cs.Char
