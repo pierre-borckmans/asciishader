@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"asciishader/tui/components"
+	"asciishader/pkg/chisel"
+	"asciishader/pkg/chisel/diagnostic"
 	gpupkg "asciishader/pkg/gpu"
 	"asciishader/pkg/shader"
 
@@ -23,6 +25,7 @@ type EditorTab struct {
 	ScrollView *components.ScrollableView
 	Status     string // status bar text
 	StatusErr  bool   // true if status is an error
+	ChiselMode bool   // true when editing .chisel code
 	width      int
 	height     int
 }
@@ -80,6 +83,13 @@ func (et *EditorTab) SetCode(code string) {
 	et.StatusErr = false
 }
 
+// SetChiselCode replaces the editor content with Chisel code.
+func (et *EditorTab) SetChiselCode(code string) {
+	et.ChiselMode = true
+	et.SetCode(code)
+	et.Status = "Ctrl+R: compile (Chisel)"
+}
+
 // Code returns the current editor content.
 func (et *EditorTab) Code() string {
 	return et.textarea.Value()
@@ -96,6 +106,7 @@ func (et *EditorTab) Blur() {
 }
 
 // Compile attempts to compile the current code using the GPU renderer.
+// If ChiselMode is true, the code is first compiled from Chisel to GLSL.
 func (et *EditorTab) Compile(gpu *gpupkg.GPURenderer) {
 	if gpu == nil {
 		et.Status = "No GPU renderer"
@@ -104,6 +115,48 @@ func (et *EditorTab) Compile(gpu *gpupkg.GPURenderer) {
 	}
 
 	code := et.textarea.Value()
+
+	if et.ChiselMode {
+		et.compileChisel(gpu, code)
+	} else {
+		et.compileGLSL(gpu, code)
+	}
+}
+
+func (et *EditorTab) compileChisel(gpu *gpupkg.GPURenderer, code string) {
+	glsl, diags := chisel.Compile(code)
+
+	// Check for Chisel compilation errors
+	var errors []diagnostic.Diagnostic
+	for _, d := range diags {
+		if d.Severity == diagnostic.Error {
+			errors = append(errors, d)
+		}
+	}
+	if len(errors) > 0 {
+		// Show the first error in the status bar
+		d := errors[0]
+		loc := ""
+		if d.Span.Start.Line > 0 {
+			loc = fmt.Sprintf(":%d:%d", d.Span.Start.Line, d.Span.Start.Col)
+		}
+		et.Status = fmt.Sprintf("Chisel%s: %s", loc, d.Message)
+		et.StatusErr = true
+		return
+	}
+
+	// Chisel compiled OK — now compile the GLSL
+	err := gpu.CompileUserCode(glsl)
+	if err != nil {
+		et.Status = fmt.Sprintf("GLSL: %s", err.Error())
+		et.StatusErr = true
+	} else {
+		et.Status = "Chisel → GLSL ✓"
+		et.StatusErr = false
+	}
+}
+
+func (et *EditorTab) compileGLSL(gpu *gpupkg.GPURenderer, code string) {
 	err := gpu.CompileUserCode(code)
 	if err != nil {
 		errMsg := err.Error()

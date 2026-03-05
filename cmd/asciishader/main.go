@@ -863,23 +863,33 @@ func (m *model) switchView(mode ViewMode) {
 	}
 }
 
-// syncSceneGLSL populates the editor with scene GLSL if available.
+// syncSceneGLSL populates the editor with scene GLSL or Chisel code if available.
 func (m *model) syncSceneGLSL() {
-	if m.scene >= 0 && m.scene < len(scene.Scenes) {
-		glsl := scene.Scenes[m.scene].GLSL
-		if glsl != "" {
-			m.editor.SetCode(glsl)
-			if m.gpu != nil {
-				// Compile directly from the source, not via textarea
-				// (textarea may not be initialized yet at startup).
-				err := m.gpu.CompileUserCode(glsl)
-				if err != nil {
-					m.editor.Status = fmt.Sprintf("Error: %s", err.Error())
-					m.editor.StatusErr = true
-				} else {
-					m.editor.Status = "Compiled OK"
-					m.editor.StatusErr = false
-				}
+	if m.scene < 0 || m.scene >= len(scene.Scenes) {
+		return
+	}
+	s := scene.Scenes[m.scene]
+
+	// Prefer Chisel source if available
+	if s.Chisel != "" {
+		m.editor.SetChiselCode(s.Chisel)
+		if m.gpu != nil {
+			m.editor.Compile(m.gpu)
+		}
+		return
+	}
+
+	if s.GLSL != "" {
+		m.editor.ChiselMode = false
+		m.editor.SetCode(s.GLSL)
+		if m.gpu != nil {
+			err := m.gpu.CompileUserCode(s.GLSL)
+			if err != nil {
+				m.editor.Status = fmt.Sprintf("Error: %s", err.Error())
+				m.editor.StatusErr = true
+			} else {
+				m.editor.Status = "Compiled OK"
+				m.editor.StatusErr = false
 			}
 		}
 	}

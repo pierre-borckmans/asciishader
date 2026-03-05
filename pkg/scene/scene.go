@@ -1,7 +1,6 @@
 package scene
 
 import (
-	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -15,10 +14,11 @@ const maxDist = 50.0
 
 // Scene is a distance function + description
 type Scene struct {
-	Name  string
-	SDF   func(p core.Vec3, time float64) float64
-	Color func(p core.Vec3, time float64) core.Vec3 // material color at world point (RGB 0-1), nil = white
-	GLSL  string                          // optional GLSL code for GPU editor (sceneSDF + sceneColor)
+	Name   string
+	SDF    func(p core.Vec3, time float64) float64
+	Color  func(p core.Vec3, time float64) core.Vec3 // material color at world point (RGB 0-1), nil = white
+	GLSL   string                          // optional GLSL code for GPU editor (sceneSDF + sceneColor)
+	Chisel string                          // optional Chisel source (compiled to GLSL)
 }
 
 var Scenes = []Scene{
@@ -821,44 +821,51 @@ func LoadShaderFiles() {
 		return
 	}
 	dir := filepath.Dir(exePath)
-	pattern := filepath.Join(dir, "shaders", "*.glsl")
 
-	// Also try current working directory
-	matches, err := filepath.Glob(pattern)
-	if err != nil || len(matches) == 0 {
-		cwdPattern := filepath.Join("shaders", "*.glsl")
-		matches, err = filepath.Glob(cwdPattern)
+	// Load .glsl and .chisel files from shaders/ directory
+	for _, ext := range []string{"*.glsl", "*.chisel"} {
+		pattern := filepath.Join(dir, "shaders", ext)
+		matches, err := filepath.Glob(pattern)
 		if err != nil || len(matches) == 0 {
-			return
+			cwdPattern := filepath.Join("shaders", ext)
+			matches, _ = filepath.Glob(cwdPattern)
 		}
-	}
 
-	for _, path := range matches {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: cannot read %s: %v\n", path, err)
-			continue
-		}
-		content := string(data)
-		name := ShaderFileName(path, content)
-
-		// Try to match an existing scene by name
-		found := false
-		for i := range Scenes {
-			if Scenes[i].Name == name {
-				Scenes[i].GLSL = content
-				found = true
-				break
+		for _, path := range matches {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				continue
 			}
-		}
-		if !found {
-			// New GPU-only scene with CPU fallback
-			Scenes = append(Scenes, Scene{
-				Name:  name,
-				SDF:   scenePlasma,
-				Color: colorPlasma,
-				GLSL:  content,
-			})
+			content := string(data)
+			name := ShaderFileName(path, content)
+			isChisel := strings.HasSuffix(path, ".chisel")
+
+			// Try to match an existing scene by name
+			found := false
+			for i := range Scenes {
+				if Scenes[i].Name == name {
+					if isChisel {
+						Scenes[i].Chisel = content
+					} else {
+						Scenes[i].GLSL = content
+					}
+					found = true
+					break
+				}
+			}
+			if !found {
+				s := Scene{
+					Name:  name,
+					SDF:   scenePlasma,
+					Color: colorPlasma,
+				}
+				if isChisel {
+					s.Chisel = content
+				} else {
+					s.GLSL = content
+				}
+				Scenes = append(Scenes, s)
+			}
 		}
 	}
 }

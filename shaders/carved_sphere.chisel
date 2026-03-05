@@ -1,0 +1,4 @@
+// Scene: Carved Sphere
+sphere(2)
+- cylinder(0.5, 6).orient(x)
+- cylinder(0.5, 6).orient(z)
