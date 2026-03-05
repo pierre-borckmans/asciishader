@@ -1,13 +1,12 @@
-package main
+package controls
 
 import (
 	"fmt"
 	"strconv"
 
-	"asciishader/components"
-	"asciishader/core"
-	"asciishader/render"
-	"asciishader/scene"
+	"asciishader/tui/components"
+	"asciishader/pkg/core"
+	"asciishader/pkg/render"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -77,7 +76,7 @@ func (ct *ControlsTab) SyncToRenderer(r *render.Renderer) {
 }
 
 // HandleKey processes a key press. Returns true if consumed.
-func (ct *ControlsTab) HandleKey(key string, m *model) bool {
+func (ct *ControlsTab) HandleKey(key string, m AppState) bool {
 	switch key {
 	case "up", "k":
 		ct.focus--
@@ -99,26 +98,26 @@ func (ct *ControlsTab) HandleKey(key string, m *model) bool {
 	return false
 }
 
-func (ct *ControlsTab) adjustValue(dir int, m *model) bool {
+func (ct *ControlsTab) adjustValue(dir int, m AppState) bool {
 	switch ct.focus {
 	case ctrlScene:
 		if dir > 0 {
-			m.scene = (m.scene + 1) % len(scene.Scenes)
+			m.SetScene((m.GetScene() + 1) % m.NumScenes())
 		} else {
-			m.scene = (m.scene - 1 + len(scene.Scenes)) % len(scene.Scenes)
+			m.SetScene((m.GetScene() - 1 + m.NumScenes()) % m.NumScenes())
 		}
-		m.time = 0
+		m.SetTime(0)
 		return true
 	case ctrlGPU:
-		if m.gpu != nil {
-			m.gpuMode = !m.gpuMode
+		if m.GetGPU() != nil {
+			m.SetGPUMode(!m.IsGPUMode())
 		}
 		return true
 	case ctrlBlocks:
 		if dir > 0 {
-			m.renderer.RenderMode = (m.renderer.RenderMode + 1) % core.RenderModeCount
+			m.GetRenderer().RenderMode = (m.GetRenderer().RenderMode + 1) % core.RenderModeCount
 		} else {
-			m.renderer.RenderMode = (m.renderer.RenderMode + core.RenderModeCount - 1) % core.RenderModeCount
+			m.GetRenderer().RenderMode = (m.GetRenderer().RenderMode + core.RenderModeCount - 1) % core.RenderModeCount
 		}
 		return true
 	case ctrlSpecPower:
@@ -128,7 +127,7 @@ func (ct *ControlsTab) adjustValue(dir int, m *model) bool {
 		} else {
 			s.Value = core.Clamp(s.Value/1.5, s.Min, s.Max)
 		}
-		ct.SyncToRenderer(m.renderer)
+		ct.SyncToRenderer(m.GetRenderer())
 		return true
 	default:
 		if ct.focus >= 0 && ct.focus < len(ct.sliders) {
@@ -138,7 +137,7 @@ func (ct *ControlsTab) adjustValue(dir int, m *model) bool {
 			} else {
 				s.Decrease()
 			}
-			ct.SyncToRenderer(m.renderer)
+			ct.SyncToRenderer(m.GetRenderer())
 			return true
 		}
 	}
@@ -157,7 +156,7 @@ func (ct *ControlsTab) zoneIDs() []string {
 
 // HandleMouse processes a mouse event for the controls panel.
 // Returns true if handled.
-func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m *model) bool {
+func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m AppState) bool {
 	// Delegate to sliders first (they own drag/hover state)
 	for i, s := range ct.sliders {
 		zi := zone.Get(ct.zoned.ZoneID("slider-" + strconv.Itoa(i)))
@@ -166,7 +165,7 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m *model) bool {
 		}
 		if s.IsDragging() {
 			if s.HandleMouse(msg) {
-				ct.SyncToRenderer(m.renderer)
+				ct.SyncToRenderer(m.GetRenderer())
 				return true
 			}
 		}
@@ -176,7 +175,7 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m *model) bool {
 				if msg.Action == tea.MouseActionPress {
 					ct.focus = i
 				}
-				ct.SyncToRenderer(m.renderer)
+				ct.SyncToRenderer(m.GetRenderer())
 				return true
 			}
 		} else if msg.Action == tea.MouseActionMotion {
@@ -206,12 +205,12 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m *model) bool {
 		if !zi.IsZero() {
 			mid := (zi.StartX + zi.EndX) / 2
 			if msg.X < mid {
-				m.scene = (m.scene - 1 + len(scene.Scenes)) % len(scene.Scenes)
+				m.SetScene((m.GetScene() - 1 + m.NumScenes()) % m.NumScenes())
 			} else {
-				m.scene = (m.scene + 1) % len(scene.Scenes)
+				m.SetScene((m.GetScene() + 1) % m.NumScenes())
 			}
-			m.time = 0
-			m.syncSceneGLSL()
+			m.SetTime(0)
+			m.SyncSceneGLSL()
 		}
 		return true
 	}
@@ -219,8 +218,8 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m *model) bool {
 	// GPU toggle
 	if clicked == "gpu" {
 		ct.focus = ctrlGPU
-		if m.gpu != nil {
-			m.gpuMode = !m.gpuMode
+		if m.GetGPU() != nil {
+			m.SetGPUMode(!m.IsGPUMode())
 		}
 		return true
 	}
@@ -228,7 +227,7 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m *model) bool {
 	// Render mode cycle
 	if clicked == "blocks" {
 		ct.focus = ctrlBlocks
-		m.renderer.RenderMode = (m.renderer.RenderMode + 1) % core.RenderModeCount
+		m.GetRenderer().RenderMode = (m.GetRenderer().RenderMode + 1) % core.RenderModeCount
 		return true
 	}
 
@@ -246,7 +245,7 @@ func (ct *ControlsTab) IsDragging() bool {
 }
 
 // Render returns the controls tab content as a string.
-func (ct *ControlsTab) Render(width int, m *model) string {
+func (ct *ControlsTab) Render(width int, m AppState) string {
 	ct.renderWidth = width
 	var lines string
 
@@ -273,7 +272,7 @@ func (ct *ControlsTab) Render(width int, m *model) string {
 	lines += dimStyle.Render(pad(" ───────────────────────────", width)) + "\n"
 
 	// Scene selector — wrapped in zone
-	sceneStr := fmt.Sprintf(" < %s >", scene.Scenes[m.scene].Name)
+	sceneStr := fmt.Sprintf(" < %s >", m.SceneName(m.GetScene()))
 	sceneLine := pad(sceneStr, width)
 	if ct.focus == ctrlScene {
 		style := lipgloss.NewStyle().
@@ -293,7 +292,7 @@ func (ct *ControlsTab) Render(width int, m *model) string {
 
 	// GPU/CPU toggle — wrapped in zone
 	gpuLabel := " CPU"
-	if m.gpuMode && m.gpu != nil {
+	if m.IsGPUMode() && m.GetGPU() != nil {
 		gpuLabel = " GPU"
 	}
 	gpuLine := pad(gpuLabel, width)
@@ -311,7 +310,7 @@ func (ct *ControlsTab) Render(width int, m *model) string {
 
 	// Render mode — wrapped in zone
 	blocksLabel := " Shapes"
-	switch m.renderer.RenderMode {
+	switch m.GetRenderer().RenderMode {
 	case core.RenderDual:
 		blocksLabel = " Dual"
 	case core.RenderBlocks:

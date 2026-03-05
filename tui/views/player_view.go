@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"asciishader/clip"
-	"asciishader/components"
+	"asciishader/pkg/clip"
+	"asciishader/tui/components"
 
 	"github.com/charmbracelet/lipgloss"
 )

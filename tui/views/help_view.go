@@ -3,7 +3,7 @@ package views
 import (
 	"strings"
 
-	"asciishader/components"
+	"asciishader/tui/components"
 
 	"github.com/charmbracelet/lipgloss"
 )

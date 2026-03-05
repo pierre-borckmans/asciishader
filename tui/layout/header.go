@@ -3,7 +3,7 @@ package layout
 import (
 	"strings"
 
-	"asciishader/styles"
+	"asciishader/tui/styles"
 
 	"github.com/charmbracelet/lipgloss"
 )

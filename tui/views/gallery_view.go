@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"asciishader/components"
+	"asciishader/tui/components"
 
 	"github.com/charmbracelet/lipgloss"
 )

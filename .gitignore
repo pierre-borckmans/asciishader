@@ -1,3 +1,4 @@
-asciishader
+./asciishader
 cpu.prof
 *.asciirec
+.idea/

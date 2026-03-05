@@ -3,7 +3,7 @@ package sdf
 import (
 	"math"
 
-	"asciishader/core"
+	"asciishader/pkg/core"
 )
 
 // --- SDF Primitives ---

@@ -9,15 +9,18 @@ import (
 	"strings"
 	"time"
 
-	"asciishader/clip"
-	"asciishader/components"
-	"asciishader/core"
-	gpupkg "asciishader/gpu"
-	"asciishader/layout"
-	"asciishader/render"
-	"asciishader/scene"
-	"asciishader/shape"
-	"asciishader/views"
+	"asciishader/pkg/clip"
+	"asciishader/tui/components"
+	"asciishader/tui/controls"
+	"asciishader/tui/editor"
+	"asciishader/pkg/recorder"
+	"asciishader/pkg/core"
+	gpupkg "asciishader/pkg/gpu"
+	"asciishader/tui/layout"
+	"asciishader/pkg/render"
+	"asciishader/pkg/scene"
+	"asciishader/pkg/shape"
+	"asciishader/tui/views"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -71,8 +74,8 @@ type model struct {
 	sidebar     *layout.Sidebar
 	rightPanel  *layout.RightPanel
 	bottomPanel *layout.BottomPanel
-	controls    *ControlsTab
-	editor      *EditorTab
+	controls    *controls.ControlsTab
+	editor      *editor.EditorTab
 	focus       FocusZone
 
 	// View switching
@@ -82,9 +85,9 @@ type model struct {
 	playerView *views.PlayerView
 
 	// Recording
-	recorder       *Recorder
-	recState       RecordingState
-	regionSelector *RegionSelector
+	recorder       *recorder.Recorder
+	recState       recorder.RecordingState
+	regionSelector *recorder.RegionSelector
 	recMessage     string    // transient status message (e.g. "Saved clip.asciirec")
 	recMessageTime time.Time // when message was set (clears after 3s)
 
@@ -132,8 +135,8 @@ func initialModel() model {
 		sidebar:     sb,
 		rightPanel:  rp,
 		bottomPanel: bp,
-		controls:    NewControlsTab(),
-		editor:      NewEditorTab(),
+		controls:    controls.NewControlsTab(),
+		editor:      editor.NewEditorTab(),
 		focus:       FocusViewport,
 		viewMode:    ViewShader,
 		gallery:     views.NewGalleryView(),
@@ -277,12 +280,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Recording: capture keyframe during live recording
-		if m.recState == RecordLive && m.recorder != nil {
+		if m.recState == recorder.RecordLive && m.recorder != nil {
 			m.recorder.CaptureKeyframe(&m)
 		}
 
 		// Recording: bake step (one frame per tick)
-		if m.recState == RecordBaking && m.recorder != nil {
+		if m.recState == recorder.RecordBaking && m.recorder != nil {
 			// Save current renderer state
 			savedW, savedH := m.renderer.Width, m.renderer.Height
 			savedTime := m.renderer.Time
@@ -315,7 +318,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.recMessage = fmt.Sprintf("Saved %s", m.recorder.OutputPath)
 				}
 				m.recMessageTime = time.Now()
-				m.recState = RecordDone
+				m.recState = recorder.RecordDone
 			}
 		}
 
@@ -427,14 +430,14 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		middleH := m.height - hh - footerHeight()
 		bpY := hh + middleH - m.bottomPanel.Height() + 2 // +2 for separator + title row
 		bpX := sidebarWidth + 2 + 1                       // sidebar + left gap + left padding
-		m.editor.scrollView.SetPosition(bpX, bpY)
-		if m.editor.scrollView.HandleMouse(msg) {
+		m.editor.ScrollView.SetPosition(bpX, bpY)
+		if m.editor.ScrollView.HandleMouse(msg) {
 			return m, nil
 		}
 	}
 
 	// Region selection mouse handling — only consume if interacting with the region
-	if m.recState == RecordSelecting && m.regionSelector != nil {
+	if m.recState == recorder.RecordSelecting && m.regionSelector != nil {
 		viewportLeft := sidebarWidth + 2
 		vpX := msg.X - viewportLeft
 		vpY := msg.Y - hh
@@ -636,20 +639,20 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 	// Region selection mode keys
-	if m.recState == RecordSelecting && m.regionSelector != nil {
+	if m.recState == recorder.RecordSelecting && m.regionSelector != nil {
 		switch key {
 		case "enter":
 			// Confirm selection, start recording
 			rs := m.regionSelector
-			scales := DefaultScales(rs.W, rs.H)
-			m.recorder = NewRecorder(rs.X, rs.Y, rs.W, rs.H, scales)
+			scales := recorder.DefaultScales(rs.W, rs.H)
+			m.recorder = recorder.NewRecorder(rs.X, rs.Y, rs.W, rs.H, scales)
 			m.recorder.StartLive()
-			m.recState = RecordLive
+			m.recState = recorder.RecordLive
 			rs.Recording = true
 			return m, nil
 		case "esc":
 			// Cancel selection
-			m.recState = RecordIdle
+			m.recState = recorder.RecordIdle
 			m.regionSelector = nil
 			return m, nil
 		case "1":
@@ -672,15 +675,15 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "o":
 		switch m.recState {
-		case RecordIdle, RecordDone:
+		case recorder.RecordIdle, recorder.RecordDone:
 			// Enter region selection
-			m.regionSelector = NewRegionSelector(m.contentWidth(), m.viewportHeight())
-			m.recState = RecordSelecting
+			m.regionSelector = recorder.NewRegionSelector(m.contentWidth(), m.viewportHeight())
+			m.recState = recorder.RecordSelecting
 			m.recMessage = ""
-		case RecordLive:
+		case recorder.RecordLive:
 			// Stop recording, start bake
 			m.recorder.StartBake()
-			m.recState = RecordBaking
+			m.recState = recorder.RecordBaking
 			m.regionSelector = nil
 		}
 		return m, nil
@@ -871,16 +874,33 @@ func (m *model) syncSceneGLSL() {
 				// (textarea may not be initialized yet at startup).
 				err := m.gpu.CompileUserCode(glsl)
 				if err != nil {
-					m.editor.status = fmt.Sprintf("Error: %s", err.Error())
-					m.editor.statusErr = true
+					m.editor.Status = fmt.Sprintf("Error: %s", err.Error())
+					m.editor.StatusErr = true
 				} else {
-					m.editor.status = "Compiled OK"
-					m.editor.statusErr = false
+					m.editor.Status = "Compiled OK"
+					m.editor.StatusErr = false
 				}
 			}
 		}
 	}
 }
+
+// AppState interface methods for controls and recorder packages.
+func (m *model) GetRenderer() *render.Renderer     { return m.renderer }
+func (m *model) GetGPU() *gpupkg.GPURenderer        { return m.gpu }
+func (m *model) IsGPUMode() bool                     { return m.gpuMode }
+func (m *model) SetGPUMode(v bool)                   { m.gpuMode = v }
+func (m *model) GetScene() int                       { return m.scene }
+func (m *model) SetScene(v int)                      { m.scene = v }
+func (m *model) NumScenes() int                      { return len(scene.Scenes) }
+func (m *model) SceneName(i int) string              { return scene.Scenes[i].Name }
+func (m *model) GetTime() float64                    { return m.time }
+func (m *model) SetTime(v float64)                   { m.time = v }
+func (m *model) SyncSceneGLSL()                      { m.syncSceneGLSL() }
+func (m *model) GetCamAngleX() float64               { return m.camAngleX }
+func (m *model) GetCamAngleY() float64               { return m.camAngleY }
+func (m *model) GetCamDist() float64                 { return m.camDist }
+func (m *model) GetCamTarget() core.Vec3             { return m.camTarget }
 
 // resizeViewport updates the renderer dimensions based on current layout.
 func (m *model) resizeViewport() {
@@ -930,14 +950,14 @@ func (m model) View() string {
 		recStr := ""
 		recStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6600")).Bold(true)
 		switch m.recState {
-		case RecordSelecting:
+		case recorder.RecordSelecting:
 			recStr = " | " + recStyle.Render("SELECT REGION")
-		case RecordLive:
+		case recorder.RecordLive:
 			if m.recorder != nil {
 				dur := m.recorder.RecordingDuration()
 				recStr = " | " + recStyle.Render(fmt.Sprintf("● REC %.1fs", dur.Seconds()))
 			}
-		case RecordBaking:
+		case recorder.RecordBaking:
 			if m.recorder != nil {
 				cur, total := m.recorder.BakeProgress()
 				pct := 0
@@ -946,7 +966,7 @@ func (m model) View() string {
 				}
 				recStr = " | " + recStyle.Render(fmt.Sprintf("Baking %d%%", pct))
 			}
-		case RecordDone:
+		case recorder.RecordDone:
 			if m.recMessage != "" && time.Since(m.recMessageTime) < 3*time.Second {
 				recStr = " | " + recStyle.Render("✓ "+m.recMessage)
 			}
@@ -1068,8 +1088,8 @@ func (m model) View() string {
 		}
 
 		// Region selection / recording overlay
-		if m.regionSelector != nil && (m.recState == RecordSelecting || m.recState == RecordLive) {
-			if m.recState == RecordLive && m.recorder != nil {
+		if m.regionSelector != nil && (m.recState == recorder.RecordSelecting || m.recState == recorder.RecordLive) {
+			if m.recState == recorder.RecordLive && m.recorder != nil {
 				dur := m.recorder.RecordingDuration()
 				m.regionSelector.RecLabel = fmt.Sprintf("● REC %.1fs", dur.Seconds())
 			}

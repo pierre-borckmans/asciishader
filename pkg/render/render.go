@@ -6,8 +6,8 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"asciishader/core"
-	"asciishader/shape"
+	"asciishader/pkg/core"
+	"asciishader/pkg/shape"
 )
 
 const (

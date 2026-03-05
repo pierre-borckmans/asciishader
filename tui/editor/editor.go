@@ -1,12 +1,12 @@
-package main
+package editor
 
 import (
 	"fmt"
 	"strings"
 
-	"asciishader/components"
-	gpupkg "asciishader/gpu"
-	"asciishader/shader"
+	"asciishader/tui/components"
+	gpupkg "asciishader/pkg/gpu"
+	"asciishader/pkg/shader"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
@@ -20,9 +20,9 @@ import (
 // truncation.
 type EditorTab struct {
 	textarea   textarea.Model
-	scrollView *components.ScrollableView
-	status     string // status bar text
-	statusErr  bool   // true if status is an error
+	ScrollView *components.ScrollableView
+	Status     string // status bar text
+	StatusErr  bool   // true if status is an error
 	width      int
 	height     int
 }
@@ -44,8 +44,8 @@ func NewEditorTab() *EditorTab {
 
 	return &EditorTab{
 		textarea:   ta,
-		scrollView: sv,
-		status:     "Ctrl+R: compile",
+		ScrollView: sv,
+		Status:     "Ctrl+R: compile",
 	}
 }
 
@@ -61,7 +61,7 @@ func (et *EditorTab) SetSize(width, height int) {
 	// Textarea gets full content height (no internal scrolling)
 	et.syncTextareaHeight()
 	// ScrollableView clips to visible area
-	et.scrollView.SetSize(width, visibleHeight)
+	et.ScrollView.SetSize(width, visibleHeight)
 }
 
 // syncTextareaHeight sets the textarea height to match its content.
@@ -76,8 +76,8 @@ func (et *EditorTab) syncTextareaHeight() {
 func (et *EditorTab) SetCode(code string) {
 	et.textarea.SetValue(code)
 	et.syncTextareaHeight()
-	et.status = "Ctrl+R: compile"
-	et.statusErr = false
+	et.Status = "Ctrl+R: compile"
+	et.StatusErr = false
 }
 
 // Code returns the current editor content.
@@ -98,8 +98,8 @@ func (et *EditorTab) Blur() {
 // Compile attempts to compile the current code using the GPU renderer.
 func (et *EditorTab) Compile(gpu *gpupkg.GPURenderer) {
 	if gpu == nil {
-		et.status = "No GPU renderer"
-		et.statusErr = true
+		et.Status = "No GPU renderer"
+		et.StatusErr = true
 		return
 	}
 
@@ -109,11 +109,11 @@ func (et *EditorTab) Compile(gpu *gpupkg.GPURenderer) {
 		errMsg := err.Error()
 		prefixLines := shader.PrefixLineCount(code)
 		errMsg = adjustErrorLineNumbers(errMsg, prefixLines)
-		et.status = fmt.Sprintf("Error: %s", errMsg)
-		et.statusErr = true
+		et.Status = fmt.Sprintf("Error: %s", errMsg)
+		et.StatusErr = true
 	} else {
-		et.status = "Compiled OK"
-		et.statusErr = false
+		et.Status = "Compiled OK"
+		et.StatusErr = false
 	}
 }
 
@@ -129,12 +129,12 @@ func (et *EditorTab) Update(msg tea.Msg) (bool, tea.Cmd) {
 	// Keep textarea height in sync with content (lines may have been added/removed)
 	et.syncTextareaHeight()
 	// Keep cursor visible in the scroll view (vertical + horizontal)
-	et.scrollView.EnsureLineVisible(et.textarea.Line())
+	et.ScrollView.EnsureLineVisible(et.textarea.Line())
 	lineInfo := et.textarea.LineInfo()
 	// Cursor visual column = line number gutter width + column offset
 	lineCount := len(strings.Split(et.textarea.Value(), "\n"))
 	gutterWidth := len(fmt.Sprintf(" %d ", lineCount)) + 1 // matches textarea's " N│ " format
-	et.scrollView.EnsureColumnVisible(gutterWidth + lineInfo.ColumnOffset)
+	et.ScrollView.EnsureColumnVisible(gutterWidth + lineInfo.ColumnOffset)
 	return true, cmd
 }
 
@@ -179,7 +179,7 @@ func (et *EditorTab) Render(width int) string {
 	trimmedView := strings.Join(rawLines, "\n")
 
 	// ScrollableView handles vertical scrolling + scrollbar + horizontal truncation.
-	scrolled := et.scrollView.RenderContent(trimmedView)
+	scrolled := et.ScrollView.RenderContent(trimmedView)
 	sb.WriteString(scrolled)
 	sb.WriteString("\n")
 
@@ -187,11 +187,11 @@ func (et *EditorTab) Render(width int) string {
 	statusStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("252")).
 		Background(lipgloss.Color("236"))
-	if et.statusErr {
+	if et.StatusErr {
 		statusStyle = statusStyle.Foreground(lipgloss.Color("196"))
 	}
 
-	statusLine := " " + et.status
+	statusLine := " " + et.Status
 	for len(statusLine) < width {
 		statusLine += " "
 	}

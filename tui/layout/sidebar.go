@@ -3,8 +3,8 @@ package layout
 import (
 	"strings"
 
-	"asciishader/components"
-	"asciishader/styles"
+	"asciishader/tui/components"
+	"asciishader/tui/styles"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

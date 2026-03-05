@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"asciishader/core"
-	"asciishader/sdf"
+	"asciishader/pkg/core"
+	"asciishader/pkg/sdf"
 )
 
 const maxDist = 50.0

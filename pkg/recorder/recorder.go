@@ -1,12 +1,12 @@
-package main
+package recorder
 
 import (
 	"fmt"
 	"math"
 	"time"
 
-	"asciishader/clip"
-	"asciishader/core"
+	"asciishader/pkg/clip"
+	"asciishader/pkg/core"
 )
 
 // RecordingState is the state machine for the recording system.
@@ -73,22 +73,22 @@ func DefaultScales(baseW, baseH int) []RecordScale {
 }
 
 // CaptureKeyframe snapshots the current model state as a keyframe.
-func (rec *Recorder) CaptureKeyframe(m *model) {
+func (rec *Recorder) CaptureKeyframe(m AppState) {
 	elapsed := time.Since(rec.StartTime)
 	kf := clip.Keyframe{
 		TimeMs:      uint32(elapsed.Milliseconds()),
-		ShaderTime:  float32(m.time),
-		CamAngleX:   float32(m.camAngleX),
-		CamAngleY:   float32(m.camAngleY),
-		CamDist:     float32(m.camDist),
-		CamTargetX:  float32(m.camTarget.X),
-		CamTargetY:  float32(m.camTarget.Y),
-		CamTargetZ:  float32(m.camTarget.Z),
-		Contrast:    float32(m.renderer.Contrast),
-		Ambient:     float32(m.renderer.Ambient),
-		SpecPower:   float32(m.renderer.SpecPower),
-		ShadowSteps: uint16(m.renderer.ShadowSteps),
-		AOSteps:     uint16(m.renderer.AOSteps),
+		ShaderTime:  float32(m.GetTime()),
+		CamAngleX:   float32(m.GetCamAngleX()),
+		CamAngleY:   float32(m.GetCamAngleY()),
+		CamDist:     float32(m.GetCamDist()),
+		CamTargetX:  float32(m.GetCamTarget().X),
+		CamTargetY:  float32(m.GetCamTarget().Y),
+		CamTargetZ:  float32(m.GetCamTarget().Z),
+		Contrast:    float32(m.GetRenderer().Contrast),
+		Ambient:     float32(m.GetRenderer().Ambient),
+		SpecPower:   float32(m.GetRenderer().SpecPower),
+		ShadowSteps: uint16(m.GetRenderer().ShadowSteps),
+		AOSteps:     uint16(m.GetRenderer().AOSteps),
 	}
 	rec.Keyframes = append(rec.Keyframes, kf)
 }
@@ -124,7 +124,7 @@ func (rec *Recorder) BakeDone() bool {
 
 // BakeStep renders one frame at the current scale. Must be called on the main
 // thread (GPU context). Returns true when bake is complete.
-func (rec *Recorder) BakeStep(m *model) bool {
+func (rec *Recorder) BakeStep(m AppState) bool {
 	if rec.BakeDone() {
 		return true
 	}
@@ -137,10 +137,10 @@ func (rec *Recorder) BakeStep(m *model) bool {
 
 	// Render at this scale's resolution
 	var cells [][]core.Cell
-	if m.gpuMode && m.gpu != nil {
-		cells = m.gpu.RenderToCells(m.renderer)
+	if m.IsGPUMode() && m.GetGPU() != nil {
+		cells = m.GetGPU().RenderToCells(m.GetRenderer())
 	} else {
-		cells = m.renderer.RenderCells()
+		cells = m.GetRenderer().RenderCells()
 	}
 
 	// Extract the region and convert to ClipCells
@@ -158,14 +158,14 @@ func (rec *Recorder) BakeStep(m *model) bool {
 }
 
 // applyKeyframe configures the renderer from a keyframe for baking.
-func (rec *Recorder) applyKeyframe(m *model, kf clip.Keyframe, w, h int) {
-	m.renderer.Resize(w, h)
-	m.renderer.Time = float64(kf.ShaderTime)
-	m.renderer.Contrast = float64(kf.Contrast)
-	m.renderer.Ambient = float64(kf.Ambient)
-	m.renderer.SpecPower = float64(kf.SpecPower)
-	m.renderer.ShadowSteps = int(kf.ShadowSteps)
-	m.renderer.AOSteps = int(kf.AOSteps)
+func (rec *Recorder) applyKeyframe(m AppState, kf clip.Keyframe, w, h int) {
+	m.GetRenderer().Resize(w, h)
+	m.GetRenderer().Time = float64(kf.ShaderTime)
+	m.GetRenderer().Contrast = float64(kf.Contrast)
+	m.GetRenderer().Ambient = float64(kf.Ambient)
+	m.GetRenderer().SpecPower = float64(kf.SpecPower)
+	m.GetRenderer().ShadowSteps = int(kf.ShadowSteps)
+	m.GetRenderer().AOSteps = int(kf.AOSteps)
 
 	// Camera
 	camAngleX := float64(kf.CamAngleX)
@@ -173,16 +173,16 @@ func (rec *Recorder) applyKeyframe(m *model, kf clip.Keyframe, w, h int) {
 	camDist := float64(kf.CamDist)
 	camTarget := core.Vec3{float64(kf.CamTargetX), float64(kf.CamTargetY), float64(kf.CamTargetZ)}
 
-	m.renderer.Camera.Pos = core.Vec3{
+	m.GetRenderer().Camera.Pos = core.Vec3{
 		camTarget.X + math.Sin(camAngleY)*math.Cos(camAngleX)*camDist,
 		camTarget.Y + math.Sin(camAngleX)*camDist,
 		camTarget.Z - math.Cos(camAngleY)*math.Cos(camAngleX)*camDist,
 	}
-	m.renderer.Camera.Target = camTarget
+	m.GetRenderer().Camera.Target = camTarget
 
 	// Animated light (same formula as main tick)
 	shaderTime := float64(kf.ShaderTime)
-	m.renderer.LightDir = core.V(
+	m.GetRenderer().LightDir = core.V(
 		math.Sin(shaderTime*0.5)*0.5,
 		0.8,
 		math.Cos(shaderTime*0.5)*0.5-0.5,
@@ -195,7 +195,7 @@ func (rec *Recorder) extractRegion(cells [][]core.Cell, w, h int) []clip.ClipCel
 	out := make([]clip.ClipCell, w*h)
 	for y := 0; y < h && y < len(cells); y++ {
 		for x := 0; x < w && x < len(cells[y]); x++ {
-			out[y*w+x] = CellToClipCell(cells[y][x])
+			out[y*w+x] = cellToClipCell(cells[y][x])
 		}
 	}
 	return out
@@ -253,4 +253,11 @@ func (rec *Recorder) Finalize() error {
 // RecordingDuration returns the elapsed time since recording started.
 func (rec *Recorder) RecordingDuration() time.Duration {
 	return time.Since(rec.StartTime)
+}
+
+func cellToClipCell(c core.Cell) clip.ClipCell {
+	return clip.ClipCell{
+		Ch:    byte(c.Ch),
+		Color: clip.RGB565Encode(c.Col.X, c.Col.Y, c.Col.Z),
+	}
 }

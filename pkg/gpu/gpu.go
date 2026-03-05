@@ -36,10 +36,10 @@ import (
 	"runtime"
 	"unsafe"
 
-	"asciishader/core"
-	"asciishader/render"
-	"asciishader/shader"
-	"asciishader/shape"
+	"asciishader/pkg/core"
+	"asciishader/pkg/render"
+	"asciishader/pkg/shader"
+	"asciishader/pkg/shape"
 
 	"github.com/go-gl/gl/v4.1-core/gl"
 )
