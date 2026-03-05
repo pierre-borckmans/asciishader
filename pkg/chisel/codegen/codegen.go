@@ -50,8 +50,8 @@ func Generate(prog *ast.Program) (string, []diagnostic.Diagnostic) {
 		emittedFn: make(map[string]bool),
 	}
 
-	// First pass: collect top-level assignments (variables & functions)
-	// and find the scene expression.
+	// First pass: collect top-level assignments (variables & functions),
+	// settings, and find the scene expression.
 	var sceneExpr ast.Expr
 	for _, stmt := range prog.Statements {
 		switch s := stmt.(type) {
@@ -65,6 +65,8 @@ func Generate(prog *ast.Program) (string, []diagnostic.Diagnostic) {
 			}
 		case *ast.ExprStmt:
 			sceneExpr = s.Expression
+		case *ast.SettingStmt:
+			g.processSetting(s)
 		}
 	}
 
@@ -89,8 +91,14 @@ func Generate(prog *ast.Program) (string, []diagnostic.Diagnostic) {
 	// Build the GLSL output.
 	var out strings.Builder
 
-	// Emit helper functions (smooth subtract, etc.) if needed.
+	// Emit raymarch #define overrides first.
+	g.writeDefines(&out)
+
+	// Emit helper functions (smooth subtract, noise, easing, etc.) if needed.
 	g.writeHelpers(&out)
+
+	// Emit settings as comments (camera, lighting, bg, post).
+	g.writeSettingComments(&out)
 
 	// Emit user function definitions.
 	out.WriteString(fnDefs.String())
@@ -170,6 +178,12 @@ type generator struct {
 
 	// colors tracks the color associated with each SDF variable for sceneColor generation.
 	colors []colorEntry
+
+	// defines tracks #define overrides for raymarch settings.
+	defines map[string]string
+
+	// settingComments collects comment lines for camera, light, bg, post settings.
+	settingComments []string
 }
 
 // freshVar returns a fresh temporary variable name like "d0", "d1", etc.
@@ -410,6 +424,11 @@ func (g *generator) emitScalarFuncCall(e *ast.FuncCall) string {
 		return fmt.Sprintf("%s(%s)", e.Name, strings.Join(args, ", "))
 	}
 
+	// Check for noise/easing/utility functions.
+	if result, ok := g.emitSpecialFuncCall(e); ok {
+		return result
+	}
+
 	// User-defined function call in scalar context: fn_name(p, args...)
 	if fn, ok := g.funcs[e.Name]; ok {
 		_ = fn
@@ -534,6 +553,11 @@ func (g *generator) emitFuncCall(e *ast.FuncCall) string {
 			args = append(args, g.emitScalarExpr(a.Value))
 		}
 		return fmt.Sprintf("%s(%s)", e.Name, strings.Join(args, ", "))
+	}
+
+	// Check for noise/easing/utility functions.
+	if result, ok := g.emitSpecialFuncCall(e); ok {
+		return result
 	}
 
 	g.addDiag(diagnostic.Error, fmt.Sprintf("undefined function %q", e.Name), e.NodeSpan())
@@ -1514,6 +1538,356 @@ func (g *generator) writeHelpers(out *strings.Builder) {
     return vec3(p.x*c - p.y*s, p.x*s + p.y*c, p.z);
 }
 `)
+	}
+
+	// --- Noise helpers (Task 5.2) ---
+
+	// chisel_hash and chisel_noise are emitted together when "noise" is needed.
+	if g.helpers["chisel_noise"] {
+		out.WriteString(`float chisel_hash(vec3 p) {
+    p = fract(p * 0.3183099 + vec3(0.1, 0.1, 0.1));
+    p *= 17.0;
+    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+float chisel_noise(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(chisel_hash(i+vec3(0,0,0)), chisel_hash(i+vec3(1,0,0)), f.x),
+                   mix(chisel_hash(i+vec3(0,1,0)), chisel_hash(i+vec3(1,1,0)), f.x), f.y),
+               mix(mix(chisel_hash(i+vec3(0,0,1)), chisel_hash(i+vec3(1,0,1)), f.x),
+                   mix(chisel_hash(i+vec3(0,1,1)), chisel_hash(i+vec3(1,1,1)), f.x), f.y), f.z);
+}
+`)
+	}
+
+	if g.helpers["chisel_fbm"] {
+		out.WriteString(`float chisel_fbm(vec3 p, int octaves) {
+    float v = 0.0, a = 0.5;
+    for (int i = 0; i < octaves; i++) {
+        v += a * chisel_noise(p);
+        p = p * 2.0 + vec3(100.0);
+        a *= 0.5;
+    }
+    return v;
+}
+`)
+	}
+
+	if g.helpers["chisel_voronoi"] {
+		out.WriteString(`float chisel_voronoi(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    float d = 1.0;
+    for (int x = -1; x <= 1; x++)
+    for (int y = -1; y <= 1; y++)
+    for (int z = -1; z <= 1; z++) {
+        vec3 n = vec3(x, y, z);
+        vec3 r = n + chisel_hash(i + n) - f;
+        d = min(d, dot(r, r));
+    }
+    return sqrt(d);
+}
+`)
+	}
+
+	// --- Easing helpers (Task 5.3) ---
+
+	if g.helpers["chisel_ease_in"] {
+		out.WriteString("float chisel_ease_in(float t) { return t * t; }\n")
+	}
+	if g.helpers["chisel_ease_out"] {
+		out.WriteString("float chisel_ease_out(float t) { return t * (2.0 - t); }\n")
+	}
+	if g.helpers["chisel_ease_in_out"] {
+		out.WriteString("float chisel_ease_in_out(float t) { return t < 0.5 ? 2.0*t*t : -1.0 + (4.0 - 2.0*t)*t; }\n")
+	}
+	if g.helpers["chisel_ease_cubic_in"] {
+		out.WriteString("float chisel_ease_cubic_in(float t) { return t * t * t; }\n")
+	}
+	if g.helpers["chisel_ease_cubic_out"] {
+		out.WriteString("float chisel_ease_cubic_out(float t) { float f = t - 1.0; return f * f * f + 1.0; }\n")
+	}
+	if g.helpers["chisel_ease_cubic_in_out"] {
+		out.WriteString("float chisel_ease_cubic_in_out(float t) { return t < 0.5 ? 4.0*t*t*t : 1.0 - pow(-2.0*t + 2.0, 3.0) / 2.0; }\n")
+	}
+	if g.helpers["chisel_ease_elastic"] {
+		out.WriteString("float chisel_ease_elastic(float t) { return t == 0.0 ? 0.0 : t == 1.0 ? 1.0 : -pow(2.0, 10.0*t - 10.0) * sin((t*10.0 - 10.75) * 2.094395102393195); }\n")
+	}
+	if g.helpers["chisel_ease_bounce"] {
+		out.WriteString(`float chisel_ease_bounce(float t) {
+    t = 1.0 - t;
+    if (t < 1.0/2.75) return 1.0 - 7.5625*t*t;
+    else if (t < 2.0/2.75) { t -= 1.5/2.75; return 1.0 - (7.5625*t*t + 0.75); }
+    else if (t < 2.5/2.75) { t -= 2.25/2.75; return 1.0 - (7.5625*t*t + 0.9375); }
+    else { t -= 2.625/2.75; return 1.0 - (7.5625*t*t + 0.984375); }
+}
+`)
+	}
+	if g.helpers["chisel_ease_back"] {
+		out.WriteString("float chisel_ease_back(float t) { float c1 = 1.70158; float c3 = c1 + 1.0; return c3*t*t*t - c1*t*t; }\n")
+	}
+	if g.helpers["chisel_ease_expo"] {
+		out.WriteString("float chisel_ease_expo(float t) { return t == 0.0 ? 0.0 : pow(2.0, 10.0*t - 10.0); }\n")
+	}
+
+	// --- Utility helpers (Task 5.3) ---
+
+	if g.helpers["chisel_remap"] {
+		out.WriteString("float chisel_remap(float v, float a, float b, float c, float d) { return c + (d - c) * (v - a) / (b - a); }\n")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Special function call emission (noise, easing, utility) — Tasks 5.2 & 5.3
+// ---------------------------------------------------------------------------
+
+// emitSpecialFuncCall checks if a FuncCall is a noise, easing, or utility
+// function and if so emits the appropriate GLSL code. Returns the GLSL
+// expression string and true, or ("", false) if the name is not recognized.
+func (g *generator) emitSpecialFuncCall(e *ast.FuncCall) (string, bool) {
+	switch e.Name {
+	// --- Noise functions (Task 5.2) ---
+	case "noise":
+		g.helpers["chisel_noise"] = true
+		var args []string
+		for _, a := range e.Args {
+			args = append(args, g.emitScalarExpr(a.Value))
+		}
+		return fmt.Sprintf("chisel_noise(%s)", strings.Join(args, ", ")), true
+
+	case "fbm":
+		g.helpers["chisel_noise"] = true
+		g.helpers["chisel_fbm"] = true
+		// First positional arg is the position; named arg "octaves" sets octave count.
+		octaves := "6" // default
+		var posArg string
+		for _, a := range e.Args {
+			if a.Name == "octaves" {
+				octaves = g.emitScalarExpr(a.Value)
+			} else if a.Name == "" && posArg == "" {
+				posArg = g.emitScalarExpr(a.Value)
+			}
+		}
+		if posArg == "" {
+			posArg = g.pointVar
+		}
+		return fmt.Sprintf("chisel_fbm(%s, %s)", posArg, octaves), true
+
+	case "voronoi":
+		g.helpers["chisel_noise"] = true
+		g.helpers["chisel_voronoi"] = true
+		var args []string
+		for _, a := range e.Args {
+			args = append(args, g.emitScalarExpr(a.Value))
+		}
+		return fmt.Sprintf("chisel_voronoi(%s)", strings.Join(args, ", ")), true
+
+	// --- Easing functions (Task 5.3) ---
+	case "ease_in":
+		g.helpers["chisel_ease_in"] = true
+		return fmt.Sprintf("chisel_ease_in(%s)", g.emitScalarExpr(e.Args[0].Value)), true
+	case "ease_out":
+		g.helpers["chisel_ease_out"] = true
+		return fmt.Sprintf("chisel_ease_out(%s)", g.emitScalarExpr(e.Args[0].Value)), true
+	case "ease_in_out":
+		g.helpers["chisel_ease_in_out"] = true
+		return fmt.Sprintf("chisel_ease_in_out(%s)", g.emitScalarExpr(e.Args[0].Value)), true
+	case "ease_cubic_in":
+		g.helpers["chisel_ease_cubic_in"] = true
+		return fmt.Sprintf("chisel_ease_cubic_in(%s)", g.emitScalarExpr(e.Args[0].Value)), true
+	case "ease_cubic_out":
+		g.helpers["chisel_ease_cubic_out"] = true
+		return fmt.Sprintf("chisel_ease_cubic_out(%s)", g.emitScalarExpr(e.Args[0].Value)), true
+	case "ease_cubic_in_out":
+		g.helpers["chisel_ease_cubic_in_out"] = true
+		return fmt.Sprintf("chisel_ease_cubic_in_out(%s)", g.emitScalarExpr(e.Args[0].Value)), true
+	case "ease_elastic":
+		g.helpers["chisel_ease_elastic"] = true
+		return fmt.Sprintf("chisel_ease_elastic(%s)", g.emitScalarExpr(e.Args[0].Value)), true
+	case "ease_bounce":
+		g.helpers["chisel_ease_bounce"] = true
+		return fmt.Sprintf("chisel_ease_bounce(%s)", g.emitScalarExpr(e.Args[0].Value)), true
+	case "ease_back":
+		g.helpers["chisel_ease_back"] = true
+		return fmt.Sprintf("chisel_ease_back(%s)", g.emitScalarExpr(e.Args[0].Value)), true
+	case "ease_expo":
+		g.helpers["chisel_ease_expo"] = true
+		return fmt.Sprintf("chisel_ease_expo(%s)", g.emitScalarExpr(e.Args[0].Value)), true
+
+	// --- Utility functions (Task 5.3) ---
+	case "pulse":
+		// pulse(t) → step(0.5, fract(t))
+		return fmt.Sprintf("step(0.5, fract(%s))", g.emitScalarExpr(e.Args[0].Value)), true
+	case "saw":
+		// saw(t) → fract(t)
+		return fmt.Sprintf("fract(%s)", g.emitScalarExpr(e.Args[0].Value)), true
+	case "tri":
+		// tri(t) → abs(fract(t) - 0.5) * 2.0
+		arg := g.emitScalarExpr(e.Args[0].Value)
+		return fmt.Sprintf("abs(fract(%s) - 0.5) * 2.0", arg), true
+	case "remap":
+		// remap(v, a, b, c, d) → chisel_remap(v, a, b, c, d)
+		g.helpers["chisel_remap"] = true
+		var args []string
+		for _, a := range e.Args {
+			args = append(args, g.emitScalarExpr(a.Value))
+		}
+		return fmt.Sprintf("chisel_remap(%s)", strings.Join(args, ", ")), true
+	case "saturate":
+		// saturate(v) → clamp(v, 0.0, 1.0)
+		return fmt.Sprintf("clamp(%s, 0.0, 1.0)", g.emitScalarExpr(e.Args[0].Value)), true
+	}
+
+	return "", false
+}
+
+// ---------------------------------------------------------------------------
+// Settings processing — Tasks 6.1, 6.2, 6.3, 6.4
+// ---------------------------------------------------------------------------
+
+// processSetting handles a SettingStmt by extracting metadata, defines, and
+// comments depending on the setting kind.
+func (g *generator) processSetting(s *ast.SettingStmt) {
+	switch s.Kind {
+	case "raymarch":
+		g.processRaymarchSetting(s)
+	case "camera":
+		g.processCameraSetting(s)
+	case "light":
+		g.processLightSetting(s)
+	case "bg":
+		g.processBgSetting(s)
+	case "post":
+		g.processPostSetting(s)
+	case "debug":
+		if mode, ok := s.Body.(string); ok {
+			g.settingComments = append(g.settingComments, fmt.Sprintf("// chisel:debug %s", mode))
+		}
+	case "mat":
+		// Material definitions are handled elsewhere; skip silently.
+	}
+}
+
+// processRaymarchSetting emits #define overrides (Task 6.3).
+func (g *generator) processRaymarchSetting(s *ast.SettingStmt) {
+	body, ok := s.Body.(map[string]interface{})
+	if !ok {
+		return
+	}
+	if g.defines == nil {
+		g.defines = make(map[string]string)
+	}
+	for key, val := range body {
+		switch key {
+		case "steps":
+			if numStr := g.settingValueStr(val); numStr != "" {
+				g.defines["MAX_STEPS"] = numStr
+			}
+		case "precision":
+			if numStr := g.settingValueStr(val); numStr != "" {
+				g.defines["SURF_DIST"] = numStr
+			}
+		case "max_dist":
+			if numStr := g.settingValueStr(val); numStr != "" {
+				g.defines["MAX_DIST"] = numStr
+			}
+		}
+	}
+}
+
+// processCameraSetting emits camera metadata as comments (Task 6.1).
+func (g *generator) processCameraSetting(s *ast.SettingStmt) {
+	switch body := s.Body.(type) {
+	case map[string]interface{}:
+		for key, val := range body {
+			if valStr := g.settingValueStr(val); valStr != "" {
+				g.settingComments = append(g.settingComments, fmt.Sprintf("// chisel:camera:%s %s", key, valStr))
+			}
+		}
+	default:
+		// camera as a single expression — emit comment.
+		g.settingComments = append(g.settingComments, "// chisel:camera settings present")
+	}
+}
+
+// processLightSetting emits light metadata as comments (Task 6.2).
+func (g *generator) processLightSetting(s *ast.SettingStmt) {
+	switch body := s.Body.(type) {
+	case map[string]interface{}:
+		for key, val := range body {
+			if valStr := g.settingValueStr(val); valStr != "" {
+				g.settingComments = append(g.settingComments, fmt.Sprintf("// chisel:light:%s %s", key, valStr))
+			} else {
+				g.settingComments = append(g.settingComments, fmt.Sprintf("// chisel:light:%s [block]", key))
+			}
+		}
+	default:
+		// light [x, y, z] — a vector expression.
+		g.settingComments = append(g.settingComments, "// chisel:light direction override")
+	}
+}
+
+// processBgSetting emits background metadata as comments (Task 6.1).
+func (g *generator) processBgSetting(s *ast.SettingStmt) {
+	switch s.Body.(type) {
+	case map[string]interface{}:
+		g.settingComments = append(g.settingComments, "// chisel:bg gradient settings present")
+	default:
+		g.settingComments = append(g.settingComments, "// chisel:bg color override")
+	}
+}
+
+// processPostSetting emits post-processing metadata as comments (Task 6.4).
+func (g *generator) processPostSetting(s *ast.SettingStmt) {
+	switch body := s.Body.(type) {
+	case map[string]interface{}:
+		for key, val := range body {
+			if valStr := g.settingValueStr(val); valStr != "" {
+				g.settingComments = append(g.settingComments, fmt.Sprintf("// chisel:post:%s %s", key, valStr))
+			} else {
+				g.settingComments = append(g.settingComments, fmt.Sprintf("// chisel:post:%s [block]", key))
+			}
+		}
+	default:
+		g.settingComments = append(g.settingComments, "// chisel:post settings present")
+	}
+}
+
+// settingValueStr converts a setting value (which may be an ast.Expr or a
+// nested map) to a string representation suitable for comments or defines.
+func (g *generator) settingValueStr(val interface{}) string {
+	switch v := val.(type) {
+	case ast.Expr:
+		// Use a temporary scalar emission.
+		return g.emitScalarExpr(v)
+	case map[string]interface{}:
+		return "" // nested block — can't inline
+	case string:
+		return v
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+// writeDefines emits #define directives for raymarch settings (Task 6.3).
+func (g *generator) writeDefines(out *strings.Builder) {
+	if g.defines == nil {
+		return
+	}
+	// Emit in a deterministic order.
+	for _, key := range []string{"MAX_STEPS", "SURF_DIST", "MAX_DIST"} {
+		if val, ok := g.defines[key]; ok {
+			fmt.Fprintf(out, "#define %s %s\n", key, val)
+		}
+	}
+}
+
+// writeSettingComments emits settings metadata as GLSL comments.
+func (g *generator) writeSettingComments(out *strings.Builder) {
+	for _, comment := range g.settingComments {
+		out.WriteString(comment)
+		out.WriteByte('\n')
 	}
 }
 

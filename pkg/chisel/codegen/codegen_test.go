@@ -552,3 +552,253 @@ func TestTime_E(t *testing.T) {
 	glsl := compile(t, "sphere.at(E, 0, 0)")
 	assertContains(t, glsl, "2.71828183", "E constant")
 }
+
+// ---------------------------------------------------------------------------
+// Task 5.2 — Noise Functions
+// ---------------------------------------------------------------------------
+
+func TestNoise_BasicNoise(t *testing.T) {
+	glsl := compile(t, "sphere.displace(noise(p * 5) * 0.1)")
+	assertContains(t, glsl, "chisel_noise", "noise function call")
+	assertContains(t, glsl, "chisel_hash", "hash helper emitted")
+	assertContains(t, glsl, "float chisel_noise(vec3 p)", "noise function definition")
+}
+
+func TestNoise_FBM(t *testing.T) {
+	glsl := compile(t, "sphere.displace(fbm(p, octaves: 4) * 0.1)")
+	assertContains(t, glsl, "chisel_fbm", "fbm function call")
+	assertContains(t, glsl, "chisel_noise", "noise helper emitted for fbm")
+	assertContains(t, glsl, "float chisel_fbm(vec3 p, int octaves)", "fbm function definition")
+	assertContains(t, glsl, "4", "octaves value")
+}
+
+func TestNoise_FBMDefaultOctaves(t *testing.T) {
+	glsl := compile(t, "sphere.displace(fbm(p) * 0.1)")
+	assertContains(t, glsl, "chisel_fbm", "fbm function call")
+	assertContains(t, glsl, "6", "default 6 octaves")
+}
+
+func TestNoise_Voronoi(t *testing.T) {
+	glsl := compile(t, "sphere.displace(voronoi(p * 3) * 0.1)")
+	assertContains(t, glsl, "chisel_voronoi", "voronoi function call")
+	assertContains(t, glsl, "chisel_hash", "hash helper emitted for voronoi")
+	assertContains(t, glsl, "float chisel_voronoi(vec3 p)", "voronoi function definition")
+}
+
+func TestNoise_NotEmittedWhenUnused(t *testing.T) {
+	glsl := compile(t, "sphere")
+	assertNotContains(t, glsl, "chisel_noise", "no noise when unused")
+	assertNotContains(t, glsl, "chisel_hash", "no hash when unused")
+	assertNotContains(t, glsl, "chisel_fbm", "no fbm when unused")
+	assertNotContains(t, glsl, "chisel_voronoi", "no voronoi when unused")
+}
+
+// ---------------------------------------------------------------------------
+// Task 5.3 — Easing Functions
+// ---------------------------------------------------------------------------
+
+func TestEasing_EaseIn(t *testing.T) {
+	glsl := compile(t, "sphere.at(0, ease_in(fract(t)), 0)")
+	assertContains(t, glsl, "chisel_ease_in", "ease_in function call")
+	assertContains(t, glsl, "float chisel_ease_in(float t)", "ease_in definition")
+}
+
+func TestEasing_EaseOut(t *testing.T) {
+	glsl := compile(t, "sphere.at(0, ease_out(fract(t)), 0)")
+	assertContains(t, glsl, "chisel_ease_out", "ease_out function call")
+	assertContains(t, glsl, "float chisel_ease_out(float t)", "ease_out definition")
+}
+
+func TestEasing_EaseInOut(t *testing.T) {
+	glsl := compile(t, "sphere.at(0, ease_in_out(fract(t)), 0)")
+	assertContains(t, glsl, "chisel_ease_in_out", "ease_in_out function call")
+}
+
+func TestEasing_CubicIn(t *testing.T) {
+	glsl := compile(t, "sphere.at(0, ease_cubic_in(fract(t)), 0)")
+	assertContains(t, glsl, "chisel_ease_cubic_in", "ease_cubic_in function call")
+}
+
+func TestEasing_CubicOut(t *testing.T) {
+	glsl := compile(t, "sphere.at(0, ease_cubic_out(fract(t)), 0)")
+	assertContains(t, glsl, "chisel_ease_cubic_out", "ease_cubic_out function call")
+}
+
+func TestEasing_CubicInOut(t *testing.T) {
+	glsl := compile(t, "sphere.at(0, ease_cubic_in_out(fract(t)), 0)")
+	assertContains(t, glsl, "chisel_ease_cubic_in_out", "ease_cubic_in_out function call")
+}
+
+func TestEasing_Elastic(t *testing.T) {
+	glsl := compile(t, "sphere.at(0, ease_elastic(fract(t)), 0)")
+	assertContains(t, glsl, "chisel_ease_elastic", "ease_elastic function call")
+}
+
+func TestEasing_Bounce(t *testing.T) {
+	glsl := compile(t, "sphere.at(0, ease_bounce(fract(t)), 0)")
+	assertContains(t, glsl, "chisel_ease_bounce", "ease_bounce function call")
+}
+
+func TestEasing_Back(t *testing.T) {
+	glsl := compile(t, "sphere.at(0, ease_back(fract(t)), 0)")
+	assertContains(t, glsl, "chisel_ease_back", "ease_back function call")
+}
+
+func TestEasing_Expo(t *testing.T) {
+	glsl := compile(t, "sphere.at(0, ease_expo(fract(t)), 0)")
+	assertContains(t, glsl, "chisel_ease_expo", "ease_expo function call")
+}
+
+func TestEasing_NotEmittedWhenUnused(t *testing.T) {
+	glsl := compile(t, "sphere")
+	assertNotContains(t, glsl, "chisel_ease", "no easing when unused")
+}
+
+// ---------------------------------------------------------------------------
+// Task 5.3 — Utility Functions (pulse, saw, tri, remap, saturate)
+// ---------------------------------------------------------------------------
+
+func TestUtility_Pulse(t *testing.T) {
+	glsl := compile(t, "sphere.at(0, pulse(t), 0)")
+	assertContains(t, glsl, "step(0.5, fract(", "pulse maps to step(0.5, fract(...))")
+}
+
+func TestUtility_Saw(t *testing.T) {
+	glsl := compile(t, "sphere.at(0, saw(t), 0)")
+	assertContains(t, glsl, "fract(uTime)", "saw maps to fract(t)")
+}
+
+func TestUtility_Tri(t *testing.T) {
+	glsl := compile(t, "sphere.at(0, tri(t), 0)")
+	assertContains(t, glsl, "abs(fract(", "tri maps to abs(fract(...))")
+	assertContains(t, glsl, "* 2.0", "tri scale factor")
+}
+
+func TestUtility_Remap(t *testing.T) {
+	glsl := compile(t, "sphere.at(0, remap(t, 0, 1, -2, 2), 0)")
+	assertContains(t, glsl, "chisel_remap", "remap function call")
+	assertContains(t, glsl, "float chisel_remap(", "remap definition emitted")
+}
+
+func TestUtility_Saturate(t *testing.T) {
+	glsl := compile(t, "sphere.at(0, saturate(t), 0)")
+	assertContains(t, glsl, "clamp(uTime, 0.0, 1.0)", "saturate maps to clamp")
+}
+
+// ---------------------------------------------------------------------------
+// Task 6.1 — Camera & Background
+// ---------------------------------------------------------------------------
+
+func TestSetting_CameraBlock(t *testing.T) {
+	glsl := compile(t, "camera { pos: [0, 2, 5] }\nsphere")
+	assertContains(t, glsl, "sceneSDF", "sceneSDF still emitted")
+	assertContains(t, glsl, "sdSphere", "sphere still works with camera setting")
+	// Camera settings should be emitted as comments.
+	assertContains(t, glsl, "// chisel:camera:", "camera comment present")
+}
+
+func TestSetting_BgHex(t *testing.T) {
+	glsl := compile(t, "bg #1a1a2e\nsphere")
+	assertContains(t, glsl, "sceneSDF", "sceneSDF still emitted")
+	assertContains(t, glsl, "sdSphere", "sphere still works with bg setting")
+	assertContains(t, glsl, "// chisel:bg", "bg comment present")
+}
+
+// ---------------------------------------------------------------------------
+// Task 6.2 — Lighting
+// ---------------------------------------------------------------------------
+
+func TestSetting_LightVector(t *testing.T) {
+	glsl := compile(t, "light [-1, -1, -1]\nsphere")
+	assertContains(t, glsl, "sceneSDF", "sceneSDF still emitted")
+	assertContains(t, glsl, "sdSphere", "sphere still works with light setting")
+	assertContains(t, glsl, "// chisel:light", "light comment present")
+}
+
+func TestSetting_LightBlock(t *testing.T) {
+	glsl := compile(t, "light { ambient: 0.2 }\nsphere")
+	assertContains(t, glsl, "sceneSDF", "sceneSDF still emitted")
+	assertContains(t, glsl, "// chisel:light:", "light block comment present")
+}
+
+// ---------------------------------------------------------------------------
+// Task 6.3 — Raymarch Settings
+// ---------------------------------------------------------------------------
+
+func TestSetting_RaymarchSteps(t *testing.T) {
+	glsl := compile(t, "raymarch { steps: 128 }\nsphere")
+	assertContains(t, glsl, "#define MAX_STEPS 128", "MAX_STEPS define")
+	assertContains(t, glsl, "sdSphere", "sphere still works with raymarch setting")
+}
+
+func TestSetting_RaymarchPrecision(t *testing.T) {
+	glsl := compile(t, "raymarch { precision: 0.001 }\nsphere")
+	assertContains(t, glsl, "#define SURF_DIST 0.001", "SURF_DIST define")
+}
+
+func TestSetting_RaymarchMaxDist(t *testing.T) {
+	glsl := compile(t, "raymarch { max_dist: 50 }\nsphere")
+	assertContains(t, glsl, "#define MAX_DIST 50", "MAX_DIST define")
+}
+
+func TestSetting_RaymarchMultiple(t *testing.T) {
+	glsl := compile(t, "raymarch { steps: 200, precision: 0.001, max_dist: 100 }\nsphere")
+	assertContains(t, glsl, "#define MAX_STEPS 200", "MAX_STEPS define")
+	assertContains(t, glsl, "#define SURF_DIST 0.001", "SURF_DIST define")
+	assertContains(t, glsl, "#define MAX_DIST 100", "MAX_DIST define")
+}
+
+func TestSetting_RaymarchDefinesBeforeSceneSDF(t *testing.T) {
+	glsl := compile(t, "raymarch { steps: 128 }\nsphere")
+	// #define should come before sceneSDF
+	defineIdx := strings.Index(glsl, "#define MAX_STEPS")
+	sceneIdx := strings.Index(glsl, "float sceneSDF")
+	if defineIdx < 0 || sceneIdx < 0 {
+		t.Fatalf("expected both #define and sceneSDF in output\n%s", glsl)
+	}
+	if defineIdx >= sceneIdx {
+		t.Errorf("#define MAX_STEPS should appear before sceneSDF\n%s", glsl)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Task 6.4 — Post-Processing
+// ---------------------------------------------------------------------------
+
+func TestSetting_PostGamma(t *testing.T) {
+	glsl := compile(t, "post { gamma: 2.2 }\nsphere")
+	assertContains(t, glsl, "sceneSDF", "sceneSDF still emitted")
+	assertContains(t, glsl, "sdSphere", "sphere still works with post setting")
+	assertContains(t, glsl, "// chisel:post:", "post comment present")
+}
+
+func TestSetting_PostDoesNotCrash(t *testing.T) {
+	// Multiple post settings should all compile without error.
+	glsl := compile(t, "post { gamma: 2.2, vignette: 0.3 }\nsphere")
+	assertContains(t, glsl, "sceneSDF", "sceneSDF still emitted")
+}
+
+// ---------------------------------------------------------------------------
+// Settings don't crash — integration smoke tests
+// ---------------------------------------------------------------------------
+
+func TestSetting_AllSettingsCompile(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"light vec", "light [-1, -1, -1]\nsphere"},
+		{"camera block", "camera { pos: [0, 2, 5] }\nsphere"},
+		{"bg hex", "bg #1a1a2e\nsphere"},
+		{"post gamma", "post { gamma: 2.2 }\nsphere"},
+		{"raymarch steps", "raymarch { steps: 128 }\nsphere"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			glsl := compile(t, tt.input)
+			assertContains(t, glsl, "sceneSDF", "sceneSDF present")
+			assertContains(t, glsl, "sdSphere", "sphere present")
+		})
+	}
+}
