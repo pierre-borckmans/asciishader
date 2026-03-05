@@ -1,4 +1,4 @@
-package main
+package gpu
 
 /*
 #cgo CFLAGS: -DGL_SILENCE_DEPRECATION
@@ -36,6 +36,11 @@ import (
 	"runtime"
 	"unsafe"
 
+	"asciishader/core"
+	"asciishader/render"
+	"asciishader/shader"
+	"asciishader/shape"
+
 	"github.com/go-gl/gl/v4.1-core/gl"
 )
 
@@ -47,7 +52,7 @@ void main() {
 ` + "\x00"
 
 // fragmentShaderSource is assembled from shader_template.go parts.
-// See shader_template.go for shaderPrefix, defaultUserCode, shaderSuffix.
+// See shader_template.go for shaderPrefix, shader.DefaultUserCode, shaderSuffix.
 
 // GPURenderer renders scenes using OpenGL fragment shaders.
 type GPURenderer struct {
@@ -59,11 +64,11 @@ type GPURenderer struct {
 	pixH     int // pixel height (termH * subH)
 	termW    int // terminal columns
 	termH    int // terminal rows
-	subH     int // sub-pixel rows per cell (3 for shape, 2 for quadrant)
+	subH     int // sub-pixel rows per core.Cell (3 for shape, 2 for quadrant)
 	pixels   []byte
 
 	// Reusable buffers (avoid per-frame allocation)
-	cellBuf [][]cell
+	cellBuf [][]core.Cell
 	ansiBuf []byte
 
 	// Hot-reload state
@@ -95,7 +100,7 @@ func NewGPURenderer() (*GPURenderer, error) {
 		return nil, fmt.Errorf("GL init failed: %v", err)
 	}
 
-	fragSrc := assembleShader(defaultUserCode)
+	fragSrc := shader.Assemble(shader.DefaultUserCode)
 	program, err := createProgram(vertexShaderSource, fragSrc)
 	if err != nil {
 		return nil, fmt.Errorf("shader program: %v", err)
@@ -106,7 +111,7 @@ func NewGPURenderer() (*GPURenderer, error) {
 	g := &GPURenderer{
 		program:  program,
 		vao:      vao,
-		userCode: defaultUserCode,
+		userCode: shader.DefaultUserCode,
 	}
 
 	g.cacheUniforms()
@@ -150,18 +155,13 @@ func (g *GPURenderer) resize(termW, termH, subW, subH int) {
 }
 
 // Render uses the GPU to raytrace and returns an ANSI-colored string.
-func (g *GPURenderer) Render(r *Renderer) string {
+func (g *GPURenderer) Render(r *render.Renderer) string {
 	w, h := r.Width, r.Height
 	if w <= 0 || h <= 0 {
 		return ""
 	}
 
-	subW, subH := 2, 3
-	if r.RenderMode == RenderBlocks {
-		subW, subH = 2, 2
-	} else if r.RenderMode == RenderDual {
-		subW, subH = 4, 6
-	}
+	subW, subH := renderSubPixels(r.RenderMode)
 	g.resize(w, h, subW, subH)
 
 	gl.BindFramebuffer(gl.FRAMEBUFFER, g.fbo)
@@ -192,23 +192,18 @@ func (g *GPURenderer) Render(r *Renderer) string {
 	gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
 
 	// Build cells then convert to ANSI
-	g.ansiBuf = appendANSI(g.ansiBuf[:0], g.RenderCells(r))
+	g.ansiBuf = render.AppendANSI(g.ansiBuf[:0], g.RenderCells(r))
 	return string(g.ansiBuf)
 }
 
-// RenderToCells does the full GPU render pass and returns the cell grid (no ANSI).
-func (g *GPURenderer) RenderToCells(r *Renderer) [][]cell {
+// RenderToCells does the full GPU render pass and returns the core.Cell grid (no ANSI).
+func (g *GPURenderer) RenderToCells(r *render.Renderer) [][]core.Cell {
 	w, h := r.Width, r.Height
 	if w <= 0 || h <= 0 {
 		return nil
 	}
 
-	subW, subH := 2, 3
-	if r.RenderMode == RenderBlocks {
-		subW, subH = 2, 2
-	} else if r.RenderMode == RenderDual {
-		subW, subH = 4, 6
-	}
+	subW, subH := renderSubPixels(r.RenderMode)
 	g.resize(w, h, subW, subH)
 
 	gl.BindFramebuffer(gl.FRAMEBUFFER, g.fbo)
@@ -248,52 +243,76 @@ func (g *GPURenderer) pixelBrightness(px, py int) float64 {
 }
 
 // pixelColor returns the RGB color (0-1) at the given pixel coordinate.
-func (g *GPURenderer) pixelColor(px, py int) Vec3 {
+func (g *GPURenderer) pixelColor(px, py int) core.Vec3 {
 	if px < 0 || px >= g.pixW || py < 0 || py >= g.pixH {
-		return Vec3{}
+		return core.Vec3{}
 	}
 	off := (py*g.pixW + px) * 4
-	return Vec3{
+	return core.Vec3{
 		float64(g.pixels[off]) / 255,
 		float64(g.pixels[off+1]) / 255,
 		float64(g.pixels[off+2]) / 255,
 	}
 }
 
-// getCellBuf returns a zeroed tw×th cell grid, reusing the internal buffer.
-func (g *GPURenderer) getCellBuf(tw, th int) [][]cell {
+// renderSubPixels returns the sub-pixel dimensions for a given render mode.
+func renderSubPixels(mode int) (subW, subH int) {
+	switch mode {
+	case core.RenderBlocks:
+		return 2, 2
+	case core.RenderDual:
+		return 4, 6
+	case core.RenderHalfBlock:
+		return 1, 2
+	case core.RenderBraille:
+		return 2, 4
+	case core.RenderDensity:
+		return 2, 3
+	default: // RenderShapes
+		return 2, 3
+	}
+}
+
+// getCellBuf returns a zeroed tw×th core.Cell grid, reusing the internal buffer.
+func (g *GPURenderer) getCellBuf(tw, th int) [][]core.Cell {
 	if cap(g.cellBuf) >= th {
 		g.cellBuf = g.cellBuf[:th]
 	} else {
-		g.cellBuf = make([][]cell, th)
+		g.cellBuf = make([][]core.Cell, th)
 	}
 	for i := range g.cellBuf {
 		if cap(g.cellBuf[i]) >= tw {
 			g.cellBuf[i] = g.cellBuf[i][:tw]
 			clear(g.cellBuf[i])
 		} else {
-			g.cellBuf[i] = make([]cell, tw)
+			g.cellBuf[i] = make([]core.Cell, tw)
 		}
 	}
 	return g.cellBuf
 }
 
-// RenderCells uses GPU pixel data to produce a cell grid.
-func (g *GPURenderer) RenderCells(r *Renderer) [][]cell {
+// RenderCells uses GPU pixel data to produce a core.Cell grid.
+func (g *GPURenderer) RenderCells(r *render.Renderer) [][]core.Cell {
 	tw, th := g.termW, g.termH
 
 	switch r.RenderMode {
-	case RenderBlocks:
+	case core.RenderBlocks:
 		return g.renderCellsQuadrant(tw, th)
-	case RenderDual:
+	case core.RenderDual:
 		return g.renderCellsDual(r, tw, th)
+	case core.RenderHalfBlock:
+		return g.renderCellsHalfBlock(tw, th)
+	case core.RenderBraille:
+		return g.renderCellsBraille(tw, th)
+	case core.RenderDensity:
+		return g.renderCellsDensity(tw, th)
 	default:
 		return g.renderCellsShaped(r, tw, th)
 	}
 }
 
 // renderCellsShaped uses shape matching on GPU pixel data (2×3 sub-pixels per cell).
-func (g *GPURenderer) renderCellsShaped(r *Renderer, tw, th int) [][]cell {
+func (g *GPURenderer) renderCellsShaped(r *render.Renderer, tw, th int) [][]core.Cell {
 	st := r.ShapeTable
 	pixels := g.pixels
 	stride := g.pixW * 4
@@ -315,7 +334,7 @@ func (g *GPURenderer) renderCellsShaped(r *Renderer, tw, th int) [][]cell {
 			off02 := off01 + stride
 			off12 := off02 + 4
 
-			var sv ShapeVec
+			var sv shape.ShapeVec
 			sv[0] = float64(pixels[off00+3]) * inv255
 			sv[1] = float64(pixels[off10+3]) * inv255
 			sv[2] = float64(pixels[off01+3]) * inv255
@@ -325,12 +344,12 @@ func (g *GPURenderer) renderCellsShaped(r *Renderer, tw, th int) [][]cell {
 
 			avgBright := (sv[0] + sv[1] + sv[2] + sv[3] + sv[4] + sv[5])
 			if avgBright < 0.06 { // 0.01 * 6
-				line[cx] = cell{ch: ' '}
+				line[cx] = core.Cell{Ch: ' '}
 				continue
 			}
 
 			// External boundary samples (need bounds checks for edge cells)
-			var ext ShapeVec
+			var ext shape.ShapeVec
 			ext[0] = g.pixelBrightness(bx-1, by-1)
 			ext[1] = g.pixelBrightness(bx+2, by-1)
 			ext[2] = g.pixelBrightness(bx-1, by+1)
@@ -338,8 +357,8 @@ func (g *GPURenderer) renderCellsShaped(r *Renderer, tw, th int) [][]cell {
 			ext[4] = g.pixelBrightness(bx-1, by+3)
 			ext[5] = g.pixelBrightness(bx+2, by+3)
 
-			sv = DirectionalContrast(sv, ext, contrast)
-			sv = EnhanceContrast(sv, contrast)
+			sv = shape.DirectionalContrast(sv, ext, contrast)
+			sv = shape.EnhanceContrast(sv, contrast)
 			ch := st.Match(sv)
 
 			// Average color from the 6 interior pixels (already bounds-safe)
@@ -354,15 +373,15 @@ func (g *GPURenderer) renderCellsShaped(r *Renderer, tw, th int) [][]cell {
 				float64(pixels[off02+2]) + float64(pixels[off12+2])
 
 			const inv6x255 = 1.0 / (6 * 255)
-			line[cx] = cell{ch: rune(ch), col: Vec3{colR * inv6x255, colG * inv6x255, colB * inv6x255}}
+			line[cx] = core.Cell{Ch: rune(ch), Col: core.Vec3{colR * inv6x255, colG * inv6x255, colB * inv6x255}}
 		}
 	}
 	return lines
 }
 
-// renderCellsDual uses 4×6 pixel blocks per cell for broader shape matching.
+// renderCellsDual uses 4×6 pixel blocks per core.Cell for broader shape matching.
 // Output grid: tw × th (fills viewport). Pixel buffer is subW=4, subH=6.
-func (g *GPURenderer) renderCellsDual(r *Renderer, tw, th int) [][]cell {
+func (g *GPURenderer) renderCellsDual(r *render.Renderer, tw, th int) [][]core.Cell {
 	st := r.ShapeTable
 
 	lines := g.getCellBuf(tw, th)
@@ -373,7 +392,7 @@ func (g *GPURenderer) renderCellsDual(r *Renderer, tw, th int) [][]cell {
 			by := cy * 6
 
 			// Downsample 4×6 to 2×3 shape vector: each element = average of 2×2 pixel block
-			var sv ShapeVec
+			var sv shape.ShapeVec
 			for si := 0; si < 6; si++ {
 				r0 := si / 2
 				c0 := si % 2
@@ -390,12 +409,12 @@ func (g *GPURenderer) renderCellsDual(r *Renderer, tw, th int) [][]cell {
 			avgBright /= 6
 
 			if avgBright < 0.01 {
-				line[cx] = cell{ch: ' '}
+				line[cx] = core.Cell{Ch: ' '}
 				continue
 			}
 
 			// External samples: just outside the 4×6 block
-			var ext ShapeVec
+			var ext shape.ShapeVec
 			ext[0] = g.pixelBrightness(bx-1, by-1)
 			ext[1] = g.pixelBrightness(bx+4, by-1)
 			ext[2] = g.pixelBrightness(bx-1, by+3)
@@ -403,8 +422,8 @@ func (g *GPURenderer) renderCellsDual(r *Renderer, tw, th int) [][]cell {
 			ext[4] = g.pixelBrightness(bx-1, by+6)
 			ext[5] = g.pixelBrightness(bx+4, by+6)
 
-			sv = DirectionalContrast(sv, ext, r.Contrast)
-			sv = EnhanceContrast(sv, r.Contrast)
+			sv = shape.DirectionalContrast(sv, ext, r.Contrast)
+			sv = shape.EnhanceContrast(sv, r.Contrast)
 			ch := st.Match(sv)
 
 			// Average color from all 24 pixels (4×6)
@@ -422,14 +441,14 @@ func (g *GPURenderer) renderCellsDual(r *Renderer, tw, th int) [][]cell {
 				}
 			}
 
-			line[cx] = cell{ch: rune(ch), col: Vec3{colR / 24 / 255, colG / 24 / 255, colB / 24 / 255}}
+			line[cx] = core.Cell{Ch: rune(ch), Col: core.Vec3{colR / 24 / 255, colG / 24 / 255, colB / 24 / 255}}
 		}
 	}
 	return lines
 }
 
-// renderCellsQuadrant uses 2×2 sub-pixels per cell to produce quadrant block characters.
-func (g *GPURenderer) renderCellsQuadrant(tw, th int) [][]cell {
+// renderCellsQuadrant uses 2×2 sub-pixels per core.Cell to produce quadrant block characters.
+func (g *GPURenderer) renderCellsQuadrant(tw, th int) [][]core.Cell {
 	lines := g.getCellBuf(tw, th)
 	for cy := 0; cy < th; cy++ {
 		line := lines[cy]
@@ -438,7 +457,7 @@ func (g *GPURenderer) renderCellsQuadrant(tw, th int) [][]cell {
 			by := cy * 2
 
 			// Read 4 pixel colors in 2×2 grid: TL, TR, BL, BR
-			colors := [4]Vec3{
+			colors := [4]core.Vec3{
 				g.pixelColor(bx, by),     // TL
 				g.pixelColor(bx+1, by),   // TR
 				g.pixelColor(bx, by+1),   // BL
@@ -467,7 +486,7 @@ func (g *GPURenderer) renderCellsQuadrant(tw, th int) [][]cell {
 			mean := (bright[0] + bright[1] + bright[2] + bright[3]) / 4
 
 			if mean < 0.01 {
-				line[cx] = cell{ch: ' '}
+				line[cx] = core.Cell{Ch: ' '}
 				continue
 			}
 
@@ -484,7 +503,7 @@ func (g *GPURenderer) renderCellsQuadrant(tw, th int) [][]cell {
 				}
 				if maxB-minB < 0.08 {
 					avg := colors[0].Add(colors[1]).Add(colors[2]).Add(colors[3]).Mul(0.25)
-					line[cx] = cell{ch: '█', col: V(clamp(avg.X, 0, 1), clamp(avg.Y, 0, 1), clamp(avg.Z, 0, 1))}
+					line[cx] = core.Cell{Ch: '█', Col: core.V(core.Clamp(avg.X, 0, 1), core.Clamp(avg.Y, 0, 1), core.Clamp(avg.Z, 0, 1))}
 					continue
 				}
 			}
@@ -492,7 +511,7 @@ func (g *GPURenderer) renderCellsQuadrant(tw, th int) [][]cell {
 			// Threshold each pixel around mean
 			var pattern int
 			var onCount int
-			var fgCol, bgCol Vec3
+			var fgCol, bgCol core.Vec3
 			bgHitCount := 0
 			for i := 0; i < 4; i++ {
 				bit := 3 - i // TL=bit3, TR=bit2, BL=bit1, BR=bit0
@@ -507,29 +526,233 @@ func (g *GPURenderer) renderCellsQuadrant(tw, th int) [][]cell {
 			}
 
 			if onCount == 0 {
-				line[cx] = cell{ch: ' '}
+				line[cx] = core.Cell{Ch: ' '}
 				continue
 			}
 
-			ch := quadrantChars[pattern]
+			ch := render.QuadrantChars[pattern]
 			fg := fgCol.Mul(1.0 / float64(onCount))
-			fg = V(clamp(fg.X, 0, 1), clamp(fg.Y, 0, 1), clamp(fg.Z, 0, 1))
+			fg = core.V(core.Clamp(fg.X, 0, 1), core.Clamp(fg.Y, 0, 1), core.Clamp(fg.Z, 0, 1))
 
 			// Only set bg when off-pixels hit actual geometry
 			if bgHitCount == 0 {
-				line[cx] = cell{ch: ch, col: fg}
+				line[cx] = core.Cell{Ch: ch, Col: fg}
 				continue
 			}
 
 			bg := bgCol.Mul(1.0 / float64(bgHitCount))
-			bg = V(clamp(bg.X, 0, 1), clamp(bg.Y, 0, 1), clamp(bg.Z, 0, 1))
+			bg = core.V(core.Clamp(bg.X, 0, 1), core.Clamp(bg.Y, 0, 1), core.Clamp(bg.Z, 0, 1))
 
-			line[cx] = cell{ch: ch, col: fg, bg: bg, hasBg: true}
+			line[cx] = core.Cell{Ch: ch, Col: fg, Bg: bg, HasBg: true}
 		}
 	}
 	return lines
 }
 
+// renderCellsHalfBlock uses ▀ with fg=top color, bg=bottom color for 1×2 sub-pixels per cell.
+func (g *GPURenderer) renderCellsHalfBlock(tw, th int) [][]core.Cell {
+	pixels := g.pixels
+	stride := g.pixW * 4
+	const inv255 = 1.0 / 255.0
+
+	lines := g.getCellBuf(tw, th)
+	for cy := 0; cy < th; cy++ {
+		line := lines[cy]
+		for cx := 0; cx < tw; cx++ {
+			// Top pixel at (cx, cy*2), bottom pixel at (cx, cy*2+1)
+			offTop := (cy*2)*stride + cx*4
+			offBot := offTop + stride
+
+			topR := float64(pixels[offTop]) * inv255
+			topG := float64(pixels[offTop+1]) * inv255
+			topB := float64(pixels[offTop+2]) * inv255
+			topA := pixels[offTop+3]
+
+			botR := float64(pixels[offBot]) * inv255
+			botG := float64(pixels[offBot+1]) * inv255
+			botB := float64(pixels[offBot+2]) * inv255
+			botA := pixels[offBot+3]
+
+			topHit := topA > 2
+			botHit := botA > 2
+
+			if !topHit && !botHit {
+				line[cx] = core.Cell{Ch: ' '}
+				continue
+			}
+
+			if topHit && botHit {
+				// Both lit: ▀ with fg=top, bg=bottom
+				line[cx] = core.Cell{
+					Ch:    '▀',
+					Col:   core.Vec3{topR, topG, topB},
+					Bg:    core.Vec3{botR, botG, botB},
+					HasBg: true,
+				}
+			} else if topHit {
+				// Only top lit: ▀ with fg=top, no bg
+				line[cx] = core.Cell{Ch: '▀', Col: core.Vec3{topR, topG, topB}}
+			} else {
+				// Only bottom lit: ▄ with fg=bottom, no bg
+				line[cx] = core.Cell{Ch: '▄', Col: core.Vec3{botR, botG, botB}}
+			}
+		}
+	}
+	return lines
+}
+
+// renderCellsBraille uses 2×4 sub-pixels per core.Cell to produce Unicode braille characters.
+// Braille dot layout and bit mapping (Unicode U+2800 + bits):
+//
+//	col0 col1
+//
+// row0  bit0 bit3
+// row1  bit1 bit4
+// row2  bit2 bit5
+// row3  bit6 bit7
+func (g *GPURenderer) renderCellsBraille(tw, th int) [][]core.Cell {
+	pixels := g.pixels
+	stride := g.pixW * 4
+	const hitThresh byte = 2 // same as half-block / quadrant
+
+	lines := g.getCellBuf(tw, th)
+	for cy := 0; cy < th; cy++ {
+		line := lines[cy]
+		for cx := 0; cx < tw; cx++ {
+			bx := cx * 2
+			by := cy * 4
+
+			offBase := by*stride + bx*4
+			off1 := offBase + stride
+			off2 := off1 + stride
+			off3 := off2 + stride
+
+			// Read alpha for each of the 2×4 dots
+			a00 := pixels[offBase+3]   // col0, row0
+			a10 := pixels[offBase+4+3] // col1, row0
+			a01 := pixels[off1+3]      // col0, row1
+			a11 := pixels[off1+4+3]    // col1, row1
+			a02 := pixels[off2+3]      // col0, row2
+			a12 := pixels[off2+4+3]    // col1, row2
+			a03 := pixels[off3+3]      // col0, row3
+			a13 := pixels[off3+4+3]    // col1, row3
+
+			// Build braille pattern from hit detection
+			var pattern rune
+			if a00 > hitThresh {
+				pattern |= 0x01
+			}
+			if a01 > hitThresh {
+				pattern |= 0x02
+			}
+			if a02 > hitThresh {
+				pattern |= 0x04
+			}
+			if a10 > hitThresh {
+				pattern |= 0x08
+			}
+			if a11 > hitThresh {
+				pattern |= 0x10
+			}
+			if a12 > hitThresh {
+				pattern |= 0x20
+			}
+			if a03 > hitThresh {
+				pattern |= 0x40
+			}
+			if a13 > hitThresh {
+				pattern |= 0x80
+			}
+
+			if pattern == 0 {
+				line[cx] = core.Cell{Ch: ' '}
+				continue
+			}
+
+			// Average color from lit pixels only
+			var colR, colG, colB float64
+			var litCount float64
+			alphas := [8]byte{a00, a10, a01, a11, a02, a12, a03, a13}
+			offsets := [8]int{
+				offBase, offBase + 4,
+				off1, off1 + 4,
+				off2, off2 + 4,
+				off3, off3 + 4,
+			}
+			for i := 0; i < 8; i++ {
+				if alphas[i] > hitThresh {
+					o := offsets[i]
+					colR += float64(pixels[o])
+					colG += float64(pixels[o+1])
+					colB += float64(pixels[o+2])
+					litCount++
+				}
+			}
+			inv := 1.0 / (litCount * 255)
+			line[cx] = core.Cell{Ch: 0x2800 + pattern, Col: core.Vec3{colR * inv, colG * inv, colB * inv}}
+		}
+	}
+	return lines
+}
+
+// renderCellsDensity uses a classic ASCII density ramp based on average brightness.
+// Uses 2×3 sub-pixels per core.Cell (same as shaped mode) for quality averaging.
+func (g *GPURenderer) renderCellsDensity(tw, th int) [][]core.Cell {
+	pixels := g.pixels
+	stride := g.pixW * 4
+	const inv255 = 1.0 / 255.0
+
+	ramp := core.AsciiRamp
+	rampMax := len(ramp) - 1
+
+	lines := g.getCellBuf(tw, th)
+	for cy := 0; cy < th; cy++ {
+		line := lines[cy]
+		for cx := 0; cx < tw; cx++ {
+			bx := cx * 2
+			by := cy * 3
+
+			off00 := by*stride + bx*4
+			off10 := off00 + 4
+			off01 := off00 + stride
+			off11 := off01 + 4
+			off02 := off01 + stride
+			off12 := off02 + 4
+
+			// Average brightness from alpha channel
+			avgBright := (float64(pixels[off00+3]) + float64(pixels[off10+3]) +
+				float64(pixels[off01+3]) + float64(pixels[off11+3]) +
+				float64(pixels[off02+3]) + float64(pixels[off12+3])) * inv255 / 6
+
+			if avgBright < 0.01 {
+				line[cx] = core.Cell{Ch: ' '}
+				continue
+			}
+
+			// Map brightness to ramp character
+			idx := int(avgBright * float64(rampMax))
+			if idx > rampMax {
+				idx = rampMax
+			}
+			ch := rune(ramp[idx])
+
+			// Average color
+			const inv6x255 = 1.0 / (6 * 255)
+			colR := float64(pixels[off00]) + float64(pixels[off10]) +
+				float64(pixels[off01]) + float64(pixels[off11]) +
+				float64(pixels[off02]) + float64(pixels[off12])
+			colG := float64(pixels[off00+1]) + float64(pixels[off10+1]) +
+				float64(pixels[off01+1]) + float64(pixels[off11+1]) +
+				float64(pixels[off02+1]) + float64(pixels[off12+1])
+			colB := float64(pixels[off00+2]) + float64(pixels[off10+2]) +
+				float64(pixels[off01+2]) + float64(pixels[off11+2]) +
+				float64(pixels[off02+2]) + float64(pixels[off12+2])
+
+			line[cx] = core.Cell{Ch: ch, Col: core.Vec3{colR * inv6x255, colG * inv6x255, colB * inv6x255}}
+		}
+	}
+	return lines
+}
 
 func (g *GPURenderer) Destroy() {
 	if g.program != 0 {
@@ -566,7 +789,7 @@ func (g *GPURenderer) cacheUniforms() {
 // On success, swaps in the new program. On failure, keeps the old program
 // and returns the error.
 func (g *GPURenderer) CompileUserCode(code string) error {
-	fragSrc := assembleShader(code)
+	fragSrc := shader.Assemble(code)
 	newProg, err := createProgram(vertexShaderSource, fragSrc)
 	if err != nil {
 		g.compileErr = err.Error()

@@ -1,11 +1,14 @@
 package main
 
-import "asciishader/clip"
+import (
+	"asciishader/clip"
+	"asciishader/core"
+)
 
 // CellToClipCell converts a render cell to a clip cell.
-func CellToClipCell(c cell) clip.ClipCell {
+func CellToClipCell(c core.Cell) clip.ClipCell {
 	return clip.ClipCell{
-		Ch:    byte(c.ch),
-		Color: clip.RGB565Encode(c.col.X, c.col.Y, c.col.Z),
+		Ch:    byte(c.Ch),
+		Color: clip.RGB565Encode(c.Col.X, c.Col.Y, c.Col.Z),
 	}
 }

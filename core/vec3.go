@@ -1,8 +1,8 @@
-package main
+package core
 
 import "math"
 
-// Vec3 is a 3D vector
+// Vec3 is a 3D vector.
 type Vec3 struct {
 	X, Y, Z float64
 }
@@ -77,15 +77,15 @@ func (a Vec3) CompMin(b Vec3) Vec3 {
 	return Vec3{math.Min(a.X, b.X), math.Min(a.Y, b.Y), math.Min(a.Z, b.Z)}
 }
 
-func clamp(v, lo, hi float64) float64 {
+func Clamp(v, lo, hi float64) float64 {
 	return math.Max(lo, math.Min(hi, v))
 }
 
-func mix(a, b, t float64) float64 {
+func Mix(a, b, t float64) float64 {
 	return a*(1-t) + b*t
 }
 
-func smoothmin(a, b, k float64) float64 {
-	h := clamp(0.5+0.5*(b-a)/k, 0, 1)
-	return mix(b, a, h) - k*h*(1-h)
+func Smoothmin(a, b, k float64) float64 {
+	h := Clamp(0.5+0.5*(b-a)/k, 0, 1)
+	return Mix(b, a, h) - k*h*(1-h)
 }

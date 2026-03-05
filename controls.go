@@ -5,6 +5,9 @@ import (
 	"strconv"
 
 	"asciishader/components"
+	"asciishader/core"
+	"asciishader/render"
+	"asciishader/scene"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -52,7 +55,7 @@ func NewControlsTab() *ControlsTab {
 }
 
 // SyncFromRenderer reads current values from the renderer into sliders.
-func (ct *ControlsTab) SyncFromRenderer(r *Renderer) {
+func (ct *ControlsTab) SyncFromRenderer(r *render.Renderer) {
 	ct.sliders[ctrlContrast].Value = r.Contrast
 	ct.sliders[ctrlSpread].Value = r.Spread
 	ct.sliders[ctrlExtDist].Value = r.ExtDist
@@ -63,7 +66,7 @@ func (ct *ControlsTab) SyncFromRenderer(r *Renderer) {
 }
 
 // SyncToRenderer writes slider values back to the renderer.
-func (ct *ControlsTab) SyncToRenderer(r *Renderer) {
+func (ct *ControlsTab) SyncToRenderer(r *render.Renderer) {
 	r.Contrast = ct.sliders[ctrlContrast].Value
 	r.Spread = ct.sliders[ctrlSpread].Value
 	r.ExtDist = ct.sliders[ctrlExtDist].Value
@@ -100,9 +103,9 @@ func (ct *ControlsTab) adjustValue(dir int, m *model) bool {
 	switch ct.focus {
 	case ctrlScene:
 		if dir > 0 {
-			m.scene = (m.scene + 1) % len(scenes)
+			m.scene = (m.scene + 1) % len(scene.Scenes)
 		} else {
-			m.scene = (m.scene - 1 + len(scenes)) % len(scenes)
+			m.scene = (m.scene - 1 + len(scene.Scenes)) % len(scene.Scenes)
 		}
 		m.time = 0
 		return true
@@ -113,17 +116,17 @@ func (ct *ControlsTab) adjustValue(dir int, m *model) bool {
 		return true
 	case ctrlBlocks:
 		if dir > 0 {
-			m.renderer.RenderMode = (m.renderer.RenderMode + 1) % 3
+			m.renderer.RenderMode = (m.renderer.RenderMode + 1) % core.RenderModeCount
 		} else {
-			m.renderer.RenderMode = (m.renderer.RenderMode + 2) % 3
+			m.renderer.RenderMode = (m.renderer.RenderMode + core.RenderModeCount - 1) % core.RenderModeCount
 		}
 		return true
 	case ctrlSpecPower:
 		s := ct.sliders[ctrlSpecPower]
 		if dir > 0 {
-			s.Value = clamp(s.Value*1.5, s.Min, s.Max)
+			s.Value = core.Clamp(s.Value*1.5, s.Min, s.Max)
 		} else {
-			s.Value = clamp(s.Value/1.5, s.Min, s.Max)
+			s.Value = core.Clamp(s.Value/1.5, s.Min, s.Max)
 		}
 		ct.SyncToRenderer(m.renderer)
 		return true
@@ -203,9 +206,9 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m *model) bool {
 		if !zi.IsZero() {
 			mid := (zi.StartX + zi.EndX) / 2
 			if msg.X < mid {
-				m.scene = (m.scene - 1 + len(scenes)) % len(scenes)
+				m.scene = (m.scene - 1 + len(scene.Scenes)) % len(scene.Scenes)
 			} else {
-				m.scene = (m.scene + 1) % len(scenes)
+				m.scene = (m.scene + 1) % len(scene.Scenes)
 			}
 			m.time = 0
 			m.syncSceneGLSL()
@@ -225,7 +228,7 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m *model) bool {
 	// Render mode cycle
 	if clicked == "blocks" {
 		ct.focus = ctrlBlocks
-		m.renderer.RenderMode = (m.renderer.RenderMode + 1) % 3
+		m.renderer.RenderMode = (m.renderer.RenderMode + 1) % core.RenderModeCount
 		return true
 	}
 
@@ -270,7 +273,7 @@ func (ct *ControlsTab) Render(width int, m *model) string {
 	lines += dimStyle.Render(pad(" ───────────────────────────", width)) + "\n"
 
 	// Scene selector — wrapped in zone
-	sceneStr := fmt.Sprintf(" < %s >", scenes[m.scene].Name)
+	sceneStr := fmt.Sprintf(" < %s >", scene.Scenes[m.scene].Name)
 	sceneLine := pad(sceneStr, width)
 	if ct.focus == ctrlScene {
 		style := lipgloss.NewStyle().
@@ -309,10 +312,16 @@ func (ct *ControlsTab) Render(width int, m *model) string {
 	// Render mode — wrapped in zone
 	blocksLabel := " Shapes"
 	switch m.renderer.RenderMode {
-	case RenderBlocks:
-		blocksLabel = " Blocks"
-	case RenderDual:
+	case core.RenderDual:
 		blocksLabel = " Dual"
+	case core.RenderBlocks:
+		blocksLabel = " Blocks"
+	case core.RenderHalfBlock:
+		blocksLabel = " Half"
+	case core.RenderBraille:
+		blocksLabel = " Braille"
+	case core.RenderDensity:
+		blocksLabel = " Density"
 	}
 	blocksLine := pad(blocksLabel, width)
 	if ct.focus == ctrlBlocks {

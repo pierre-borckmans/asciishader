@@ -11,7 +11,12 @@ import (
 
 	"asciishader/clip"
 	"asciishader/components"
+	"asciishader/core"
+	gpupkg "asciishader/gpu"
 	"asciishader/layout"
+	"asciishader/render"
+	"asciishader/scene"
+	"asciishader/shape"
 	"asciishader/views"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -41,8 +46,8 @@ const (
 )
 
 type model struct {
-	renderer   *Renderer
-	gpu        *GPURenderer
+	renderer   *render.Renderer
+	gpu        *gpupkg.GPURenderer
 	gpuMode    bool
 	width      int
 	height     int
@@ -52,7 +57,7 @@ type model struct {
 	camAngleY  float64
 	camAngleX  float64
 	camDist    float64
-	camTarget  Vec3
+	camTarget  core.Vec3
 	autoRotate bool
 	mouseLastX int
 	mouseLastY int
@@ -93,8 +98,8 @@ type model struct {
 }
 
 func initialModel() model {
-	r := NewRenderer(80, 24)
-	r.ShapeTable = NewShapeTable()
+	r := render.NewRenderer(80, 24)
+	r.ShapeTable = shape.NewShapeTable()
 	r.Contrast = 1.25
 	r.Spread = 0.75
 	r.ExtDist = 1.0
@@ -247,18 +252,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Update camera (orbit around camTarget)
-		m.renderer.Camera.Pos = Vec3{
+		m.renderer.Camera.Pos = core.Vec3{
 			m.camTarget.X + math.Sin(m.camAngleY)*math.Cos(m.camAngleX)*m.camDist,
 			m.camTarget.Y + math.Sin(m.camAngleX)*m.camDist,
 			m.camTarget.Z - math.Cos(m.camAngleY)*math.Cos(m.camAngleX)*m.camDist,
 		}
 		m.renderer.Camera.Target = m.camTarget
 		m.renderer.Time = m.time
-		m.renderer.Scene = scenes[m.scene].SDF
-		m.renderer.ColorFunc = scenes[m.scene].Color
+		m.renderer.Scene = scene.Scenes[m.scene].SDF
+		m.renderer.ColorFunc = scene.Scenes[m.scene].Color
 
 		// Animated light
-		m.renderer.LightDir = V(
+		m.renderer.LightDir =core.V(
 			math.Sin(m.time*0.5)*0.5,
 			0.8,
 			math.Cos(m.time*0.5)*0.5-0.5,
@@ -493,7 +498,7 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			dx := msg.X - m.mouseLastX
 			dy := msg.Y - m.mouseLastY
 			m.camAngleY += float64(dx) * 0.02
-			m.camAngleX = clamp(m.camAngleX+float64(dy)*0.05, -math.Pi/2+0.1, math.Pi/2-0.1)
+			m.camAngleX = core.Clamp(m.camAngleX+float64(dy)*0.05, -math.Pi/2+0.1, math.Pi/2-0.1)
 			m.mouseLastX = msg.X
 			m.mouseLastY = msg.Y
 		}
@@ -501,8 +506,8 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			dx := msg.X - m.mouseLastX
 			dy := msg.Y - m.mouseLastY
 			// Pan in camera's right/up plane
-			right := Vec3{math.Cos(m.camAngleY), 0, math.Sin(m.camAngleY)}
-			up := V(0, 1, 0)
+			right := core.Vec3{math.Cos(m.camAngleY), 0, math.Sin(m.camAngleY)}
+			up :=core.V(0, 1, 0)
 			panSpeed := m.camDist * 0.01
 			m.camTarget = m.camTarget.Add(right.Mul(float64(dx) * panSpeed))
 			m.camTarget = m.camTarget.Add(up.Mul(float64(dy) * panSpeed * 2.2))
@@ -513,9 +518,9 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	if inViewport {
 		if msg.Button == tea.MouseButtonWheelUp {
-			m.camDist = clamp(m.camDist*0.92, 0.5, 30)
+			m.camDist = core.Clamp(m.camDist*0.92, 0.5, 30)
 		} else if msg.Button == tea.MouseButtonWheelDown {
-			m.camDist = clamp(m.camDist/0.92, 0.5, 30)
+			m.camDist = core.Clamp(m.camDist/0.92, 0.5, 30)
 		}
 	}
 
@@ -554,7 +559,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "q", "esc":
 			return m, tea.Quit
 		}
-		sel := m.gallery.HandleKey(key, len(scenes))
+		sel := m.gallery.HandleKey(key, len(scene.Scenes))
 		if sel >= 0 {
 			m.scene = sel
 			m.time = 0
@@ -693,15 +698,15 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		m.camAngleY += 0.15
 		m.autoRotate = false
 	case "up", "k":
-		m.camAngleX = clamp(m.camAngleX+0.1, -math.Pi/2+0.1, math.Pi/2-0.1)
+		m.camAngleX = core.Clamp(m.camAngleX+0.1, -math.Pi/2+0.1, math.Pi/2-0.1)
 		m.autoRotate = false
 	case "down", "j":
-		m.camAngleX = clamp(m.camAngleX-0.1, -math.Pi/2+0.1, math.Pi/2-0.1)
+		m.camAngleX = core.Clamp(m.camAngleX-0.1, -math.Pi/2+0.1, math.Pi/2-0.1)
 		m.autoRotate = false
 	case "+", "=":
-		m.camDist = clamp(m.camDist*0.92, 0.5, 30)
+		m.camDist = core.Clamp(m.camDist*0.92, 0.5, 30)
 	case "-", "_":
-		m.camDist = clamp(m.camDist/0.92, 0.5, 30)
+		m.camDist = core.Clamp(m.camDist/0.92, 0.5, 30)
 	case "tab":
 		// Cycle focus: viewport → controls (if open) → editor (if open) → viewport
 		if m.rightPanel.IsExpanded() {
@@ -713,11 +718,11 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case "n":
-		m.scene = (m.scene + 1) % len(scenes)
+		m.scene = (m.scene + 1) % len(scene.Scenes)
 		m.time = 0
 		m.syncSceneGLSL()
 	case "shift+tab", "N":
-		m.scene = (m.scene - 1 + len(scenes)) % len(scenes)
+		m.scene = (m.scene - 1 + len(scene.Scenes)) % len(scene.Scenes)
 		m.time = 0
 		m.syncSceneGLSL()
 	case " ":
@@ -725,7 +730,9 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 	case "a":
 		m.autoRotate = !m.autoRotate
 	case "m":
-		m.renderer.RenderMode = (m.renderer.RenderMode + 1) % 3
+		m.renderer.RenderMode = (m.renderer.RenderMode + 1) % core.RenderModeCount
+	case "M":
+		m.renderer.RenderMode = (m.renderer.RenderMode + core.RenderModeCount - 1) % core.RenderModeCount
 	case "g":
 		if m.gpu != nil {
 			m.gpuMode = !m.gpuMode
@@ -754,25 +761,25 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 			m.recMessageTime = time.Now()
 		}
 	case "[":
-		m.renderer.Contrast = clamp(m.renderer.Contrast-0.25, 0.5, 5.0)
+		m.renderer.Contrast = core.Clamp(m.renderer.Contrast-0.25, 0.5, 5.0)
 	case "]":
-		m.renderer.Contrast = clamp(m.renderer.Contrast+0.25, 0.5, 5.0)
+		m.renderer.Contrast = core.Clamp(m.renderer.Contrast+0.25, 0.5, 5.0)
 	case "1":
-		m.renderer.Spread = clamp(m.renderer.Spread+0.25, 0.25, 3.0)
+		m.renderer.Spread = core.Clamp(m.renderer.Spread+0.25, 0.25, 3.0)
 	case "!":
-		m.renderer.Spread = clamp(m.renderer.Spread-0.25, 0.25, 3.0)
+		m.renderer.Spread = core.Clamp(m.renderer.Spread-0.25, 0.25, 3.0)
 	case "2":
-		m.renderer.ExtDist = clamp(m.renderer.ExtDist+0.25, 0.25, 3.0)
+		m.renderer.ExtDist = core.Clamp(m.renderer.ExtDist+0.25, 0.25, 3.0)
 	case "@":
-		m.renderer.ExtDist = clamp(m.renderer.ExtDist-0.25, 0.25, 3.0)
+		m.renderer.ExtDist = core.Clamp(m.renderer.ExtDist-0.25, 0.25, 3.0)
 	case "3":
-		m.renderer.Ambient = clamp(m.renderer.Ambient+0.05, 0.0, 1.0)
+		m.renderer.Ambient = core.Clamp(m.renderer.Ambient+0.05, 0.0, 1.0)
 	case "#":
-		m.renderer.Ambient = clamp(m.renderer.Ambient-0.05, 0.0, 1.0)
+		m.renderer.Ambient = core.Clamp(m.renderer.Ambient-0.05, 0.0, 1.0)
 	case "4":
-		m.renderer.SpecPower = clamp(m.renderer.SpecPower*1.5, 4, 128)
+		m.renderer.SpecPower = core.Clamp(m.renderer.SpecPower*1.5, 4, 128)
 	case "$":
-		m.renderer.SpecPower = clamp(m.renderer.SpecPower/1.5, 4, 128)
+		m.renderer.SpecPower = core.Clamp(m.renderer.SpecPower/1.5, 4, 128)
 	case "5":
 		m.renderer.ShadowSteps = min(m.renderer.ShadowSteps+4, 48)
 	case "%":
@@ -785,7 +792,7 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		m.camAngleX = 0
 		m.camAngleY = 0
 		m.camDist = 4.0
-		m.camTarget = V(0, 0, 0)
+		m.camTarget =core.V(0, 0, 0)
 		m.autoRotate = false
 		m.renderer.Contrast = 1.25
 		m.renderer.Spread = 0.75
@@ -855,8 +862,8 @@ func (m *model) switchView(mode ViewMode) {
 
 // syncSceneGLSL populates the editor with scene GLSL if available.
 func (m *model) syncSceneGLSL() {
-	if m.scene >= 0 && m.scene < len(scenes) {
-		glsl := scenes[m.scene].GLSL
+	if m.scene >= 0 && m.scene < len(scene.Scenes) {
+		glsl := scene.Scenes[m.scene].GLSL
 		if glsl != "" {
 			m.editor.SetCode(glsl)
 			if m.gpu != nil {
@@ -904,10 +911,16 @@ func (m model) View() string {
 			gpuStr = "GPU"
 		}
 		switch m.renderer.RenderMode {
-		case RenderBlocks:
-			gpuStr += " BLOCK"
-		case RenderDual:
+		case core.RenderDual:
 			gpuStr += " DUAL"
+		case core.RenderBlocks:
+			gpuStr += " BLOCK"
+		case core.RenderHalfBlock:
+			gpuStr += " HALF"
+		case core.RenderBraille:
+			gpuStr += " BRAILLE"
+		case core.RenderDensity:
+			gpuStr += " DENSITY"
 		}
 		pauseStr := ""
 		if m.paused {
@@ -942,7 +955,7 @@ func (m model) View() string {
 		if recStr == "" && m.recMessage != "" && time.Since(m.recMessageTime) < 3*time.Second {
 			recStr = " | " + recStyle.Render(m.recMessage)
 		}
-		headerTitle = fmt.Sprintf("ASCII Shader  ·  %s", scenes[m.scene].Name)
+		headerTitle = fmt.Sprintf("ASCII Shader  ·  %s", scene.Scenes[m.scene].Name)
 		rightInfo = fmt.Sprintf("%s | %.0f fps%s%s", gpuStr, m.fps, pauseStr, recStr)
 		rpWidth = m.rightPanel.Width()
 	case ViewPlayer:
@@ -1079,8 +1092,8 @@ func (m model) View() string {
 		}
 
 	case ViewGallery:
-		sceneNames := make([]string, len(scenes))
-		for i, s := range scenes {
+		sceneNames := make([]string, len(scene.Scenes))
+		for i, s := range scene.Scenes {
 			sceneNames[i] = s.Name
 		}
 		viewContentBlock = m.gallery.Render(cw, vpHeight, sceneNames)
@@ -1127,17 +1140,17 @@ func main() {
 
 	zone.NewGlobal()
 
-	loadShaderFiles()
+	scene.LoadShaderFiles()
 
 	m := initialModel()
 
 	// Try GPU init — fall back to CPU silently
-	gpu, gpuErr := NewGPURenderer()
+	gpuRenderer, gpuErr := gpupkg.NewGPURenderer()
 	if gpuErr == nil {
-		m.gpu = gpu
+		m.gpu = gpuRenderer
 		m.gpuMode = true
 		m.syncSceneGLSL()
-		defer gpu.Destroy()
+		defer gpuRenderer.Destroy()
 	}
 
 	p := tea.NewProgram(

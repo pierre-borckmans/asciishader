@@ -1,10 +1,13 @@
-package main
+package render
 
 import (
 	"math"
 	"strconv"
 	"sync"
 	"unicode/utf8"
+
+	"asciishader/core"
+	"asciishader/shape"
 )
 
 const (
@@ -14,34 +17,19 @@ const (
 	normalEps = 0.001
 )
 
-// Render modes
-const (
-	RenderShapes = 0 // shape matching, fg only (default)
-	RenderBlocks = 1 // quadrant blocks, fg+bg
-	RenderDual   = 2 // shape matching, fg+bg
-)
 
-// ASCII ramp from dark to bright
-var asciiRamp = []byte(" .`'^\",:;Il!i><~+_-?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$")
 
-// Camera holds the view parameters
-type Camera struct {
-	Pos    Vec3
-	Target Vec3
-	Up     Vec3
-	FOV    float64
-}
 
 // Renderer does the raymarching
 type Renderer struct {
 	Width, Height int
-	Camera        Camera
-	Scene         func(Vec3, float64) float64
-	ColorFunc     func(Vec3, float64) Vec3 // material color at point (nil = white)
+	Camera        core.Camera
+	Scene         func(core.Vec3, float64) float64
+	ColorFunc     func(core.Vec3, float64) core.Vec3 // material color at point (nil = white)
 	Time          float64
-	LightDir      Vec3
-	RenderMode    int // RenderShapes, RenderBlocks, or RenderDual
-	ShapeTable    *ShapeTable
+	LightDir      core.Vec3
+	RenderMode    int // RenderShapes, core.RenderBlocks, or core.RenderDual
+	ShapeTable    *shape.ShapeTable
 	Contrast      float64
 	Spread        float64 // sub-sample spread multiplier (1.0 = default)
 	ExtDist       float64 // external sample distance multiplier (1.0 = default)
@@ -56,13 +44,13 @@ func NewRenderer(w, h int) *Renderer {
 	return &Renderer{
 		Width:  w,
 		Height: h,
-		Camera: Camera{
-			Pos:    V(0, 0, -4),
-			Target: V(0, 0, 0),
-			Up:     V(0, 1, 0),
+		Camera: core.Camera{
+			Pos:    core.V(0, 0, -4),
+			Target: core.V(0, 0, 0),
+			Up:     core.V(0, 1, 0),
 			FOV:    60,
 		},
-		LightDir: V(-0.5, 0.8, -0.6).Normalize(),
+		LightDir: core.V(-0.5, 0.8, -0.6).Normalize(),
 		buf:      make([]byte, w*h),
 	}
 }
@@ -74,7 +62,7 @@ func (r *Renderer) Resize(w, h int) {
 }
 
 // March a ray, return distance traveled and total steps
-func (r *Renderer) raymarch(ro, rd Vec3) (float64, int) {
+func (r *Renderer) raymarch(ro, rd core.Vec3) (float64, int) {
 	t := 0.0
 	for i := 0; i < maxSteps; i++ {
 		p := ro.Add(rd.Mul(t))
@@ -91,19 +79,19 @@ func (r *Renderer) raymarch(ro, rd Vec3) (float64, int) {
 }
 
 // Compute surface normal via central differences
-func (r *Renderer) normal(p Vec3) Vec3 {
+func (r *Renderer) normal(p core.Vec3) core.Vec3 {
 	e := normalEps
 	t := r.Time
 	d := r.Scene(p, t)
-	return Vec3{
-		r.Scene(V(p.X+e, p.Y, p.Z), t) - d,
-		r.Scene(V(p.X, p.Y+e, p.Z), t) - d,
-		r.Scene(V(p.X, p.Y, p.Z+e), t) - d,
+	return core.Vec3{
+		r.Scene(core.V(p.X+e, p.Y, p.Z), t) - d,
+		r.Scene(core.V(p.X, p.Y+e, p.Z), t) - d,
+		r.Scene(core.V(p.X, p.Y, p.Z+e), t) - d,
 	}.Normalize()
 }
 
 // Soft shadow
-func (r *Renderer) softShadow(ro, rd Vec3, mint, maxt, k float64) float64 {
+func (r *Renderer) softShadow(ro, rd core.Vec3, mint, maxt, k float64) float64 {
 	if r.ShadowSteps <= 0 {
 		return 1.0
 	}
@@ -116,16 +104,16 @@ func (r *Renderer) softShadow(ro, rd Vec3, mint, maxt, k float64) float64 {
 			return 0.0
 		}
 		res = math.Min(res, k*d/t)
-		t += clamp(d, 0.02, 0.2)
+		t += core.Clamp(d, 0.02, 0.2)
 		if t > maxt {
 			break
 		}
 	}
-	return clamp(res, 0, 1)
+	return core.Clamp(res, 0, 1)
 }
 
 // Ambient occlusion
-func (r *Renderer) ao(p, n Vec3) float64 {
+func (r *Renderer) ao(p, n core.Vec3) float64 {
 	if r.AOSteps <= 0 {
 		return 1.0
 	}
@@ -137,16 +125,16 @@ func (r *Renderer) ao(p, n Vec3) float64 {
 		occ += (h - d) * scale
 		scale *= 0.75
 	}
-	return clamp(1-1.5*occ, 0, 1)
+	return core.Clamp(1-1.5*occ, 0, 1)
 }
 
 // shade computes brightness 0..1 using ShadowSteps/AOSteps from the Renderer.
-func (r *Renderer) shade(ro, rd Vec3, t float64) float64 {
+func (r *Renderer) shade(ro, rd core.Vec3, t float64) float64 {
 	p := ro.Add(rd.Mul(t))
 	n := r.normal(p)
 
 	// Diffuse
-	diff := clamp(n.Dot(r.LightDir), 0, 1)
+	diff := core.Clamp(n.Dot(r.LightDir), 0, 1)
 
 	// Shadow + specular (skip entirely when ShadowSteps=0)
 	shadow := r.softShadow(p.Add(n.Mul(0.02)), r.LightDir, 0.02, 10.0, 16.0)
@@ -155,14 +143,14 @@ func (r *Renderer) shade(ro, rd Vec3, t float64) float64 {
 	spec := 0.0
 	if r.ShadowSteps > 0 {
 		half := r.LightDir.Sub(rd).Normalize()
-		spec = math.Pow(clamp(n.Dot(half), 0, 1), r.SpecPower) * shadow
+		spec = math.Pow(core.Clamp(n.Dot(half), 0, 1), r.SpecPower) * shadow
 	}
 
 	// AO + fresnel (skip when AOSteps=0)
 	ao := r.ao(p, n)
 	fresnel := 0.0
 	if r.AOSteps > 0 {
-		fresnel = math.Pow(1-clamp(-rd.Dot(n), 0, 1), 3) * 0.3
+		fresnel = math.Pow(1-core.Clamp(-rd.Dot(n), 0, 1), 3) * 0.3
 	}
 
 	ambient := r.Ambient * ao
@@ -171,20 +159,20 @@ func (r *Renderer) shade(ro, rd Vec3, t float64) float64 {
 	fog := math.Exp(-t * t * 0.008)
 	brightness *= fog
 
-	return clamp(brightness, 0, 1)
+	return core.Clamp(brightness, 0, 1)
 }
 
 // shadeColor returns RGB color using the same lighting pipeline as shade().
-func (r *Renderer) shadeColor(ro, rd Vec3, t float64) Vec3 {
+func (r *Renderer) shadeColor(ro, rd core.Vec3, t float64) core.Vec3 {
 	p := ro.Add(rd.Mul(t))
 	n := r.normal(p)
 
-	mat := V(1, 1, 1)
+	mat := core.V(1, 1, 1)
 	if r.ColorFunc != nil {
 		mat = r.ColorFunc(p, r.Time)
 	}
 
-	diff := clamp(n.Dot(r.LightDir), 0, 1)
+	diff := core.Clamp(n.Dot(r.LightDir), 0, 1)
 
 	shadow := r.softShadow(p.Add(n.Mul(0.02)), r.LightDir, 0.02, 10.0, 16.0)
 	diff *= shadow
@@ -192,30 +180,30 @@ func (r *Renderer) shadeColor(ro, rd Vec3, t float64) Vec3 {
 	spec := 0.0
 	if r.ShadowSteps > 0 {
 		half := r.LightDir.Sub(rd).Normalize()
-		spec = math.Pow(clamp(n.Dot(half), 0, 1), r.SpecPower) * shadow
+		spec = math.Pow(core.Clamp(n.Dot(half), 0, 1), r.SpecPower) * shadow
 	}
 
 	ao := r.ao(p, n)
 	fresnel := 0.0
 	if r.AOSteps > 0 {
-		fresnel = math.Pow(1-clamp(-rd.Dot(n), 0, 1), 3) * 0.3
+		fresnel = math.Pow(1-core.Clamp(-rd.Dot(n), 0, 1), 3) * 0.3
 	}
 
 	ambient := r.Ambient * ao
 	diffContrib := diff * 0.65 * ao
 	col := mat.Mul(ambient + diffContrib)
-	col = col.Add(V(1, 1, 1).Mul(spec * 0.25))
+	col = col.Add(core.V(1, 1, 1).Mul(spec * 0.25))
 	col = col.Add(mat.Mul(fresnel * ao))
 
 	fog := math.Exp(-t * t * 0.008)
 	col = col.Mul(fog)
 
-	return V(clamp(col.X, 0, 1), clamp(col.Y, 0, 1), clamp(col.Z, 0, 1))
+	return core.V(core.Clamp(col.X, 0, 1), core.Clamp(col.Y, 0, 1), core.Clamp(col.Z, 0, 1))
 }
 
 // raymarchFrom starts a raymarch near a known surface hit.
 // It begins at startT - 0.5 and uses half the normal max steps.
-func (r *Renderer) raymarchFrom(ro, rd Vec3, startT float64) (float64, bool) {
+func (r *Renderer) raymarchFrom(ro, rd core.Vec3, startT float64) (float64, bool) {
 	t := math.Max(0, startT-0.5)
 	steps := maxSteps / 2
 	for i := 0; i < steps; i++ {
@@ -233,7 +221,7 @@ func (r *Renderer) raymarchFrom(ro, rd Vec3, startT float64) (float64, bool) {
 }
 
 // sampleBrightness casts a ray and returns its brightness (0 if missed).
-func (r *Renderer) sampleBrightness(ro, fwd, right, up Vec3, snx, sny, halfW, halfH, hintT float64) float64 {
+func (r *Renderer) sampleBrightness(ro, fwd, right, up core.Vec3, snx, sny, halfW, halfH, hintT float64) float64 {
 	rd := fwd.Add(right.Mul(snx * halfW)).Add(up.Mul(sny * halfH)).Normalize()
 	t, hit := r.raymarchFrom(ro, rd, hintT)
 	if hit {
@@ -242,26 +230,26 @@ func (r *Renderer) sampleBrightness(ro, fwd, right, up Vec3, snx, sny, halfW, ha
 	return 0
 }
 
-// renderCellShaped casts 6 internal + 6 external sub-cell rays,
+// renderCellShaped casts 6 internal + 6 external sub-core.Cell rays,
 // applies directional and global contrast, then matches against shape vectors.
 // Returns the matched character and the center-ray color.
-func (r *Renderer) renderCellShaped(ro, fwd, right, up Vec3, nx, ny, dx, dy, halfW, halfH, centerT float64, centerRd Vec3) (byte, Vec3) {
+func (r *Renderer) renderCellShaped(ro, fwd, right, up core.Vec3, nx, ny, dx, dy, halfW, halfH, centerT float64, centerRd core.Vec3) (byte, core.Vec3) {
 	if centerT >= maxDist {
-		return ' ', Vec3{}
+		return ' ', core.Vec3{}
 	}
 
-	// Internal offsets: 2 cols x 3 rows within the cell
-	// Row order: top, middle, bottom (positive ny = up = top of cell)
+	// Internal offsets: 2 cols x 3 rows within the core.Cell
+	// Row order: top, middle, bottom (positive ny = up = top of core.Cell)
 	s := r.Spread
 	colOff := [2]float64{-0.25 * s, 0.25 * s}
 	rowOff := [3]float64{1.0 / 3.0 * s, 0, -1.0 / 3.0 * s}
 
-	// External offsets: just outside cell boundary, paired with each internal position
+	// External offsets: just outside core.Cell boundary, paired with each internal position
 	e := r.ExtDist
 	extColOff := [2]float64{-0.75 * e, 0.75 * e}
 	extRowOff := [3]float64{1.0 * e, 0, -1.0 * e}
 
-	var sv, ext ShapeVec
+	var sv, ext shape.ShapeVec
 	idx := 0
 	for row := 0; row < 3; row++ {
 		for col := 0; col < 2; col++ {
@@ -282,25 +270,25 @@ func (r *Renderer) renderCellShaped(ro, fwd, right, up Vec3, nx, ny, dx, dy, hal
 	}
 	avgBright /= 6
 
-	sv = DirectionalContrast(sv, ext, r.Contrast)
-	sv = EnhanceContrast(sv, r.Contrast)
+	sv = shape.DirectionalContrast(sv, ext, r.Contrast)
+	sv = shape.EnhanceContrast(sv, r.Contrast)
 	ch := r.ShapeTable.Match(sv)
 
 	// Color: material color * average brightness (no extra shade pass)
-	mat := V(1, 1, 1)
+	mat := core.V(1, 1, 1)
 	if r.ColorFunc != nil {
 		p := ro.Add(centerRd.Mul(centerT))
 		mat = r.ColorFunc(p, r.Time)
 	}
 	col := mat.Mul(avgBright)
-	return ch, V(clamp(col.X, 0, 1), clamp(col.Y, 0, 1), clamp(col.Z, 0, 1))
+	return ch, core.V(core.Clamp(col.X, 0, 1), core.Clamp(col.Y, 0, 1), core.Clamp(col.Z, 0, 1))
 }
 
-// renderCellDual is like renderCellShaped but over a double-sized cell.
-// dx/dy should be the cell spacing of the dual grid (2× normal).
-func (r *Renderer) renderCellDual(ro, fwd, right, up Vec3, nx, ny, dx, dy, halfW, halfH, centerT float64, centerRd Vec3) (byte, Vec3) {
+// renderCellDual is like renderCellShaped but over a double-sized core.Cell.
+// dx/dy should be the core.Cell spacing of the dual grid (2× normal).
+func (r *Renderer) renderCellDual(ro, fwd, right, up core.Vec3, nx, ny, dx, dy, halfW, halfH, centerT float64, centerRd core.Vec3) (byte, core.Vec3) {
 	if centerT >= maxDist {
-		return ' ', Vec3{}
+		return ' ', core.Vec3{}
 	}
 
 	s := r.Spread
@@ -311,7 +299,7 @@ func (r *Renderer) renderCellDual(ro, fwd, right, up Vec3, nx, ny, dx, dy, halfW
 	extColOff := [2]float64{-0.75 * e, 0.75 * e}
 	extRowOff := [3]float64{1.0 * e, 0, -1.0 * e}
 
-	var sv, ext ShapeVec
+	var sv, ext shape.ShapeVec
 	idx := 0
 	for row := 0; row < 3; row++ {
 		for c := 0; c < 2; c++ {
@@ -329,38 +317,38 @@ func (r *Renderer) renderCellDual(ro, fwd, right, up Vec3, nx, ny, dx, dy, halfW
 	}
 	avgBright /= 6
 
-	sv = DirectionalContrast(sv, ext, r.Contrast)
-	sv = EnhanceContrast(sv, r.Contrast)
+	sv = shape.DirectionalContrast(sv, ext, r.Contrast)
+	sv = shape.EnhanceContrast(sv, r.Contrast)
 	ch := r.ShapeTable.Match(sv)
 
-	mat := V(1, 1, 1)
+	mat := core.V(1, 1, 1)
 	if r.ColorFunc != nil {
 		p := ro.Add(centerRd.Mul(centerT))
 		mat = r.ColorFunc(p, r.Time)
 	}
 	col := mat.Mul(avgBright)
-	return ch, V(clamp(col.X, 0, 1), clamp(col.Y, 0, 1), clamp(col.Z, 0, 1))
+	return ch, core.V(core.Clamp(col.X, 0, 1), core.Clamp(col.Y, 0, 1), core.Clamp(col.Z, 0, 1))
 }
 
-// quadrantChars maps 4-bit patterns (TL=bit3, TR=bit2, BL=bit1, BR=bit0) to Unicode quadrant block characters.
-var quadrantChars = [16]rune{
+// QuadrantChars maps 4-bit patterns (TL=bit3, TR=bit2, BL=bit1, BR=bit0) to Unicode quadrant block characters.
+var QuadrantChars = [16]rune{
 	' ', '▗', '▖', '▄', '▝', '▐', '▞', '▟',
 	'▘', '▚', '▌', '▙', '▀', '▜', '▛', '█',
 }
 
 // renderCellQuadrant casts 4 rays in a 2×2 pattern via raymarchFrom,
 // thresholds brightness, picks a quadrant block character, and computes fg/bg colors.
-func (r *Renderer) renderCellQuadrant(ro, fwd, right, up Vec3, nx, ny, dx, dy, halfW, halfH, centerT float64) cell {
+func (r *Renderer) renderCellQuadrant(ro, fwd, right, up core.Vec3, nx, ny, dx, dy, halfW, halfH, centerT float64) core.Cell {
 	if centerT >= maxDist {
-		return cell{ch: ' '}
+		return core.Cell{Ch: ' '}
 	}
 
-	// 2×2 sub-pixel offsets within the cell
+	// 2×2 sub-pixel offsets within the core.Cell
 	offX := [2]float64{-0.25, 0.25}
 	offY := [2]float64{0.25, -0.25} // top, bottom (positive ny = up)
 
 	var bright [4]float64
-	var colors [4]Vec3
+	var colors [4]core.Vec3
 	hit := [4]bool{}
 
 	// Sample order: TL(0), TR(1), BL(2), BR(3)
@@ -397,14 +385,14 @@ func (r *Renderer) renderCellQuadrant(ro, fwd, right, up Vec3, nx, ny, dx, dy, h
 		}
 		if maxB-minB < 0.08 {
 			avg := colors[0].Add(colors[1]).Add(colors[2]).Add(colors[3]).Mul(0.25)
-			return cell{ch: '█', col: V(clamp(avg.X, 0, 1), clamp(avg.Y, 0, 1), clamp(avg.Z, 0, 1))}
+			return core.Cell{Ch: '█', Col: core.V(core.Clamp(avg.X, 0, 1), core.Clamp(avg.Y, 0, 1), core.Clamp(avg.Z, 0, 1))}
 		}
 	}
 
 	// Threshold each pixel around mean
 	var pattern int
 	var onCount int
-	var fgCol, bgCol Vec3
+	var fgCol, bgCol core.Vec3
 	bgHitCount := 0
 	for i := 0; i < 4; i++ {
 		bit := 3 - i // TL=bit3, TR=bit2, BL=bit1, BR=bit0
@@ -419,42 +407,43 @@ func (r *Renderer) renderCellQuadrant(ro, fwd, right, up Vec3, nx, ny, dx, dy, h
 	}
 
 	if onCount == 0 {
-		return cell{ch: ' '}
+		return core.Cell{Ch: ' '}
 	}
 
-	ch := quadrantChars[pattern]
+	ch := QuadrantChars[pattern]
 	fg := fgCol.Mul(1.0 / float64(onCount))
-	fg = V(clamp(fg.X, 0, 1), clamp(fg.Y, 0, 1), clamp(fg.Z, 0, 1))
+	fg = core.V(core.Clamp(fg.X, 0, 1), core.Clamp(fg.Y, 0, 1), core.Clamp(fg.Z, 0, 1))
 
 	// Only set bg when off-pixels hit actual geometry (not ray misses)
 	if bgHitCount == 0 {
-		return cell{ch: ch, col: fg}
+		return core.Cell{Ch: ch, Col: fg}
 	}
 
 	bg := bgCol.Mul(1.0 / float64(bgHitCount))
-	bg = V(clamp(bg.X, 0, 1), clamp(bg.Y, 0, 1), clamp(bg.Z, 0, 1))
+	bg = core.V(core.Clamp(bg.X, 0, 1), core.Clamp(bg.Y, 0, 1), core.Clamp(bg.Z, 0, 1))
 
-	return cell{ch: ch, col: fg, bg: bg, hasBg: true}
+	return core.Cell{Ch: ch, Col: fg, Bg: bg, HasBg: true}
 }
 
-// cell holds a character and its foreground/background colors.
-type cell struct {
-	ch    rune
-	col   Vec3 // foreground RGB 0-1
-	bg    Vec3 // background RGB 0-1
-	hasBg bool // whether to emit background color escape
-}
+// core.Cell holds a character and its foreground/background colors.
 
-// RenderCells renders the scene and returns the raw cell grid (no ANSI encoding).
-func (r *Renderer) RenderCells() [][]cell {
+// RenderCells renders the scene and returns the raw core.Cell grid (no ANSI encoding).
+func (r *Renderer) RenderCells() [][]core.Cell {
 	w, h := r.Width, r.Height
 	if w <= 0 || h <= 0 {
 		return nil
 	}
 
-	// Dual mode: half-resolution grid, each cell covers 2×2 normal cells
-	if r.RenderMode == RenderDual && r.ShapeTable != nil {
+	// Dual mode: half-resolution grid, each core.Cell covers 2×2 normal cells
+	if r.RenderMode == core.RenderDual && r.ShapeTable != nil {
 		return r.renderCellsDualGrid()
+	}
+
+	// Half-block, braille, density are GPU-only; fall back to blocks on CPU
+	savedMode := r.RenderMode
+	if r.RenderMode >= core.RenderHalfBlock {
+		r.RenderMode = core.RenderBlocks
+		defer func() { r.RenderMode = savedMode }()
 	}
 
 	fwd := r.Camera.Target.Sub(r.Camera.Pos).Normalize()
@@ -472,13 +461,13 @@ func (r *Renderer) RenderCells() [][]cell {
 	shapeMode := r.ShapeTable != nil
 
 	var wg sync.WaitGroup
-	lines := make([][]cell, h)
+	lines := make([][]core.Cell, h)
 
 	for y := 0; y < h; y++ {
 		wg.Add(1)
 		go func(y int) {
 			defer wg.Done()
-			line := make([]cell, w)
+			line := make([]core.Cell, w)
 			ny := 1.0 - 2.0*float64(y)/float64(h-1)
 
 			for x := 0; x < w; x++ {
@@ -486,37 +475,37 @@ func (r *Renderer) RenderCells() [][]cell {
 				rd := fwd.Add(right.Mul(nx * halfW)).Add(up.Mul(ny * halfH)).Normalize()
 				t, _ := r.raymarch(ro, rd)
 
-				if r.RenderMode == RenderBlocks {
+				if r.RenderMode == core.RenderBlocks {
 					line[x] = r.renderCellQuadrant(ro, fwd, right, up, nx, ny, dx, dy, halfW, halfH, t)
 				} else {
 					var ch byte
-					var col Vec3
+					var col core.Vec3
 					if shapeMode {
 						ch, col = r.renderCellShaped(ro, fwd, right, up, nx, ny, dx, dy, halfW, halfH, t, rd)
 					} else if t < maxDist {
 						col = r.shadeColor(ro, rd, t)
 						brightness := col.X*0.299 + col.Y*0.587 + col.Z*0.114
-						idx := int(brightness * float64(len(asciiRamp)-1))
+						idx := int(brightness * float64(len(core.AsciiRamp)-1))
 						if idx < 0 {
 							idx = 0
 						}
-						if idx >= len(asciiRamp) {
-							idx = len(asciiRamp) - 1
+						if idx >= len(core.AsciiRamp) {
+							idx = len(core.AsciiRamp) - 1
 						}
-						ch = asciiRamp[idx]
+						ch = core.AsciiRamp[idx]
 					} else {
 						bgBright := 0.02 + 0.03*(ny+1)*0.5
-						idx := int(bgBright * float64(len(asciiRamp)-1))
+						idx := int(bgBright * float64(len(core.AsciiRamp)-1))
 						if idx < 0 {
 							idx = 0
 						}
-						if idx >= len(asciiRamp) {
-							idx = len(asciiRamp) - 1
+						if idx >= len(core.AsciiRamp) {
+							idx = len(core.AsciiRamp) - 1
 						}
-						ch = asciiRamp[idx]
-						col = Vec3{}
+						ch = core.AsciiRamp[idx]
+						col = core.Vec3{}
 					}
-					line[x] = cell{ch: rune(ch), col: col}
+					line[x] = core.Cell{Ch: rune(ch), Col: col}
 				}
 			}
 			lines[y] = line
@@ -526,9 +515,9 @@ func (r *Renderer) RenderCells() [][]cell {
 	return lines
 }
 
-// renderCellsDualGrid renders W × H cells (fills viewport) but each cell's
+// renderCellsDualGrid renders W × H cells (fills viewport) but each core.Cell's
 // sub-pixel grid covers 2× the normal area, capturing broader spatial features.
-func (r *Renderer) renderCellsDualGrid() [][]cell {
+func (r *Renderer) renderCellsDualGrid() [][]core.Cell {
 	w, h := r.Width, r.Height
 
 	fwd := r.Camera.Target.Sub(r.Camera.Pos).Normalize()
@@ -541,18 +530,18 @@ func (r *Renderer) renderCellsDualGrid() [][]cell {
 	halfW := halfH * aspect
 
 	ro := r.Camera.Pos
-	// 2× the normal cell spacing so sub-pixels spread wider
+	// 2× the normal core.Cell spacing so sub-pixels spread wider
 	dx := 2.0 / float64(w-1) * 2
 	dy := 2.0 / float64(h-1) * 2
 
 	var wg sync.WaitGroup
-	lines := make([][]cell, h)
+	lines := make([][]core.Cell, h)
 
 	for y := 0; y < h; y++ {
 		wg.Add(1)
 		go func(y int) {
 			defer wg.Done()
-			line := make([]cell, w)
+			line := make([]core.Cell, w)
 			ny := 1.0 - 2.0*float64(y)/float64(h-1)
 
 			for x := 0; x < w; x++ {
@@ -560,7 +549,7 @@ func (r *Renderer) renderCellsDualGrid() [][]cell {
 				rd := fwd.Add(right.Mul(nx * halfW)).Add(up.Mul(ny * halfH)).Normalize()
 				t, _ := r.raymarch(ro, rd)
 				ch, col := r.renderCellDual(ro, fwd, right, up, nx, ny, dx, dy, halfW, halfH, t, rd)
-				line[x] = cell{ch: rune(ch), col: col}
+				line[x] = core.Cell{Ch: rune(ch), Col: col}
 			}
 			lines[y] = line
 		}(y)
@@ -569,14 +558,14 @@ func (r *Renderer) renderCellsDualGrid() [][]cell {
 	return lines
 }
 
-// buildANSI converts a cell grid to an ANSI true-color string with fg+bg support.
-func buildANSI(lines [][]cell) string {
-	return string(appendANSI(nil, lines))
+// BuildANSI converts a core.Cell grid to an ANSI true-color string with fg+bg support.
+func BuildANSI(lines [][]core.Cell) string {
+	return string(AppendANSI(nil, lines))
 }
 
-// appendANSI appends ANSI-encoded cell grid to buf and returns the result.
+// AppendANSI appends ANSI-encoded core.Cell grid to buf and returns the result.
 // Reuses buf capacity to avoid allocation when the caller retains the buffer.
-func appendANSI(buf []byte, lines [][]cell) []byte {
+func AppendANSI(buf []byte, lines [][]core.Cell) []byte {
 	if len(lines) == 0 {
 		return buf
 	}
@@ -598,7 +587,7 @@ func appendANSI(buf []byte, lines [][]cell) []byte {
 		prevBR, prevBG, prevBB = -1, -1, -1
 		for x := 0; x < len(lines[y]); x++ {
 			c := lines[y][x]
-			if c.ch == ' ' && !c.hasBg {
+			if c.Ch == ' ' && !c.HasBg {
 				if prevBR != -1 || prevBG != -1 || prevBB != -1 {
 					out = append(out, "\033[0m"...)
 					prevFR, prevFG, prevFB = -1, -1, -1
@@ -607,23 +596,23 @@ func appendANSI(buf []byte, lines [][]cell) []byte {
 				out = append(out, ' ')
 				continue
 			}
-			// If previous cell set a bg but this cell doesn't use bg, reset it
-			if !c.hasBg && (prevBR != -1 || prevBG != -1 || prevBB != -1) {
+			// If previous core.Cell set a bg but this core.Cell doesn't use bg, reset it
+			if !c.HasBg && (prevBR != -1 || prevBG != -1 || prevBB != -1) {
 				out = append(out, "\033[0m"...)
 				prevFR, prevFG, prevFB = -1, -1, -1
 				prevBR, prevBG, prevBB = -1, -1, -1
 			}
 
-			cr := int(c.col.X * 255)
-			cg := int(c.col.Y * 255)
-			cb := int(c.col.Z * 255)
+			cr := int(c.Col.X * 255)
+			cg := int(c.Col.Y * 255)
+			cb := int(c.Col.Z * 255)
 			fgChanged := cr != prevFR || cg != prevFG || cb != prevFB
 			bgChanged := false
 			var br, bg2, bb int
-			if c.hasBg {
-				br = int(c.bg.X * 255)
-				bg2 = int(c.bg.Y * 255)
-				bb = int(c.bg.Z * 255)
+			if c.HasBg {
+				br = int(c.Bg.X * 255)
+				bg2 = int(c.Bg.Y * 255)
+				bb = int(c.Bg.Z * 255)
 				bgChanged = br != prevBR || bg2 != prevBG || bb != prevBB
 			}
 			if fgChanged || bgChanged {
@@ -651,7 +640,7 @@ func appendANSI(buf []byte, lines [][]cell) []byte {
 				}
 				out = append(out, 'm')
 			}
-			n := utf8.EncodeRune(runeBuf[:], c.ch)
+			n := utf8.EncodeRune(runeBuf[:], c.Ch)
 			out = append(out, runeBuf[:n]...)
 		}
 		out = append(out, "\033[0m"...)
@@ -664,5 +653,5 @@ func (r *Renderer) Render() string {
 	if r.Width <= 0 || r.Height <= 0 {
 		return ""
 	}
-	return buildANSI(r.RenderCells())
+	return BuildANSI(r.RenderCells())
 }

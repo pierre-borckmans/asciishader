@@ -1,10 +1,9 @@
-package main
+package shader
 
 import "strings"
 
-// shaderPrefix contains version, uniforms, constants, and the full SDF primitive library.
-// User code comes after this and must define sceneSDF(vec3) and sceneColor(vec3).
-const shaderPrefix = `#version 150
+// ShaderPrefix contains version, uniforms, constants, and the full SDF primitive library.
+const ShaderPrefix = `#version 150
 uniform vec2 uResolution;
 uniform float uTime;
 uniform vec3 uCameraPos;
@@ -99,9 +98,8 @@ vec3 rotateX(vec3 p, float a) {
 // ---- User code below (must define sceneSDF and sceneColor) ----
 `
 
-// shaderSuffix contains raymarch, shading pipeline, and main.
-// It calls sceneSDF() and sceneColor() which are defined in user code.
-const shaderSuffix = `
+// ShaderSuffix contains raymarch, shading pipeline, and main.
+const ShaderSuffix = `
 // ---- Raymarching ----
 float raymarch(vec3 ro, vec3 rd) {
     float t = 0.0;
@@ -220,9 +218,8 @@ void main() {
 }
 `
 
-// shaderRawPrefix provides uniforms and Shadertoy compatibility aliases
-// for raw shaders that define mainImage() instead of sceneSDF()/sceneColor().
-const shaderRawPrefix = `#version 150
+// ShaderRawPrefix provides uniforms and Shadertoy compatibility aliases.
+const ShaderRawPrefix = `#version 150
 uniform vec2 uResolution;
 uniform float uTime;
 uniform vec3 uCameraPos;
@@ -244,10 +241,8 @@ out vec4 fragColor;
 #define HW_PERFORMANCE 1
 `
 
-// shaderRawSuffix wraps mainImage into main(), flips Y to match the structured
-// renderer's coordinate convention, and stores brightness in alpha for ASCII
-// shape matching.
-const shaderRawSuffix = `
+// ShaderRawSuffix wraps mainImage into main().
+const ShaderRawSuffix = `
 void main() {
     vec2 fc = vec2(gl_FragCoord.x, uResolution.y - gl_FragCoord.y);
     mainImage(fragColor, fc);
@@ -256,36 +251,30 @@ void main() {
 }
 `
 
-// defaultUserCode is a minimal structured shader used for GPU init before
-// external shader files are loaded.
-const defaultUserCode = `
+// DefaultUserCode is a minimal structured shader.
+const DefaultUserCode = `
 float sceneSDF(vec3 p) { return sdSphere(p, 1.0); }
 vec3 sceneColor(vec3 p) { return vec3(1); }
 `
 
-// isRawShader returns true if the code contains mainImage, indicating a
-// Shadertoy-style shader that should use the raw prefix/suffix instead of
-// the structured SDF pipeline.
-func isRawShader(code string) bool {
+// IsRawShader returns true if the code contains mainImage.
+func IsRawShader(code string) bool {
 	return strings.Contains(code, "mainImage")
 }
 
-// PrefixLineCount returns the number of lines in the prefix used for the
-// given code. Raw shaders use the shorter raw prefix; structured shaders
-// use the full SDF prefix.
+// PrefixLineCount returns the number of lines in the prefix used for the given code.
 func PrefixLineCount(code string) int {
-	if isRawShader(code) {
-		return strings.Count(shaderRawPrefix, "\n")
+	if IsRawShader(code) {
+		return strings.Count(ShaderRawPrefix, "\n")
 	}
-	return strings.Count(shaderPrefix, "\n")
+	return strings.Count(ShaderPrefix, "\n")
 }
 
-// assembleShader combines the appropriate prefix + user code + suffix into
-// a complete fragment shader. Raw shaders (containing mainImage) get the
-// minimal raw prefix/suffix; structured shaders get the full SDF pipeline.
-func assembleShader(userCode string) string {
-	if isRawShader(userCode) {
-		return shaderRawPrefix + userCode + "\n" + shaderRawSuffix + "\x00"
+// Assemble combines the appropriate prefix + user code + suffix into
+// a complete fragment shader.
+func Assemble(userCode string) string {
+	if IsRawShader(userCode) {
+		return ShaderRawPrefix + userCode + "\n" + ShaderRawSuffix + "\x00"
 	}
-	return shaderPrefix + userCode + "\n" + shaderSuffix + "\x00"
+	return ShaderPrefix + userCode + "\n" + ShaderSuffix + "\x00"
 }

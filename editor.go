@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"asciishader/components"
+	gpupkg "asciishader/gpu"
+	"asciishader/shader"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
@@ -28,13 +30,13 @@ type EditorTab struct {
 // NewEditorTab creates a new GLSL code editor.
 func NewEditorTab() *EditorTab {
 	ta := textarea.New()
-	ta.SetValue(defaultUserCode)
+	ta.SetValue(shader.DefaultUserCode)
 	ta.ShowLineNumbers = true
 	ta.CharLimit = 0
 	// Very large internal width so the textarea never wraps lines.
 	ta.SetWidth(10000)
 	// Set height to total lines so the textarea never scrolls internally.
-	ta.SetHeight(len(strings.Split(defaultUserCode, "\n")) + 1)
+	ta.SetHeight(len(strings.Split(shader.DefaultUserCode, "\n")) + 1)
 	ta.Focus()
 
 	sv := components.NewScrollableView()
@@ -94,7 +96,7 @@ func (et *EditorTab) Blur() {
 }
 
 // Compile attempts to compile the current code using the GPU renderer.
-func (et *EditorTab) Compile(gpu *GPURenderer) {
+func (et *EditorTab) Compile(gpu *gpupkg.GPURenderer) {
 	if gpu == nil {
 		et.status = "No GPU renderer"
 		et.statusErr = true
@@ -105,7 +107,7 @@ func (et *EditorTab) Compile(gpu *GPURenderer) {
 	err := gpu.CompileUserCode(code)
 	if err != nil {
 		errMsg := err.Error()
-		prefixLines := PrefixLineCount(code)
+		prefixLines := shader.PrefixLineCount(code)
 		errMsg = adjustErrorLineNumbers(errMsg, prefixLines)
 		et.status = fmt.Sprintf("Error: %s", errMsg)
 		et.statusErr = true

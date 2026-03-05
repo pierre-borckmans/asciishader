@@ -1,4 +1,4 @@
-package main
+package shape
 
 import (
 	"image"
@@ -56,18 +56,14 @@ func NewShapeTable() *ShapeTable {
 	return st
 }
 
-// rasterizeChar draws a single character and computes its 6-region density.
 func rasterizeChar(face *basicfont.Face, c byte) ShapeVec {
-	// Face7x13 glyphs are 6 pixels wide, 13 pixels tall (advance=7, ascent=11, descent=2)
 	const (
 		glyphW = 6
 		glyphH = 13
 	)
 
-	// Create a small grayscale image to draw into
 	img := image.NewGray(image.Rect(0, 0, glyphW, glyphH))
 
-	// Draw the character. The baseline is at y = ascent (11).
 	d := &font.Drawer{
 		Dst:  img,
 		Src:  image.White,
@@ -76,10 +72,6 @@ func rasterizeChar(face *basicfont.Face, c byte) ShapeVec {
 	}
 	d.DrawString(string(c))
 
-	// Compute density in 6 regions of the glyph:
-	//   TL: cols 0-2, rows 0-3   | TR: cols 3-5, rows 0-3
-	//   ML: cols 0-2, rows 4-8   | MR: cols 3-5, rows 4-8
-	//   BL: cols 0-2, rows 9-12  | BR: cols 3-5, rows 9-12
 	regions := [6]struct{ x0, x1, y0, y1 int }{
 		{0, 3, 0, 4},  // TL
 		{3, 6, 0, 4},  // TR
@@ -112,7 +104,6 @@ func rasterizeChar(face *basicfont.Face, c byte) ShapeVec {
 var _ draw.Image = (*image.Gray)(nil)
 
 // EnhanceContrast applies global contrast enhancement to a shape vector.
-// Uses pow(v[i]/maxComp, exponent) * maxComp to sharpen differences.
 func EnhanceContrast(sv ShapeVec, exponent float64) ShapeVec {
 	maxComp := sv[0]
 	for i := 1; i < 6; i++ {
@@ -134,8 +125,6 @@ func EnhanceContrast(sv ShapeVec, exponent float64) ShapeVec {
 }
 
 // DirectionalContrast enhances edges using external reference samples.
-// For each component, if the external neighbor is brighter, the internal
-// value gets pushed down — creating contrast at cell boundaries.
 func DirectionalContrast(sv ShapeVec, ext ShapeVec, exponent float64) ShapeVec {
 	var out ShapeVec
 	for i := 0; i < 6; i++ {
@@ -151,8 +140,7 @@ func DirectionalContrast(sv ShapeVec, ext ShapeVec, exponent float64) ShapeVec {
 	return out
 }
 
-// Match finds the character whose shape vector is closest to sv
-// using squared Euclidean distance (brute-force nearest neighbor).
+// Match finds the character whose shape vector is closest to sv.
 func (st *ShapeTable) Match(sv ShapeVec) byte {
 	bestChar := byte(' ')
 	bestDist := math.MaxFloat64

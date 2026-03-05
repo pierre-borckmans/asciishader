@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"asciishader/clip"
+	"asciishader/core"
 )
 
 // RecordingState is the state machine for the recording system.
@@ -42,7 +43,7 @@ type Recorder struct {
 	// Bake state
 	bakeScaleIdx int
 	bakeFrameIdx int
-	bakeFrames   [][][]clip.ClipCell // [scaleIdx][frameIdx] = flat cell grid
+	bakeFrames   [][][]clip.ClipCell // [scaleIdx][frameIdx] = flat core.Cell grid
 	bakeTrackRaw [][]byte            // compressed track data per scale
 
 	// Output
@@ -135,7 +136,7 @@ func (rec *Recorder) BakeStep(m *model) bool {
 	rec.applyKeyframe(m, kf, scale.Width, scale.Height)
 
 	// Render at this scale's resolution
-	var cells [][]cell
+	var cells [][]core.Cell
 	if m.gpuMode && m.gpu != nil {
 		cells = m.gpu.RenderToCells(m.renderer)
 	} else {
@@ -170,9 +171,9 @@ func (rec *Recorder) applyKeyframe(m *model, kf clip.Keyframe, w, h int) {
 	camAngleX := float64(kf.CamAngleX)
 	camAngleY := float64(kf.CamAngleY)
 	camDist := float64(kf.CamDist)
-	camTarget := Vec3{float64(kf.CamTargetX), float64(kf.CamTargetY), float64(kf.CamTargetZ)}
+	camTarget := core.Vec3{float64(kf.CamTargetX), float64(kf.CamTargetY), float64(kf.CamTargetZ)}
 
-	m.renderer.Camera.Pos = Vec3{
+	m.renderer.Camera.Pos = core.Vec3{
 		camTarget.X + math.Sin(camAngleY)*math.Cos(camAngleX)*camDist,
 		camTarget.Y + math.Sin(camAngleX)*camDist,
 		camTarget.Z - math.Cos(camAngleY)*math.Cos(camAngleX)*camDist,
@@ -181,16 +182,16 @@ func (rec *Recorder) applyKeyframe(m *model, kf clip.Keyframe, w, h int) {
 
 	// Animated light (same formula as main tick)
 	shaderTime := float64(kf.ShaderTime)
-	m.renderer.LightDir = V(
+	m.renderer.LightDir = core.V(
 		math.Sin(shaderTime*0.5)*0.5,
 		0.8,
 		math.Cos(shaderTime*0.5)*0.5-0.5,
 	).Normalize()
 }
 
-// extractRegion converts the full cell grid to a flat ClipCell slice at the given dimensions.
+// extractRegion converts the full core.Cell grid to a flat ClipCell slice at the given dimensions.
 // During baking, the renderer is already sized to the scale dimensions, so we take the full grid.
-func (rec *Recorder) extractRegion(cells [][]cell, w, h int) []clip.ClipCell {
+func (rec *Recorder) extractRegion(cells [][]core.Cell, w, h int) []clip.ClipCell {
 	out := make([]clip.ClipCell, w*h)
 	for y := 0; y < h && y < len(cells); y++ {
 		for x := 0; x < w && x < len(cells[y]); x++ {
