@@ -16,6 +16,26 @@ import (
 // maxUnrollIterations is the compile-time limit for for-loop unrolling.
 const maxUnrollIterations = 256
 
+// namedColors maps named color method names to their GLSL vec3 representations.
+var namedColors = map[string]string{
+	"red":     "vec3(1.0, 0.0, 0.0)",
+	"blue":    "vec3(0.0, 0.0, 1.0)",
+	"green":   "vec3(0.0, 1.0, 0.0)",
+	"white":   "vec3(1.0, 1.0, 1.0)",
+	"black":   "vec3(0.0, 0.0, 0.0)",
+	"yellow":  "vec3(1.0, 1.0, 0.0)",
+	"cyan":    "vec3(0.0, 1.0, 1.0)",
+	"magenta": "vec3(1.0, 0.0, 1.0)",
+	"orange":  "vec3(1.0, 0.5, 0.0)",
+	"gray":    "vec3(0.5, 0.5, 0.5)",
+}
+
+// isNamedColor reports whether name is a named color method.
+func isNamedColor(name string) bool {
+	_, ok := namedColors[name]
+	return ok
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -81,9 +101,31 @@ func Generate(prog *ast.Program) (string, []diagnostic.Diagnostic) {
 	fmt.Fprintf(&out, "    return %s;\n", result)
 	out.WriteString("}\n\n")
 
-	// Emit sceneColor (default white for now).
+	// Emit sceneColor.
 	out.WriteString("vec3 sceneColor(vec3 p) {\n")
-	out.WriteString("    return vec3(1.0);\n")
+	if len(g.colors) == 0 {
+		// No colors specified — default white.
+		out.WriteString("    return vec3(1.0);\n")
+	} else if len(g.colors) == 1 {
+		// Single colored shape — always return its color.
+		fmt.Fprintf(&out, "    return %s;\n", g.colors[0].colorExpr)
+	} else {
+		// Multiple colored shapes — duplicate sceneSDF body to get SDF variables,
+		// then compare distances to pick the closest color.
+		out.WriteString(g.body.String())
+
+		// Compare distances: return the closest shape's color.
+		for i := 0; i < len(g.colors)-1; i++ {
+			cmp := g.colors[i].sdfVar
+			// Build comparison against the remaining colors.
+			restCmp := g.colors[i+1].sdfVar
+			for j := i + 2; j < len(g.colors); j++ {
+				restCmp = fmt.Sprintf("min(%s, %s)", restCmp, g.colors[j].sdfVar)
+			}
+			fmt.Fprintf(&out, "    if (%s < %s) return %s;\n", cmp, restCmp, g.colors[i].colorExpr)
+		}
+		fmt.Fprintf(&out, "    return %s;\n", g.colors[len(g.colors)-1].colorExpr)
+	}
 	out.WriteString("}\n")
 
 	return out.String(), g.diags
@@ -106,6 +148,12 @@ type scopeEntry struct {
 	varName string   // for entryFloat (GLSL variable name)
 }
 
+// colorEntry tracks the color associated with a specific SDF variable.
+type colorEntry struct {
+	sdfVar    string // the GLSL variable name holding the SDF distance (e.g. "d0")
+	colorExpr string // the GLSL color expression (e.g. "vec3(1.0, 0.0, 0.0)")
+}
+
 type generator struct {
 	body       strings.Builder // accumulated GLSL statements for current function
 	tmpCounter int             // monotonically increasing temp variable counter
@@ -119,6 +167,9 @@ type generator struct {
 
 	// loopVars tracks current loop variable substitution values during unrolling.
 	loopVars map[string]float64
+
+	// colors tracks the color associated with each SDF variable for sceneColor generation.
+	colors []colorEntry
 }
 
 // freshVar returns a fresh temporary variable name like "d0", "d1", etc.
@@ -494,6 +545,13 @@ func (g *generator) emitFuncCall(e *ast.FuncCall) string {
 // ---------------------------------------------------------------------------
 
 func (g *generator) emitMethodCall(e *ast.MethodCall) string {
+	// Named color methods: .red, .blue, etc.
+	if isNamedColor(e.Name) {
+		result := g.emitSDF(e.Receiver)
+		g.colors = append(g.colors, colorEntry{sdfVar: result, colorExpr: namedColors[e.Name]})
+		return result
+	}
+
 	switch e.Name {
 	case "at":
 		return g.emitTransformAt(e)
@@ -501,6 +559,30 @@ func (g *generator) emitMethodCall(e *ast.MethodCall) string {
 		return g.emitTransformScale(e)
 	case "rot":
 		return g.emitTransformRot(e)
+	case "color":
+		return g.emitColor(e)
+	case "mirror":
+		return g.emitMirror(e)
+	case "rep":
+		return g.emitRep(e)
+	case "morph":
+		return g.emitMorph(e)
+	case "shell", "onion":
+		return g.emitShell(e)
+	case "displace":
+		return g.emitDisplace(e)
+	case "dilate":
+		return g.emitDilate(e)
+	case "erode":
+		return g.emitErode(e)
+	case "round":
+		return g.emitRound(e)
+	case "elongate":
+		return g.emitElongate(e)
+	case "twist":
+		return g.emitTwist(e)
+	case "bend":
+		return g.emitBend(e)
 	default:
 		// Unknown method — try to emit receiver and treat as pass-through.
 		g.addDiag(diagnostic.Warning, fmt.Sprintf("unknown method .%s(), ignoring", e.Name), e.NodeSpan())
@@ -642,6 +724,329 @@ func (g *generator) emitTransformRot(e *ast.MethodCall) string {
 		// Arbitrary axis — fall back to Y as default.
 		g.emit("vec3 %s = rotateY(%s, radians(%s));", pNew, g.pointVar, deg)
 	}
+
+	oldPoint := g.pointVar
+	g.pointVar = pNew
+	result := g.emitSDF(e.Receiver)
+	g.pointVar = oldPoint
+
+	return result
+}
+
+// ---------------------------------------------------------------------------
+// Color method
+// ---------------------------------------------------------------------------
+
+// emitColor handles .color(r, g, b) and .color(#hex)
+func (g *generator) emitColor(e *ast.MethodCall) string {
+	result := g.emitSDF(e.Receiver)
+
+	var colorExpr string
+	if len(e.Args) == 1 {
+		// Could be .color(#hex) where the arg is a HexColorLit
+		if hex, ok := e.Args[0].Value.(*ast.HexColorLit); ok {
+			colorExpr = fmt.Sprintf("vec3(%s, %s, %s)", formatFloat(hex.R), formatFloat(hex.G), formatFloat(hex.B))
+		} else {
+			colorExpr = g.emitScalarExpr(e.Args[0].Value)
+		}
+	} else if len(e.Args) == 3 {
+		r := g.emitScalarExpr(e.Args[0].Value)
+		gv := g.emitScalarExpr(e.Args[1].Value)
+		b := g.emitScalarExpr(e.Args[2].Value)
+		colorExpr = fmt.Sprintf("vec3(%s, %s, %s)", r, gv, b)
+	} else {
+		g.addDiag(diagnostic.Error, ".color() requires 1 or 3 arguments", e.NodeSpan())
+		return result
+	}
+
+	g.colors = append(g.colors, colorEntry{sdfVar: result, colorExpr: colorExpr})
+	return result
+}
+
+// ---------------------------------------------------------------------------
+// Mirror
+// ---------------------------------------------------------------------------
+
+// emitMirror handles .mirror(x), .mirror(x, z), etc.
+func (g *generator) emitMirror(e *ast.MethodCall) string {
+	if len(e.Args) < 1 {
+		g.addDiag(diagnostic.Error, ".mirror() requires at least 1 axis argument", e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	pNew := g.freshVar("p")
+	g.emit("vec3 %s = %s;", pNew, g.pointVar)
+
+	for _, a := range e.Args {
+		if a.Name != "" {
+			continue // skip named args like origin:
+		}
+		if ident, ok := a.Value.(*ast.Ident); ok {
+			switch ident.Name {
+			case "x":
+				g.emit("%s.x = abs(%s.x);", pNew, pNew)
+			case "y":
+				g.emit("%s.y = abs(%s.y);", pNew, pNew)
+			case "z":
+				g.emit("%s.z = abs(%s.z);", pNew, pNew)
+			}
+		}
+	}
+
+	oldPoint := g.pointVar
+	g.pointVar = pNew
+	result := g.emitSDF(e.Receiver)
+	g.pointVar = oldPoint
+
+	return result
+}
+
+// ---------------------------------------------------------------------------
+// Repetition
+// ---------------------------------------------------------------------------
+
+// emitRep handles .rep(spacing), .rep(sx, sy, sz), .rep(spacing, count: N)
+func (g *generator) emitRep(e *ast.MethodCall) string {
+	if len(e.Args) < 1 {
+		g.addDiag(diagnostic.Error, ".rep() requires at least 1 argument", e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	// Check for count: named arg
+	var countArg ast.Expr
+	var positionalArgs []ast.Arg
+	for _, a := range e.Args {
+		if a.Name == "count" {
+			countArg = a.Value
+		} else if a.Name == "" {
+			positionalArgs = append(positionalArgs, a)
+		}
+	}
+
+	pNew := g.freshVar("p")
+
+	if countArg != nil {
+		// Clamped repetition: p - s * clamp(round(p/s), -N, N)
+		s := g.emitScalarExpr(positionalArgs[0].Value)
+		n := g.emitScalarExpr(countArg)
+		g.emit("vec3 %s = %s - vec3(%s) * clamp(round(%s / vec3(%s)), vec3(-%s), vec3(%s));",
+			pNew, g.pointVar, s, g.pointVar, s, n, n)
+	} else if len(positionalArgs) == 1 {
+		// Infinite repeat, uniform spacing
+		s := g.emitScalarExpr(positionalArgs[0].Value)
+		g.emit("vec3 %s = mod(%s + 0.5 * %s, vec3(%s)) - 0.5 * %s;",
+			pNew, g.pointVar, s, s, s)
+	} else if len(positionalArgs) >= 3 {
+		// Per-axis spacing
+		sx := g.emitScalarExpr(positionalArgs[0].Value)
+		sy := g.emitScalarExpr(positionalArgs[1].Value)
+		sz := g.emitScalarExpr(positionalArgs[2].Value)
+		sVar := fmt.Sprintf("vec3(%s, %s, %s)", sx, sy, sz)
+		g.emit("vec3 %s = mod(%s + 0.5 * %s, %s) - 0.5 * %s;",
+			pNew, g.pointVar, sVar, sVar, sVar)
+	} else {
+		g.addDiag(diagnostic.Error, ".rep() requires 1, 3 positional args, or spacing + count:", e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	oldPoint := g.pointVar
+	g.pointVar = pNew
+	result := g.emitSDF(e.Receiver)
+	g.pointVar = oldPoint
+
+	return result
+}
+
+// ---------------------------------------------------------------------------
+// Morph
+// ---------------------------------------------------------------------------
+
+// emitMorph handles .morph(other, t)
+func (g *generator) emitMorph(e *ast.MethodCall) string {
+	if len(e.Args) < 2 {
+		g.addDiag(diagnostic.Error, ".morph() requires 2 arguments (other shape, blend factor)", e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	// Emit the receiver SDF
+	sdfA := g.emitSDF(e.Receiver)
+	// Emit the other shape SDF
+	sdfB := g.emitSDF(e.Args[0].Value)
+	// Emit the blend factor
+	t := g.emitScalarExpr(e.Args[1].Value)
+
+	d := g.freshVar("d")
+	g.emit("float %s = mix(%s, %s, %s);", d, sdfA, sdfB, t)
+	return d
+}
+
+// ---------------------------------------------------------------------------
+// Shell / Onion
+// ---------------------------------------------------------------------------
+
+// emitShell handles .shell(thickness) and .onion(thickness)
+func (g *generator) emitShell(e *ast.MethodCall) string {
+	if len(e.Args) < 1 {
+		g.addDiag(diagnostic.Error, fmt.Sprintf(".%s() requires 1 argument (thickness)", e.Name), e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	inner := g.emitSDF(e.Receiver)
+	thickness := g.emitScalarExpr(e.Args[0].Value)
+
+	d := g.freshVar("d")
+	g.emit("float %s = abs(%s) - %s;", d, inner, thickness)
+	return d
+}
+
+// ---------------------------------------------------------------------------
+// Displace
+// ---------------------------------------------------------------------------
+
+// emitDisplace handles .displace(expr) where expr can reference p
+func (g *generator) emitDisplace(e *ast.MethodCall) string {
+	if len(e.Args) < 1 {
+		g.addDiag(diagnostic.Error, ".displace() requires 1 argument", e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	inner := g.emitSDF(e.Receiver)
+	displacement := g.emitScalarExpr(e.Args[0].Value)
+
+	d := g.freshVar("d")
+	g.emit("float %s = %s + %s;", d, inner, displacement)
+	return d
+}
+
+// ---------------------------------------------------------------------------
+// Dilate
+// ---------------------------------------------------------------------------
+
+// emitDilate handles .dilate(r) → sdf(p) - r
+func (g *generator) emitDilate(e *ast.MethodCall) string {
+	if len(e.Args) < 1 {
+		g.addDiag(diagnostic.Error, ".dilate() requires 1 argument", e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	inner := g.emitSDF(e.Receiver)
+	r := g.emitScalarExpr(e.Args[0].Value)
+
+	d := g.freshVar("d")
+	g.emit("float %s = %s - %s;", d, inner, r)
+	return d
+}
+
+// ---------------------------------------------------------------------------
+// Erode
+// ---------------------------------------------------------------------------
+
+// emitErode handles .erode(r) → sdf(p) + r
+func (g *generator) emitErode(e *ast.MethodCall) string {
+	if len(e.Args) < 1 {
+		g.addDiag(diagnostic.Error, ".erode() requires 1 argument", e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	inner := g.emitSDF(e.Receiver)
+	r := g.emitScalarExpr(e.Args[0].Value)
+
+	d := g.freshVar("d")
+	g.emit("float %s = %s + %s;", d, inner, r)
+	return d
+}
+
+// ---------------------------------------------------------------------------
+// Round
+// ---------------------------------------------------------------------------
+
+// emitRound handles .round(r) → sdf(p) - r
+func (g *generator) emitRound(e *ast.MethodCall) string {
+	if len(e.Args) < 1 {
+		g.addDiag(diagnostic.Error, ".round() requires 1 argument", e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	inner := g.emitSDF(e.Receiver)
+	r := g.emitScalarExpr(e.Args[0].Value)
+
+	d := g.freshVar("d")
+	g.emit("float %s = %s - %s;", d, inner, r)
+	return d
+}
+
+// ---------------------------------------------------------------------------
+// Elongate
+// ---------------------------------------------------------------------------
+
+// emitElongate handles .elongate(x, y, z)
+func (g *generator) emitElongate(e *ast.MethodCall) string {
+	if len(e.Args) < 3 {
+		g.addDiag(diagnostic.Error, ".elongate() requires 3 arguments (x, y, z)", e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	ex := g.emitScalarExpr(e.Args[0].Value)
+	ey := g.emitScalarExpr(e.Args[1].Value)
+	ez := g.emitScalarExpr(e.Args[2].Value)
+
+	pNew := g.freshVar("p")
+	g.emit("vec3 %s = %s - clamp(%s, -vec3(%s, %s, %s), vec3(%s, %s, %s));",
+		pNew, g.pointVar, g.pointVar, ex, ey, ez, ex, ey, ez)
+
+	oldPoint := g.pointVar
+	g.pointVar = pNew
+	result := g.emitSDF(e.Receiver)
+	g.pointVar = oldPoint
+
+	return result
+}
+
+// ---------------------------------------------------------------------------
+// Twist
+// ---------------------------------------------------------------------------
+
+// emitTwist handles .twist(strength) — twist around Y axis
+func (g *generator) emitTwist(e *ast.MethodCall) string {
+	if len(e.Args) < 1 {
+		g.addDiag(diagnostic.Error, ".twist() requires 1 argument (strength)", e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	k := g.emitScalarExpr(e.Args[0].Value)
+
+	pNew := g.freshVar("p")
+	angleVar := g.freshVar("ta")
+	g.emit("float %s = %s * %s.y;", angleVar, k, g.pointVar)
+	g.emit("vec3 %s = vec3(cos(%s) * %s.x - sin(%s) * %s.z, %s.y, sin(%s) * %s.x + cos(%s) * %s.z);",
+		pNew, angleVar, g.pointVar, angleVar, g.pointVar, g.pointVar, angleVar, g.pointVar, angleVar, g.pointVar)
+
+	oldPoint := g.pointVar
+	g.pointVar = pNew
+	result := g.emitSDF(e.Receiver)
+	g.pointVar = oldPoint
+
+	return result
+}
+
+// ---------------------------------------------------------------------------
+// Bend
+// ---------------------------------------------------------------------------
+
+// emitBend handles .bend(strength)
+func (g *generator) emitBend(e *ast.MethodCall) string {
+	if len(e.Args) < 1 {
+		g.addDiag(diagnostic.Error, ".bend() requires 1 argument (strength)", e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	k := g.emitScalarExpr(e.Args[0].Value)
+
+	pNew := g.freshVar("p")
+	angleVar := g.freshVar("ba")
+	g.emit("float %s = %s * %s.x;", angleVar, k, g.pointVar)
+	g.emit("vec3 %s = vec3(cos(%s) * %s.x - sin(%s) * %s.y, sin(%s) * %s.x + cos(%s) * %s.y, %s.z);",
+		pNew, angleVar, g.pointVar, angleVar, g.pointVar, angleVar, g.pointVar, angleVar, g.pointVar, g.pointVar)
 
 	oldPoint := g.pointVar
 	g.pointVar = pNew

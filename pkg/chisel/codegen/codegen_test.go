@@ -358,3 +358,197 @@ func TestHelpers_EmittedWhenUsed(t *testing.T) {
 	glsl := compile(t, "sphere -~0.3 box")
 	assertContains(t, glsl, "float opSmoothSubtract(float d1, float d2, float k)", "smooth subtract helper")
 }
+
+// ---------------------------------------------------------------------------
+// Task 3.1 — Basic Color
+// ---------------------------------------------------------------------------
+
+func TestColor_NamedRed(t *testing.T) {
+	glsl := compile(t, "sphere.red")
+	assertContains(t, glsl, "vec3(1.0, 0.0, 0.0)", "red color in sceneColor")
+	assertContains(t, glsl, "sceneColor", "sceneColor function")
+}
+
+func TestColor_NamedBlue(t *testing.T) {
+	glsl := compile(t, "sphere.blue")
+	assertContains(t, glsl, "vec3(0.0, 0.0, 1.0)", "blue color")
+}
+
+func TestColor_NamedGreen(t *testing.T) {
+	glsl := compile(t, "sphere.green")
+	assertContains(t, glsl, "vec3(0.0, 1.0, 0.0)", "green color")
+}
+
+func TestColor_NamedWhite(t *testing.T) {
+	glsl := compile(t, "sphere.white")
+	assertContains(t, glsl, "vec3(1.0, 1.0, 1.0)", "white color")
+}
+
+func TestColor_NamedYellow(t *testing.T) {
+	glsl := compile(t, "sphere.yellow")
+	assertContains(t, glsl, "vec3(1.0, 1.0, 0.0)", "yellow color")
+}
+
+func TestColor_NamedOrange(t *testing.T) {
+	glsl := compile(t, "sphere.orange")
+	assertContains(t, glsl, "vec3(1.0, 0.5, 0.0)", "orange color")
+}
+
+func TestColor_RGB(t *testing.T) {
+	glsl := compile(t, "sphere.color(0.5, 0.5, 0.5)")
+	assertContains(t, glsl, "vec3(0.5, 0.5, 0.5)", "custom RGB color in sceneColor")
+}
+
+func TestColor_HexColor(t *testing.T) {
+	glsl := compile(t, "sphere.color(#ff0000)")
+	assertContains(t, glsl, "vec3(1.0, 0.0, 0.0)", "hex color red")
+}
+
+func TestColor_MultiColorUnion(t *testing.T) {
+	glsl := compile(t, "sphere.red | box.blue.at(2,0,0)")
+	// sceneColor should have if/else comparing distances
+	assertContains(t, glsl, "vec3(1.0, 0.0, 0.0)", "red color present")
+	assertContains(t, glsl, "vec3(0.0, 0.0, 1.0)", "blue color present")
+	// Should have comparison logic in sceneColor
+	assertContains(t, glsl, "if (", "distance comparison")
+	assertContains(t, glsl, "return vec3(1.0, 0.0, 0.0)", "return red for closer")
+	assertContains(t, glsl, "return vec3(0.0, 0.0, 1.0)", "return blue for farther")
+}
+
+func TestColor_DefaultWhite(t *testing.T) {
+	glsl := compile(t, "sphere")
+	assertContains(t, glsl, "return vec3(1.0)", "default white when no color")
+}
+
+// ---------------------------------------------------------------------------
+// Task 4.1 — Mirror
+// ---------------------------------------------------------------------------
+
+func TestMirror_SingleAxis(t *testing.T) {
+	glsl := compile(t, "sphere.at(2,0,0).mirror(x)")
+	assertContains(t, glsl, "abs(", "abs applied for mirror")
+	assertContains(t, glsl, ".x = abs(", "abs on x component")
+	assertContains(t, glsl, "sdSphere", "sphere SDF")
+}
+
+func TestMirror_TwoAxes(t *testing.T) {
+	glsl := compile(t, "sphere.at(1,0,1).mirror(x, z)")
+	assertContains(t, glsl, ".x = abs(", "abs on x component")
+	assertContains(t, glsl, ".z = abs(", "abs on z component")
+}
+
+// ---------------------------------------------------------------------------
+// Task 4.2 — Repetition
+// ---------------------------------------------------------------------------
+
+func TestRep_Infinite(t *testing.T) {
+	glsl := compile(t, "sphere(0.3).rep(2)")
+	assertContains(t, glsl, "mod(", "mod-based repetition")
+	assertContains(t, glsl, "sdSphere", "sphere inside rep")
+}
+
+func TestRep_Clamped(t *testing.T) {
+	glsl := compile(t, "sphere(0.3).rep(2, count: 5)")
+	assertContains(t, glsl, "clamp(", "clamp for limited repetition")
+	assertContains(t, glsl, "round(", "round for grid snapping")
+	assertContains(t, glsl, "sdSphere", "sphere inside rep")
+}
+
+// ---------------------------------------------------------------------------
+// Task 4.3 — Morph, Shell, Onion, Displace, etc.
+// ---------------------------------------------------------------------------
+
+func TestMorph_Basic(t *testing.T) {
+	glsl := compile(t, "sphere.morph(box, 0.5)")
+	assertContains(t, glsl, "mix(", "mix of two SDFs")
+	assertContains(t, glsl, "sdSphere", "sphere SDF in morph")
+	assertContains(t, glsl, "sdBox", "box SDF in morph")
+	assertContains(t, glsl, "0.5", "blend factor")
+}
+
+func TestShell_Basic(t *testing.T) {
+	glsl := compile(t, "sphere.shell(0.05)")
+	assertContains(t, glsl, "abs(", "abs for shell")
+	assertContains(t, glsl, "- 0.05", "thickness subtraction")
+}
+
+func TestOnion_Basic(t *testing.T) {
+	glsl := compile(t, "sphere.onion(0.1)")
+	assertContains(t, glsl, "abs(", "abs for onion")
+	assertContains(t, glsl, "- 0.1", "thickness subtraction")
+}
+
+func TestDisplace_Basic(t *testing.T) {
+	glsl := compile(t, "sphere.displace(sin(p.x * 10) * 0.1)")
+	assertContains(t, glsl, "sin(", "sin in displacement expression")
+	assertContains(t, glsl, "p.x", "p.x reference in displacement")
+	assertContains(t, glsl, "sdSphere", "sphere SDF")
+}
+
+func TestRound_Basic(t *testing.T) {
+	glsl := compile(t, "sphere.round(0.1)")
+	assertContains(t, glsl, "- 0.1", "round offset subtraction")
+	assertContains(t, glsl, "sdSphere", "sphere SDF")
+}
+
+func TestDilate_Basic(t *testing.T) {
+	glsl := compile(t, "sphere.dilate(0.1)")
+	assertContains(t, glsl, "- 0.1", "dilate offset subtraction")
+	assertContains(t, glsl, "sdSphere", "sphere SDF")
+}
+
+func TestErode_Basic(t *testing.T) {
+	glsl := compile(t, "sphere.erode(0.1)")
+	assertContains(t, glsl, "+ 0.1", "erode offset addition")
+	assertContains(t, glsl, "sdSphere", "sphere SDF")
+}
+
+func TestElongate_Basic(t *testing.T) {
+	glsl := compile(t, "sphere.elongate(1, 0, 0)")
+	assertContains(t, glsl, "clamp(", "clamp for elongation")
+	assertContains(t, glsl, "sdSphere", "sphere SDF")
+}
+
+func TestTwist_Basic(t *testing.T) {
+	glsl := compile(t, "sphere.twist(0.5)")
+	assertContains(t, glsl, "cos(", "cos in twist")
+	assertContains(t, glsl, "sin(", "sin in twist")
+	assertContains(t, glsl, "sdSphere", "sphere SDF")
+}
+
+func TestBend_Basic(t *testing.T) {
+	glsl := compile(t, "sphere.bend(0.3)")
+	assertContains(t, glsl, "cos(", "cos in bend")
+	assertContains(t, glsl, "sin(", "sin in bend")
+	assertContains(t, glsl, "sdSphere", "sphere SDF")
+}
+
+// ---------------------------------------------------------------------------
+// Task 5.1 — Time & Signals
+// ---------------------------------------------------------------------------
+
+func TestTime_SinT(t *testing.T) {
+	glsl := compile(t, "sphere.at(0, sin(t), 0)")
+	assertContains(t, glsl, "sin(uTime)", "sin(t) maps to sin(uTime)")
+}
+
+func TestTime_ScaleWithT(t *testing.T) {
+	glsl := compile(t, "sphere.scale(1 + sin(t) * 0.2)")
+	assertContains(t, glsl, "uTime", "t maps to uTime")
+	assertContains(t, glsl, "sin(uTime)", "sin(t) expression")
+}
+
+func TestTime_PI(t *testing.T) {
+	glsl := compile(t, "sphere.at(PI, 0, 0)")
+	assertContains(t, glsl, "PI", "PI constant")
+}
+
+func TestTime_TAU(t *testing.T) {
+	glsl := compile(t, "sphere.at(TAU, 0, 0)")
+	assertContains(t, glsl, "2.0 * PI", "TAU maps to 2.0 * PI")
+}
+
+func TestTime_E(t *testing.T) {
+	glsl := compile(t, "sphere.at(E, 0, 0)")
+	assertContains(t, glsl, "2.71828183", "E constant")
+}
