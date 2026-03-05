@@ -1,0 +1,23 @@
+{
+  "name": "tree-sitter-chisel",
+  "version": "0.1.0",
+  "description": "Tree-sitter grammar for the Chisel SDF language",
+  "main": "bindings/node",
+  "keywords": [
+    "tree-sitter",
+    "parser",
+    "chisel",
+    "sdf"
+  ],
+  "tree-sitter": [
+    {
+      "scope": "source.chisel",
+      "file-types": [
+        "chisel"
+      ],
+      "highlights": "queries/highlights.scm",
+      "folds": "queries/folds.scm",
+      "indents": "queries/indents.scm"
+    }
+  ]
+}

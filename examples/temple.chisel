@@ -1,0 +1,16 @@
+// Temple with pillars
+pillar(h = 3) = {
+  cylinder(0.3, h)
+  sphere(0.4).at(0, h / 2, 0)
+  box(0.6, 0.15, 0.6).at(0, -h / 2, 0)
+}
+
+base = box(8, 0.3, 5).at(0, -1.65, 0)
+roof = box(7, 0.3, 6).at(0, 1.65, 0)
+
+pillars = for i in 0..4 {
+  pillar().at(-3 + i * 2, 0, -2) |
+  pillar().at(-3 + i * 2, 0, 2)
+}
+
+base | pillars | roof
