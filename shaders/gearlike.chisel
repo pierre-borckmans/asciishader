@@ -4,9 +4,9 @@
 
 // Sphere sliced by slab with smooth intersection
 (sphere(2) &~0.1 slab(1))
-// Central hole
--~0.1 cylinder(0.5, 100)
-// Ring of 16 holes at radius 2
+// Central hole (radius 1)
+-~0.1 cylinder(1, 100)
+// Ring of 16 holes (radius 0.25) at distance 2 from center
 -~0.1 for i in 0..16 {
-  cylinder(0.125, 100).at(cos(i * TAU / 16) * 2, 0, sin(i * TAU / 16) * 2)
+  cylinder(0.25, 100).at(cos(i * TAU / 16) * 2, 0, sin(i * TAU / 16) * 2)
 }

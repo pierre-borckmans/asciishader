@@ -1425,7 +1425,7 @@ func (g *generator) emitBinaryExpr(e *ast.BinaryExpr) string {
 		if e.Blend != nil {
 			k = formatFloat(*e.Blend)
 		}
-		g.emit("float %s = opSmoothSubtract(%s, %s, %s);", d, left, right, k)
+		g.emit("float %s = opSmoothSubtract(%s, %s, %s);", d, right, left, k)
 		return d
 
 	case ast.Intersect:
