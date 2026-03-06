@@ -1,4 +1,6 @@
-// Hello world — a carved sphere
-sphere(2)
-  - cylinder(0.5, 6).orient(x)
-  - cylinder(0.5, 6).orient(z)
+// Scene: Hello Chisel
+// Constructive geometry — sphere intersected with box, minus 3 cylinders
+(sphere & box(1.5))
+- cylinder(0.5, 4).orient(x)
+- cylinder(0.5, 4).orient(y)
+- cylinder(0.5, 4).orient(z)
