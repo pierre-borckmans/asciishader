@@ -1,0 +1,56 @@
+// Scene: Mechanical Heart
+// A beating mechanical heart with gears and pistons
+// Showcases: morph, smooth ops, array, shell, animation, procedural color
+
+raymarch { steps: 150 }
+
+// Heartbeat rhythm
+beat = pow(sin(t * 3) * 0.5 + 0.5, 8)
+pulse = 1 + beat * 0.15
+
+// Main heart chambers — two spheres merged with smooth union
+left_chamber = sphere(0.9).at(-0.4, 0, 0).scale(pulse, pulse * 1.1, pulse * 0.9)
+right_chamber = sphere(0.8).at(0.4, 0.1, 0).scale(pulse, pulse * 1.05, pulse * 0.85)
+heart_body = left_chamber |~0.4 right_chamber
+
+// Aorta — curved cylinder going up
+aorta = capsule([0, 0.3, 0], [-0.3, 1.5, 0], 0.2)
+  |~0.3 capsule([-0.3, 1.5, 0], [-0.8, 1.3, 0], 0.15)
+
+// Hollow it out
+heart_shell = (heart_body |~0.25 aorta).shell(0.06)
+
+// Mechanical gears embedded in surface
+gear_tooth = box(0.08, 0.03, 0.04).at(0.35, 0, 0)
+gear = cylinder(0.25, 0.06) - cylinder(0.08, 0.1)
+  | gear_tooth.array(12, 0)
+
+gears = gear.at(-0.5, 0.4, 0.85).rot(t * 60, z)
+  | gear.scale(0.7).at(0.3, -0.2, 0.75).rot(-t * 85 + 15, z)
+  | gear.scale(0.5).at(0.1, 0.6, 0.8).rot(t * 120, z)
+
+// Pistons
+piston = cylinder(0.04, 0.3).at(0, 0.15 + beat * 0.1, 0)
+  | sphere(0.06).at(0, beat * 0.1, 0)
+
+pistons = piston.at(0.6, -0.3, 0.7)
+  | piston.at(-0.7, 0.1, 0.6).rot(20, z)
+
+// Arteries
+artery(a, b, r) = capsule(a, b, r)
+
+arteries = artery([0.5, -0.4, 0.2], [1.2, -0.8, 0.5], 0.06)
+  | artery([-0.6, -0.3, -0.1], [-1.1, -0.9, -0.4], 0.05)
+  | artery([0.2, -0.5, -0.3], [0.5, -1.1, -0.6], 0.04)
+
+// Combine
+mech_heart = heart_shell | gears | pistons
+  |~0.1 arteries
+
+// Color: warm metallic with rust tones
+mech_heart.color(
+  0.6 + 0.2 * sin(p.x * 3 + p.y * 2),
+  0.35 + 0.15 * sin(p.y * 4 + 1),
+  0.2 + 0.1 * sin(p.z * 5 + 2)
+)
+| plane.at(y: -1.5).color(0.12, 0.1, 0.08)

@@ -1,0 +1,58 @@
+// Scene: Crystal Temple
+// An ethereal crystalline structure hovering above a reflective pool
+// Showcases: extrude, revolve, array, smooth ops, procedural color, animation
+
+raymarch { steps: 200, precision: 0.001 }
+
+// Central crystal spire — hexagon extruded and tapered
+spire = hexagon(0.8).extrude_to(hexagon(0.2), 4)
+  .rot(90, x)
+  .at(0, 2, 0)
+  .twist(0.3)
+
+// Orbiting crystal shards
+shard(s) = hexagon(0.15 * s).extrude(0.8 * s)
+  .rot(90, x)
+  .rot(30, z)
+
+shards = for i in 0..6 {
+  shard(1 - i * 0.1)
+    .at(cos(i * 60 + t * 20) * (1.5 + sin(t * 0.7 + i) * 0.3), 1.5 + sin(t * 0.5 + i * 1.047) * 0.8, sin(i * 60 + t * 20) * (1.5 + sin(t * 0.7 + i) * 0.3))
+}
+
+// Base platform — revolved profile with steps
+step_profile = rect(0.3, 0.15).at(0.1, 0)
+platform = step_profile.revolve(2.5)
+  .at(0, -0.5, 0)
+
+// Pillars arranged in circle
+pillar = cylinder(0.12, 3)
+  | sphere(0.18).at(0, 1.5, 0)
+  | sphere(0.18).at(0, -1.5, 0)
+  | torus(0.18, 0.04).at(0, 0.8, 0)
+  | torus(0.18, 0.04).at(0, -0.8, 0)
+
+pillars = pillar.at(2.2, 0.8, 0).array(8, 0)
+
+// Floating ring above
+ring = torus(1.8, 0.08)
+  .at(0, 3.5 + sin(t * 0.3) * 0.15, 0)
+
+// Ground pool
+pool = plane.at(y: -0.5)
+
+// Combine with smooth blending
+temple = spire
+|~0.15 shards
+| platform
+| pillars
+|~0.05 ring
+
+// Procedural crystal color: iridescent based on position and normal direction
+temple
+  .color(
+    0.4 + 0.3 * sin(p.y * 2 + t * 0.5),
+    0.5 + 0.3 * sin(p.y * 2 + t * 0.5 + 2.094),
+    0.7 + 0.3 * sin(p.y * 2 + t * 0.5 + 4.189)
+  )
+| pool.color(0.15, 0.18, 0.25)

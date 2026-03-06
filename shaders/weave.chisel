@@ -14,5 +14,7 @@ grid = ribbon.rep(2.7, 10000, 5.4, padding: 1)
   | ribbon.rep(2.7, 10000, 5.4, padding: 1).at(1.35, 0, 2.7)
 
 // Clip to disc and add ring frame
-(grid & cylinder(10))
+weave = (grid & cylinder(10))
 | ((cylinder(12) - cylinder(10)) &~0.25 slab(1, y))
+
+weave.cyan

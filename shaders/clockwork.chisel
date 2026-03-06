@@ -1,0 +1,65 @@
+// Scene: Clockwork
+// An intricate clock mechanism with interlocking gears
+// Showcases: array, shell, for loops, animation, boolean ops, color
+
+raymarch { steps: 150 }
+
+// Gear with teeth via circular array
+gear(r, teeth, thickness) = {
+  // Main disc with hole
+  cylinder(r, thickness) - cylinder(r * 0.25, thickness * 2)
+  // Teeth
+  | box(r * 0.2, thickness, r * 0.08).at(r, 0, 0).array(teeth, 0)
+}
+
+// Axle
+axle(h) = cylinder(0.04, h)
+
+// Main driving gear — large, slow
+main_gear = gear(1.5, 20, 0.15)
+  .rot(t * 10, y)
+  .color(0.7, 0.55, 0.3)
+  | axle(0.5).color(0.5, 0.5, 0.5)
+
+// Secondary gear — meshed with main
+sec_gear = gear(0.9, 12, 0.15)
+  .rot(-t * 10 * 1.5 / 0.9 + 7.5, y)
+  .at(2.35, 0, 0)
+  .color(0.65, 0.5, 0.25)
+  | axle(0.5).at(2.35, 0, 0).color(0.5, 0.5, 0.5)
+
+// Small fast gear
+small_gear = gear(0.5, 8, 0.12)
+  .rot(t * 10 * 1.5 / 0.5, y)
+  .at(2.35, 0, 1.35)
+  .color(0.75, 0.6, 0.35)
+  | axle(0.4).at(2.35, 0, 1.35).color(0.5, 0.5, 0.5)
+
+// Escapement wheel
+escape = gear(0.7, 15, 0.1)
+  .rot(-t * 5, y)
+  .at(-0.5, 0.3, 1.8)
+  .color(0.8, 0.65, 0.4)
+
+// Frame plates — top and bottom
+frame = cylinder(3.5, 0.04).at(0, 0.25, 0)
+  | cylinder(3.5, 0.04).at(0, -0.25, 0)
+  // Frame ring
+  | (cylinder(3.5, 0.3) - cylinder(3.2, 0.4))
+
+// Pendulum
+pendulum_angle = sin(t * 2) * 15
+pendulum = capsule([0, 0, 0], [0, -2.5, 0], 0.03)
+  | sphere(0.15).at(0, -2.5, 0)
+  | cylinder(0.06, 0.08).at(0, 0, 0)
+
+pendulum_asm = pendulum
+  .rot(pendulum_angle, z)
+  .at(-1, -0.3, 0)
+  .color(0.7, 0.55, 0.3)
+
+// Combine all
+main_gear | sec_gear | small_gear | escape
+| frame.color(0.3, 0.25, 0.2)
+| pendulum_asm
+| plane.at(y: -3).color(0.1, 0.08, 0.06)
