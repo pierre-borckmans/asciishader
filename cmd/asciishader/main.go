@@ -14,9 +14,7 @@ import (
 	"asciishader/pkg/core"
 	gpupkg "asciishader/pkg/gpu"
 	"asciishader/pkg/recorder"
-	"asciishader/pkg/render"
 	"asciishader/pkg/scene"
-	"asciishader/pkg/shape"
 	"asciishader/tui/components"
 	"asciishader/tui/controls"
 	"asciishader/tui/editor"
@@ -50,9 +48,8 @@ const (
 )
 
 type model struct {
-	renderer   *render.Renderer
+	config     *core.RenderConfig
 	gpu        *gpupkg.GPURenderer
-	gpuMode    bool
 	width      int
 	height     int
 	time       float64
@@ -107,15 +104,14 @@ type model struct {
 }
 
 func initialModel() model {
-	r := render.NewRenderer(80, 24)
-	r.ShapeTable = shape.NewShapeTable()
-	r.Contrast = 1.25
-	r.Spread = 0.75
-	r.ExtDist = 1.0
-	r.Ambient = 0.6
-	r.SpecPower = 9.0
-	r.ShadowSteps = 8
-	r.AOSteps = 2
+	rc := core.NewRenderConfig(80, 24)
+	rc.Contrast = 1.25
+	rc.Spread = 0.75
+	rc.ExtDist = 1.0
+	rc.Ambient = 0.6
+	rc.SpecPower = 9.0
+	rc.ShadowSteps = 8
+	rc.AOSteps = 2
 
 	// Build sidebar items for view switching
 	sb := layout.NewSidebar()
@@ -134,7 +130,7 @@ func initialModel() model {
 	bp.SetTitle("GLSL Editor")
 
 	return model{
-		renderer:    r,
+		config:      rc,
 		camDist:     4.0,
 		scene:       0,
 		lastFrame:   time.Now(),
@@ -261,18 +257,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Update camera (orbit around camTarget)
-		m.renderer.Camera.Pos = core.Vec3{
+		m.config.Camera.Pos = core.Vec3{
 		X: m.camTarget.X + math.Sin(m.camAngleY)*math.Cos(m.camAngleX)*m.camDist,
 		Y: m.camTarget.Y + math.Sin(m.camAngleX)*m.camDist,
 		Z: m.camTarget.Z - math.Cos(m.camAngleY)*math.Cos(m.camAngleX)*m.camDist,
 		}
-		m.renderer.Camera.Target = m.camTarget
-		m.renderer.Time = m.time
-		m.renderer.Scene = scene.Scenes[m.scene].SDF
-		m.renderer.ColorFunc = scene.Scenes[m.scene].Color
+		m.config.Camera.Target = m.camTarget
+		m.config.Time = m.time
 
 		// Animated light
-		m.renderer.LightDir = core.V(
+		m.config.LightDir = core.V(
 			math.Sin(m.time*0.5)*0.5,
 			0.8,
 			math.Cos(m.time*0.5)*0.5-0.5,
@@ -281,8 +275,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Resize viewport if needed (panel animation may have changed width)
 		cw := m.contentWidth()
 		vh := m.viewportHeight()
-		if m.renderer.Width != cw || m.renderer.Height != vh {
-			m.renderer.Resize(cw, vh)
+		if m.config.Width != cw || m.config.Height != vh {
+			m.config.Resize(cw, vh)
 		}
 
 		// Recording: capture keyframe during live recording
@@ -293,28 +287,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Recording: bake step (one frame per tick)
 		if m.recState == recorder.RecordBaking && m.recorder != nil {
 			// Save current renderer state
-			savedW, savedH := m.renderer.Width, m.renderer.Height
-			savedTime := m.renderer.Time
-			savedCam := m.renderer.Camera
-			savedLight := m.renderer.LightDir
-			savedContrast := m.renderer.Contrast
-			savedAmbient := m.renderer.Ambient
-			savedSpec := m.renderer.SpecPower
-			savedShadow := m.renderer.ShadowSteps
-			savedAO := m.renderer.AOSteps
+			savedW, savedH := m.config.Width, m.config.Height
+			savedTime := m.config.Time
+			savedCam := m.config.Camera
+			savedLight := m.config.LightDir
+			savedContrast := m.config.Contrast
+			savedAmbient := m.config.Ambient
+			savedSpec := m.config.SpecPower
+			savedShadow := m.config.ShadowSteps
+			savedAO := m.config.AOSteps
 
 			done := m.recorder.BakeStep(&m)
 
 			// Restore renderer state
-			m.renderer.Resize(savedW, savedH)
-			m.renderer.Time = savedTime
-			m.renderer.Camera = savedCam
-			m.renderer.LightDir = savedLight
-			m.renderer.Contrast = savedContrast
-			m.renderer.Ambient = savedAmbient
-			m.renderer.SpecPower = savedSpec
-			m.renderer.ShadowSteps = savedShadow
-			m.renderer.AOSteps = savedAO
+			m.config.Resize(savedW, savedH)
+			m.config.Time = savedTime
+			m.config.Camera = savedCam
+			m.config.LightDir = savedLight
+			m.config.Contrast = savedContrast
+			m.config.Ambient = savedAmbient
+			m.config.SpecPower = savedSpec
+			m.config.ShadowSteps = savedShadow
+			m.config.AOSteps = savedAO
 
 			if done {
 				err := m.recorder.Finalize()
@@ -332,11 +326,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.checkFileChanged()
 
 		// Render frame
-		if m.gpuMode && m.gpu != nil {
-			m.frame = m.gpu.Render(m.renderer)
-		} else {
-			m.frame = m.renderer.Render()
-		}
+		m.frame = m.gpu.Render(m.config)
 
 		return m, tick()
 
@@ -742,13 +732,9 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 	case "a":
 		m.autoRotate = !m.autoRotate
 	case "m":
-		m.renderer.RenderMode = (m.renderer.RenderMode + 1) % core.RenderModeCount
+		m.config.RenderMode = (m.config.RenderMode + 1) % core.RenderModeCount
 	case "M":
-		m.renderer.RenderMode = (m.renderer.RenderMode + core.RenderModeCount - 1) % core.RenderModeCount
-	case "g":
-		if m.gpu != nil {
-			m.gpuMode = !m.gpuMode
-		}
+		m.config.RenderMode = (m.config.RenderMode + core.RenderModeCount - 1) % core.RenderModeCount
 	case "p":
 		if !m.profiling {
 			fname := fmt.Sprintf("cpu_%d.prof", time.Now().Unix())
@@ -773,46 +759,46 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 			m.recMessageTime = time.Now()
 		}
 	case "[":
-		m.renderer.Contrast = core.Clamp(m.renderer.Contrast-0.25, 0.5, 5.0)
+		m.config.Contrast = core.Clamp(m.config.Contrast-0.25, 0.5, 5.0)
 	case "]":
-		m.renderer.Contrast = core.Clamp(m.renderer.Contrast+0.25, 0.5, 5.0)
+		m.config.Contrast = core.Clamp(m.config.Contrast+0.25, 0.5, 5.0)
 	case "1":
-		m.renderer.Spread = core.Clamp(m.renderer.Spread+0.25, 0.25, 3.0)
+		m.config.Spread = core.Clamp(m.config.Spread+0.25, 0.25, 3.0)
 	case "!":
-		m.renderer.Spread = core.Clamp(m.renderer.Spread-0.25, 0.25, 3.0)
+		m.config.Spread = core.Clamp(m.config.Spread-0.25, 0.25, 3.0)
 	case "2":
-		m.renderer.ExtDist = core.Clamp(m.renderer.ExtDist+0.25, 0.25, 3.0)
+		m.config.ExtDist = core.Clamp(m.config.ExtDist+0.25, 0.25, 3.0)
 	case "@":
-		m.renderer.ExtDist = core.Clamp(m.renderer.ExtDist-0.25, 0.25, 3.0)
+		m.config.ExtDist = core.Clamp(m.config.ExtDist-0.25, 0.25, 3.0)
 	case "3":
-		m.renderer.Ambient = core.Clamp(m.renderer.Ambient+0.05, 0.0, 1.0)
+		m.config.Ambient = core.Clamp(m.config.Ambient+0.05, 0.0, 1.0)
 	case "#":
-		m.renderer.Ambient = core.Clamp(m.renderer.Ambient-0.05, 0.0, 1.0)
+		m.config.Ambient = core.Clamp(m.config.Ambient-0.05, 0.0, 1.0)
 	case "4":
-		m.renderer.SpecPower = core.Clamp(m.renderer.SpecPower*1.5, 4, 128)
+		m.config.SpecPower = core.Clamp(m.config.SpecPower*1.5, 4, 128)
 	case "$":
-		m.renderer.SpecPower = core.Clamp(m.renderer.SpecPower/1.5, 4, 128)
+		m.config.SpecPower = core.Clamp(m.config.SpecPower/1.5, 4, 128)
 	case "5":
-		m.renderer.ShadowSteps = min(m.renderer.ShadowSteps+4, 48)
+		m.config.ShadowSteps = min(m.config.ShadowSteps+4, 48)
 	case "%":
-		m.renderer.ShadowSteps = max(m.renderer.ShadowSteps-4, 0)
+		m.config.ShadowSteps = max(m.config.ShadowSteps-4, 0)
 	case "6":
-		m.renderer.AOSteps = min(m.renderer.AOSteps+1, 10)
+		m.config.AOSteps = min(m.config.AOSteps+1, 10)
 	case "^":
-		m.renderer.AOSteps = max(m.renderer.AOSteps-1, 0)
+		m.config.AOSteps = max(m.config.AOSteps-1, 0)
 	case "r":
 		m.camAngleX = 0
 		m.camAngleY = 0
 		m.camDist = 4.0
 		m.camTarget = core.V(0, 0, 0)
 		m.autoRotate = false
-		m.renderer.Contrast = 1.25
-		m.renderer.Spread = 0.75
-		m.renderer.ExtDist = 1.0
-		m.renderer.Ambient = 0.6
-		m.renderer.SpecPower = 9.0
-		m.renderer.ShadowSteps = 8
-		m.renderer.AOSteps = 2
+		m.config.Contrast = 1.25
+		m.config.Spread = 0.75
+		m.config.ExtDist = 1.0
+		m.config.Ambient = 0.6
+		m.config.SpecPower = 9.0
+		m.config.ShadowSteps = 8
+		m.config.AOSteps = 2
 		m.time = 0
 	}
 	return m, nil
@@ -961,21 +947,19 @@ func (m *model) checkFileChanged() {
 }
 
 // AppState interface methods for controls and recorder packages.
-func (m *model) GetRenderer() *render.Renderer { return m.renderer }
-func (m *model) GetGPU() *gpupkg.GPURenderer   { return m.gpu }
-func (m *model) IsGPUMode() bool               { return m.gpuMode }
-func (m *model) SetGPUMode(v bool)             { m.gpuMode = v }
-func (m *model) GetScene() int                 { return m.scene }
-func (m *model) SetScene(v int)                { m.scene = v }
-func (m *model) NumScenes() int                { return len(scene.Scenes) }
-func (m *model) SceneName(i int) string        { return scene.Scenes[i].Name }
-func (m *model) GetTime() float64              { return m.time }
-func (m *model) SetTime(v float64)             { m.time = v }
-func (m *model) SyncSceneGLSL()                { m.syncSceneGLSL() }
-func (m *model) GetCamAngleX() float64         { return m.camAngleX }
-func (m *model) GetCamAngleY() float64         { return m.camAngleY }
-func (m *model) GetCamDist() float64           { return m.camDist }
-func (m *model) GetCamTarget() core.Vec3       { return m.camTarget }
+func (m *model) GetRenderConfig() *core.RenderConfig { return m.config }
+func (m *model) GetGPU() *gpupkg.GPURenderer         { return m.gpu }
+func (m *model) GetScene() int                       { return m.scene }
+func (m *model) SetScene(v int)                      { m.scene = v }
+func (m *model) NumScenes() int                      { return len(scene.Scenes) }
+func (m *model) SceneName(i int) string              { return scene.Scenes[i].Name }
+func (m *model) GetTime() float64                    { return m.time }
+func (m *model) SetTime(v float64)                   { m.time = v }
+func (m *model) SyncSceneGLSL()                      { m.syncSceneGLSL() }
+func (m *model) GetCamAngleX() float64               { return m.camAngleX }
+func (m *model) GetCamAngleY() float64               { return m.camAngleY }
+func (m *model) GetCamDist() float64                 { return m.camDist }
+func (m *model) GetCamTarget() core.Vec3             { return m.camTarget }
 
 // resizeViewport updates the renderer dimensions based on current layout.
 func (m *model) resizeViewport() {
@@ -987,7 +971,7 @@ func (m *model) resizeViewport() {
 	if vh < 1 {
 		vh = 1
 	}
-	m.renderer.Resize(cw, vh)
+	m.config.Resize(cw, vh)
 }
 
 func (m model) View() string {
@@ -1001,21 +985,18 @@ func (m model) View() string {
 
 	switch m.viewMode {
 	case ViewShader:
-		gpuStr := "CPU"
-		if m.gpuMode && m.gpu != nil {
-			gpuStr = "GPU"
-		}
-		switch m.renderer.RenderMode {
+		modeStr := "SHAPES"
+		switch m.config.RenderMode {
 		case core.RenderDual:
-			gpuStr += " DUAL"
+			modeStr = "DUAL"
 		case core.RenderBlocks:
-			gpuStr += " BLOCK"
+			modeStr = "BLOCK"
 		case core.RenderHalfBlock:
-			gpuStr += " HALF"
+			modeStr = "HALF"
 		case core.RenderBraille:
-			gpuStr += " BRAILLE"
+			modeStr = "BRAILLE"
 		case core.RenderDensity:
-			gpuStr += " DENSITY"
+			modeStr = "DENSITY"
 		}
 		pauseStr := ""
 		if m.paused {
@@ -1051,7 +1032,7 @@ func (m model) View() string {
 			recStr = " | " + recStyle.Render(m.recMessage)
 		}
 		headerTitle = fmt.Sprintf("ASCII Shader  ·  %s", scene.Scenes[m.scene].Name)
-		rightInfo = fmt.Sprintf("%s | %.0f fps%s%s", gpuStr, m.fps, pauseStr, recStr)
+		rightInfo = fmt.Sprintf("%s | %.0f fps%s%s", modeStr, m.fps, pauseStr, recStr)
 		rpWidth = m.rightPanel.Width()
 	case ViewPlayer:
 		headerTitle = "ASCII Shader  ·  Player"
@@ -1078,7 +1059,6 @@ func (m model) View() string {
 			{Key: "s", Desc: "controls"},
 			{Key: "e", Desc: "editor"},
 			{Key: "m", Desc: "mode"},
-			{Key: "g", Desc: "GPU"},
 			{Key: "tab", Desc: "focus"},
 			{Key: "space", Desc: "pause"},
 			{Key: "q", Desc: "quit"},
@@ -1203,7 +1183,7 @@ func (m model) View() string {
 	// Right panel content (shader view only)
 	var rightPanelStr string
 	if m.viewMode == ViewShader && m.rightPanel.Width() > 0 {
-		m.controls.SyncFromRenderer(m.renderer)
+		m.controls.SyncFromRenderConfig(m.config)
 		controlsContent := m.controls.Render(m.rightPanel.InnerWidth()-1, &m)
 		rightPanelStr = m.rightPanel.Render(middleHeight, controlsContent)
 	}
@@ -1239,14 +1219,15 @@ func main() {
 
 	m := initialModel()
 
-	// Try GPU init — fall back to CPU silently
+	// Initialize GPU renderer (required)
 	gpuRenderer, gpuErr := gpupkg.NewGPURenderer()
-	if gpuErr == nil {
-		m.gpu = gpuRenderer
-		m.gpuMode = true
-		m.syncSceneGLSL()
-		defer gpuRenderer.Destroy()
+	if gpuErr != nil {
+		fmt.Fprintf(os.Stderr, "GPU init failed: %v\n", gpuErr)
+		os.Exit(1)
 	}
+	m.gpu = gpuRenderer
+	m.syncSceneGLSL()
+	defer gpuRenderer.Destroy()
 
 	p := tea.NewProgram(
 		m,

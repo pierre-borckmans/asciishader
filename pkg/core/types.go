@@ -29,3 +29,40 @@ type Cell struct {
 
 // AsciiRamp is the density ramp from dark to bright.
 var AsciiRamp = []byte(" .`'^\",:;Il!i><~+_-?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$")
+
+// RenderConfig holds all rendering parameters needed by the GPU renderer.
+type RenderConfig struct {
+	Width, Height int
+	Camera        Camera
+	Time          float64
+	LightDir      Vec3
+	RenderMode    int
+	Contrast      float64
+	Spread        float64
+	ExtDist       float64
+	Ambient       float64
+	SpecPower     float64
+	ShadowSteps   int
+	AOSteps       int
+}
+
+// NewRenderConfig creates a RenderConfig with default values.
+func NewRenderConfig(w, h int) *RenderConfig {
+	return &RenderConfig{
+		Width:  w,
+		Height: h,
+		Camera: Camera{
+			Pos:    V(0, 0, -4),
+			Target: V(0, 0, 0),
+			Up:     V(0, 1, 0),
+			FOV:    60,
+		},
+		LightDir: V(-0.5, 0.8, -0.6).Normalize(),
+	}
+}
+
+// Resize updates the config dimensions.
+func (rc *RenderConfig) Resize(w, h int) {
+	rc.Width = w
+	rc.Height = h
+}

@@ -84,11 +84,11 @@ func (rec *Recorder) CaptureKeyframe(m AppState) {
 		CamTargetX:  float32(m.GetCamTarget().X),
 		CamTargetY:  float32(m.GetCamTarget().Y),
 		CamTargetZ:  float32(m.GetCamTarget().Z),
-		Contrast:    float32(m.GetRenderer().Contrast),
-		Ambient:     float32(m.GetRenderer().Ambient),
-		SpecPower:   float32(m.GetRenderer().SpecPower),
-		ShadowSteps: uint16(m.GetRenderer().ShadowSteps),
-		AOSteps:     uint16(m.GetRenderer().AOSteps),
+		Contrast:    float32(m.GetRenderConfig().Contrast),
+		Ambient:     float32(m.GetRenderConfig().Ambient),
+		SpecPower:   float32(m.GetRenderConfig().SpecPower),
+		ShadowSteps: uint16(m.GetRenderConfig().ShadowSteps),
+		AOSteps:     uint16(m.GetRenderConfig().AOSteps),
 	}
 	rec.Keyframes = append(rec.Keyframes, kf)
 }
@@ -136,12 +136,7 @@ func (rec *Recorder) BakeStep(m AppState) bool {
 	rec.applyKeyframe(m, kf, scale.Width, scale.Height)
 
 	// Render at this scale's resolution
-	var cells [][]core.Cell
-	if m.IsGPUMode() && m.GetGPU() != nil {
-		cells = m.GetGPU().RenderToCells(m.GetRenderer())
-	} else {
-		cells = m.GetRenderer().RenderCells()
-	}
+	cells := m.GetGPU().RenderToCells(m.GetRenderConfig())
 
 	// Extract the region and convert to ClipCells
 	clipCells := rec.extractRegion(cells, scale.Width, scale.Height)
@@ -159,13 +154,13 @@ func (rec *Recorder) BakeStep(m AppState) bool {
 
 // applyKeyframe configures the renderer from a keyframe for baking.
 func (rec *Recorder) applyKeyframe(m AppState, kf clip.Keyframe, w, h int) {
-	m.GetRenderer().Resize(w, h)
-	m.GetRenderer().Time = float64(kf.ShaderTime)
-	m.GetRenderer().Contrast = float64(kf.Contrast)
-	m.GetRenderer().Ambient = float64(kf.Ambient)
-	m.GetRenderer().SpecPower = float64(kf.SpecPower)
-	m.GetRenderer().ShadowSteps = int(kf.ShadowSteps)
-	m.GetRenderer().AOSteps = int(kf.AOSteps)
+	m.GetRenderConfig().Resize(w, h)
+	m.GetRenderConfig().Time = float64(kf.ShaderTime)
+	m.GetRenderConfig().Contrast = float64(kf.Contrast)
+	m.GetRenderConfig().Ambient = float64(kf.Ambient)
+	m.GetRenderConfig().SpecPower = float64(kf.SpecPower)
+	m.GetRenderConfig().ShadowSteps = int(kf.ShadowSteps)
+	m.GetRenderConfig().AOSteps = int(kf.AOSteps)
 
 	// Camera
 	camAngleX := float64(kf.CamAngleX)
@@ -173,16 +168,16 @@ func (rec *Recorder) applyKeyframe(m AppState, kf clip.Keyframe, w, h int) {
 	camDist := float64(kf.CamDist)
 	camTarget := core.Vec3{X: float64(kf.CamTargetX), Y: float64(kf.CamTargetY), Z: float64(kf.CamTargetZ)}
 
-	m.GetRenderer().Camera.Pos = core.Vec3{
+	m.GetRenderConfig().Camera.Pos = core.Vec3{
 		X: camTarget.X + math.Sin(camAngleY)*math.Cos(camAngleX)*camDist,
 		Y: camTarget.Y + math.Sin(camAngleX)*camDist,
 		Z: camTarget.Z - math.Cos(camAngleY)*math.Cos(camAngleX)*camDist,
 	}
-	m.GetRenderer().Camera.Target = camTarget
+	m.GetRenderConfig().Camera.Target = camTarget
 
 	// Animated light (same formula as main tick)
 	shaderTime := float64(kf.ShaderTime)
-	m.GetRenderer().LightDir = core.V(
+	m.GetRenderConfig().LightDir = core.V(
 		math.Sin(shaderTime*0.5)*0.5,
 		0.8,
 		math.Cos(shaderTime*0.5)*0.5-0.5,

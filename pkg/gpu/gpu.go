@@ -37,9 +37,7 @@ import (
 	"unsafe"
 
 	"asciishader/pkg/core"
-	"asciishader/pkg/render"
 	"asciishader/pkg/shader"
-	"asciishader/pkg/shape"
 
 	"github.com/go-gl/gl/v4.1-core/gl"
 )
@@ -66,6 +64,9 @@ type GPURenderer struct {
 	termH   int // terminal rows
 	subH    int // sub-pixel rows per core.Cell (3 for shape, 2 for quadrant)
 	pixels  []byte
+
+	// Shape table for ASCII shape matching
+	ShapeTable *ShapeTable
 
 	// Reusable buffers (avoid per-frame allocation)
 	cellBuf [][]core.Cell
@@ -109,9 +110,10 @@ func NewGPURenderer() (*GPURenderer, error) {
 	vao := createQuadVAO()
 
 	g := &GPURenderer{
-		program:  program,
-		vao:      vao,
-		userCode: shader.DefaultUserCode,
+		program:    program,
+		vao:        vao,
+		userCode:   shader.DefaultUserCode,
+		ShapeTable: NewShapeTable(),
 	}
 
 	g.cacheUniforms()
@@ -155,7 +157,7 @@ func (g *GPURenderer) resize(termW, termH, subW, subH int) {
 }
 
 // Render uses the GPU to raytrace and returns an ANSI-colored string.
-func (g *GPURenderer) Render(r *render.Renderer) string {
+func (g *GPURenderer) Render(r *core.RenderConfig) string {
 	w, h := r.Width, r.Height
 	if w <= 0 || h <= 0 {
 		return ""
@@ -192,12 +194,12 @@ func (g *GPURenderer) Render(r *render.Renderer) string {
 	gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
 
 	// Build cells then convert to ANSI
-	g.ansiBuf = render.AppendANSI(g.ansiBuf[:0], g.RenderCells(r))
+	g.ansiBuf = AppendANSI(g.ansiBuf[:0], g.RenderCells(r))
 	return string(g.ansiBuf)
 }
 
 // RenderToCells does the full GPU render pass and returns the core.Cell grid (no ANSI).
-func (g *GPURenderer) RenderToCells(r *render.Renderer) [][]core.Cell {
+func (g *GPURenderer) RenderToCells(r *core.RenderConfig) [][]core.Cell {
 	w, h := r.Width, r.Height
 	if w <= 0 || h <= 0 {
 		return nil
@@ -292,7 +294,7 @@ func (g *GPURenderer) getCellBuf(tw, th int) [][]core.Cell {
 }
 
 // RenderCells uses GPU pixel data to produce a core.Cell grid.
-func (g *GPURenderer) RenderCells(r *render.Renderer) [][]core.Cell {
+func (g *GPURenderer) RenderCells(r *core.RenderConfig) [][]core.Cell {
 	tw, th := g.termW, g.termH
 
 	switch r.RenderMode {
@@ -312,8 +314,8 @@ func (g *GPURenderer) RenderCells(r *render.Renderer) [][]core.Cell {
 }
 
 // renderCellsShaped uses shape matching on GPU pixel data (2×3 sub-pixels per cell).
-func (g *GPURenderer) renderCellsShaped(r *render.Renderer, tw, th int) [][]core.Cell {
-	st := r.ShapeTable
+func (g *GPURenderer) renderCellsShaped(r *core.RenderConfig, tw, th int) [][]core.Cell {
+	st := g.ShapeTable
 	pixels := g.pixels
 	stride := g.pixW * 4
 	contrast := r.Contrast
@@ -334,7 +336,7 @@ func (g *GPURenderer) renderCellsShaped(r *render.Renderer, tw, th int) [][]core
 			off02 := off01 + stride
 			off12 := off02 + 4
 
-			var sv shape.ShapeVec
+			var sv ShapeVec
 			sv[0] = float64(pixels[off00+3]) * inv255
 			sv[1] = float64(pixels[off10+3]) * inv255
 			sv[2] = float64(pixels[off01+3]) * inv255
@@ -349,7 +351,7 @@ func (g *GPURenderer) renderCellsShaped(r *render.Renderer, tw, th int) [][]core
 			}
 
 			// External boundary samples (need bounds checks for edge cells)
-			var ext shape.ShapeVec
+			var ext ShapeVec
 			ext[0] = g.pixelBrightness(bx-1, by-1)
 			ext[1] = g.pixelBrightness(bx+2, by-1)
 			ext[2] = g.pixelBrightness(bx-1, by+1)
@@ -357,8 +359,8 @@ func (g *GPURenderer) renderCellsShaped(r *render.Renderer, tw, th int) [][]core
 			ext[4] = g.pixelBrightness(bx-1, by+3)
 			ext[5] = g.pixelBrightness(bx+2, by+3)
 
-			sv = shape.DirectionalContrast(sv, ext, contrast)
-			sv = shape.EnhanceContrast(sv, contrast)
+			sv = DirectionalContrast(sv, ext, contrast)
+			sv = EnhanceContrast(sv, contrast)
 			ch := st.Match(sv)
 
 			// Average color from the 6 interior pixels (already bounds-safe)
@@ -381,8 +383,8 @@ func (g *GPURenderer) renderCellsShaped(r *render.Renderer, tw, th int) [][]core
 
 // renderCellsDual uses 4×6 pixel blocks per core.Cell for broader shape matching.
 // Output grid: tw × th (fills viewport). Pixel buffer is subW=4, subH=6.
-func (g *GPURenderer) renderCellsDual(r *render.Renderer, tw, th int) [][]core.Cell {
-	st := r.ShapeTable
+func (g *GPURenderer) renderCellsDual(r *core.RenderConfig, tw, th int) [][]core.Cell {
+	st := g.ShapeTable
 
 	lines := g.getCellBuf(tw, th)
 	for cy := 0; cy < th; cy++ {
@@ -392,7 +394,7 @@ func (g *GPURenderer) renderCellsDual(r *render.Renderer, tw, th int) [][]core.C
 			by := cy * 6
 
 			// Downsample 4×6 to 2×3 shape vector: each element = average of 2×2 pixel block
-			var sv shape.ShapeVec
+			var sv ShapeVec
 			for si := 0; si < 6; si++ {
 				r0 := si / 2
 				c0 := si % 2
@@ -414,7 +416,7 @@ func (g *GPURenderer) renderCellsDual(r *render.Renderer, tw, th int) [][]core.C
 			}
 
 			// External samples: just outside the 4×6 block
-			var ext shape.ShapeVec
+			var ext ShapeVec
 			ext[0] = g.pixelBrightness(bx-1, by-1)
 			ext[1] = g.pixelBrightness(bx+4, by-1)
 			ext[2] = g.pixelBrightness(bx-1, by+3)
@@ -422,8 +424,8 @@ func (g *GPURenderer) renderCellsDual(r *render.Renderer, tw, th int) [][]core.C
 			ext[4] = g.pixelBrightness(bx-1, by+6)
 			ext[5] = g.pixelBrightness(bx+4, by+6)
 
-			sv = shape.DirectionalContrast(sv, ext, r.Contrast)
-			sv = shape.EnhanceContrast(sv, r.Contrast)
+			sv = DirectionalContrast(sv, ext, r.Contrast)
+			sv = EnhanceContrast(sv, r.Contrast)
 			ch := st.Match(sv)
 
 			// Average color from all 24 pixels (4×6)
@@ -530,7 +532,7 @@ func (g *GPURenderer) renderCellsQuadrant(tw, th int) [][]core.Cell {
 				continue
 			}
 
-			ch := render.QuadrantChars[pattern]
+			ch := QuadrantChars[pattern]
 			fg := fgCol.Mul(1.0 / float64(onCount))
 			fg = core.V(core.Clamp(fg.X, 0, 1), core.Clamp(fg.Y, 0, 1), core.Clamp(fg.Z, 0, 1))
 

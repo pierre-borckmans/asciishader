@@ -1,16 +1,14 @@
 package controls
 
 import (
+	"asciishader/pkg/core"
 	gpupkg "asciishader/pkg/gpu"
-	"asciishader/pkg/render"
 )
 
 // AppState is the interface that the app model must satisfy for controls to work.
 type AppState interface {
-	GetRenderer() *render.Renderer
+	GetRenderConfig() *core.RenderConfig
 	GetGPU() *gpupkg.GPURenderer
-	IsGPUMode() bool
-	SetGPUMode(bool)
 	GetScene() int
 	SetScene(int)
 	NumScenes() int

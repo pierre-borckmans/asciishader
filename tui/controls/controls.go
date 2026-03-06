@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"asciishader/pkg/core"
-	"asciishader/pkg/render"
 	"asciishader/tui/components"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,10 +12,10 @@ import (
 	zone "github.com/lrstanley/bubblezone"
 )
 
-// ControlsTab manages the 7 parameter sliders + scene selector + renderer toggles.
+// ControlsTab manages the 7 parameter sliders + scene selector + render mode toggle.
 type ControlsTab struct {
 	sliders     []*components.Slider
-	focus       int // which item is focused (0-9: 7 sliders + scene + gpu + blocks)
+	focus       int // which item is focused (0-8: 7 sliders + scene + blocks)
 	numItems    int
 	zoned       *components.ZonedInteraction
 	renderWidth int // last render width
@@ -31,14 +30,13 @@ const (
 	ctrlShadowSteps = 5
 	ctrlAOSteps     = 6
 	ctrlScene       = 7
-	ctrlGPU         = 8
-	ctrlBlocks      = 9
+	ctrlBlocks      = 8
 )
 
 // NewControlsTab creates the controls tab with default slider values.
 func NewControlsTab() *ControlsTab {
 	ct := &ControlsTab{
-		numItems: 10,
+		numItems: 9,
 		zoned:    components.NewZonedInteraction("ctrl"),
 		sliders: []*components.Slider{
 			{Label: "Contrast", Min: 0.5, Max: 5.0, Step: 0.25, Format: "%.2f"},
@@ -53,26 +51,26 @@ func NewControlsTab() *ControlsTab {
 	return ct
 }
 
-// SyncFromRenderer reads current values from the renderer into sliders.
-func (ct *ControlsTab) SyncFromRenderer(r *render.Renderer) {
-	ct.sliders[ctrlContrast].Value = r.Contrast
-	ct.sliders[ctrlSpread].Value = r.Spread
-	ct.sliders[ctrlExtDist].Value = r.ExtDist
-	ct.sliders[ctrlAmbient].Value = r.Ambient
-	ct.sliders[ctrlSpecPower].Value = r.SpecPower
-	ct.sliders[ctrlShadowSteps].Value = float64(r.ShadowSteps)
-	ct.sliders[ctrlAOSteps].Value = float64(r.AOSteps)
+// SyncFromRenderConfig reads current values from the config into sliders.
+func (ct *ControlsTab) SyncFromRenderConfig(rc *core.RenderConfig) {
+	ct.sliders[ctrlContrast].Value = rc.Contrast
+	ct.sliders[ctrlSpread].Value = rc.Spread
+	ct.sliders[ctrlExtDist].Value = rc.ExtDist
+	ct.sliders[ctrlAmbient].Value = rc.Ambient
+	ct.sliders[ctrlSpecPower].Value = rc.SpecPower
+	ct.sliders[ctrlShadowSteps].Value = float64(rc.ShadowSteps)
+	ct.sliders[ctrlAOSteps].Value = float64(rc.AOSteps)
 }
 
-// SyncToRenderer writes slider values back to the renderer.
-func (ct *ControlsTab) SyncToRenderer(r *render.Renderer) {
-	r.Contrast = ct.sliders[ctrlContrast].Value
-	r.Spread = ct.sliders[ctrlSpread].Value
-	r.ExtDist = ct.sliders[ctrlExtDist].Value
-	r.Ambient = ct.sliders[ctrlAmbient].Value
-	r.SpecPower = ct.sliders[ctrlSpecPower].Value
-	r.ShadowSteps = int(ct.sliders[ctrlShadowSteps].Value)
-	r.AOSteps = int(ct.sliders[ctrlAOSteps].Value)
+// SyncToRenderConfig writes slider values back to the config.
+func (ct *ControlsTab) SyncToRenderConfig(rc *core.RenderConfig) {
+	rc.Contrast = ct.sliders[ctrlContrast].Value
+	rc.Spread = ct.sliders[ctrlSpread].Value
+	rc.ExtDist = ct.sliders[ctrlExtDist].Value
+	rc.Ambient = ct.sliders[ctrlAmbient].Value
+	rc.SpecPower = ct.sliders[ctrlSpecPower].Value
+	rc.ShadowSteps = int(ct.sliders[ctrlShadowSteps].Value)
+	rc.AOSteps = int(ct.sliders[ctrlAOSteps].Value)
 }
 
 // HandleKey processes a key press. Returns true if consumed.
@@ -108,16 +106,11 @@ func (ct *ControlsTab) adjustValue(dir int, m AppState) bool {
 		}
 		m.SetTime(0)
 		return true
-	case ctrlGPU:
-		if m.GetGPU() != nil {
-			m.SetGPUMode(!m.IsGPUMode())
-		}
-		return true
 	case ctrlBlocks:
 		if dir > 0 {
-			m.GetRenderer().RenderMode = (m.GetRenderer().RenderMode + 1) % core.RenderModeCount
+			m.GetRenderConfig().RenderMode = (m.GetRenderConfig().RenderMode + 1) % core.RenderModeCount
 		} else {
-			m.GetRenderer().RenderMode = (m.GetRenderer().RenderMode + core.RenderModeCount - 1) % core.RenderModeCount
+			m.GetRenderConfig().RenderMode = (m.GetRenderConfig().RenderMode + core.RenderModeCount - 1) % core.RenderModeCount
 		}
 		return true
 	case ctrlSpecPower:
@@ -127,7 +120,7 @@ func (ct *ControlsTab) adjustValue(dir int, m AppState) bool {
 		} else {
 			s.Value = core.Clamp(s.Value/1.5, s.Min, s.Max)
 		}
-		ct.SyncToRenderer(m.GetRenderer())
+		ct.SyncToRenderConfig(m.GetRenderConfig())
 		return true
 	default:
 		if ct.focus >= 0 && ct.focus < len(ct.sliders) {
@@ -137,7 +130,7 @@ func (ct *ControlsTab) adjustValue(dir int, m AppState) bool {
 			} else {
 				s.Decrease()
 			}
-			ct.SyncToRenderer(m.GetRenderer())
+			ct.SyncToRenderConfig(m.GetRenderConfig())
 			return true
 		}
 	}
@@ -150,7 +143,7 @@ func (ct *ControlsTab) zoneIDs() []string {
 	for i := range ct.sliders {
 		ids = append(ids, "slider-"+strconv.Itoa(i))
 	}
-	ids = append(ids, "scene", "gpu", "blocks")
+	ids = append(ids, "scene", "blocks")
 	return ids
 }
 
@@ -165,7 +158,7 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m AppState) bool {
 		}
 		if s.IsDragging() {
 			if s.HandleMouse(msg) {
-				ct.SyncToRenderer(m.GetRenderer())
+				ct.SyncToRenderConfig(m.GetRenderConfig())
 				return true
 			}
 		}
@@ -175,7 +168,7 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m AppState) bool {
 				if msg.Action == tea.MouseActionPress {
 					ct.focus = i
 				}
-				ct.SyncToRenderer(m.GetRenderer())
+				ct.SyncToRenderConfig(m.GetRenderConfig())
 				return true
 			}
 		} else if msg.Action == tea.MouseActionMotion {
@@ -183,7 +176,7 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m AppState) bool {
 		}
 	}
 
-	// Use zoned interaction for hover + release-based clicks (scene, gpu)
+	// Use zoned interaction for hover + release-based clicks (scene, blocks)
 	result := ct.zoned.HandleMouse(msg, ct.zoneIDs())
 
 	if result.HoverChanged {
@@ -215,19 +208,10 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m AppState) bool {
 		return true
 	}
 
-	// GPU toggle
-	if clicked == "gpu" {
-		ct.focus = ctrlGPU
-		if m.GetGPU() != nil {
-			m.SetGPUMode(!m.IsGPUMode())
-		}
-		return true
-	}
-
 	// Render mode cycle
 	if clicked == "blocks" {
 		ct.focus = ctrlBlocks
-		m.GetRenderer().RenderMode = (m.GetRenderer().RenderMode + 1) % core.RenderModeCount
+		m.GetRenderConfig().RenderMode = (m.GetRenderConfig().RenderMode + 1) % core.RenderModeCount
 		return true
 	}
 
@@ -290,27 +274,9 @@ func (ct *ControlsTab) Render(width int, m AppState) string {
 	lines += headerStyle.Render(pad(" Renderer", width)) + "\n"
 	lines += dimStyle.Render(pad(" ───────────────────────────", width)) + "\n"
 
-	// GPU/CPU toggle — wrapped in zone
-	gpuLabel := " CPU"
-	if m.IsGPUMode() && m.GetGPU() != nil {
-		gpuLabel = " GPU"
-	}
-	gpuLine := pad(gpuLabel, width)
-	if ct.focus == ctrlGPU {
-		style := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("15")).
-			Background(lipgloss.Color("240"))
-		gpuLine = style.Render(gpuLine)
-	} else if ct.zoned.IsHovered("gpu") {
-		gpuLine = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252")).
-			Render(gpuLine)
-	}
-	lines += ct.zoned.Mark("gpu", gpuLine) + "\n"
-
 	// Render mode — wrapped in zone
 	blocksLabel := " Shapes"
-	switch m.GetRenderer().RenderMode {
+	switch m.GetRenderConfig().RenderMode {
 	case core.RenderDual:
 		blocksLabel = " Dual"
 	case core.RenderBlocks:
