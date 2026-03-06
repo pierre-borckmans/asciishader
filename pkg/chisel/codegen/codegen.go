@@ -679,6 +679,8 @@ func (g *generator) emitMethodCall(e *ast.MethodCall) string {
 		return g.emitBounds(e)
 	case "orient":
 		return g.emitOrient(e)
+	case "flip":
+		return g.emitFlip(e)
 	default:
 		// Unknown method — try to emit receiver and treat as pass-through.
 		g.addDiag(diagnostic.Warning, fmt.Sprintf("unknown method .%s(), ignoring", e.Name), e.NodeSpan())
@@ -1249,6 +1251,38 @@ func (g *generator) emitOrient(e *ast.MethodCall) string {
 		return result
 	}
 	return g.emitSDF(e.Receiver)
+}
+
+// emitFlip handles .flip(axis) — negates a point component without distance correction.
+// Useful for mirroring/flipping orientation (e.g. flipping Y for capped torus).
+func (g *generator) emitFlip(e *ast.MethodCall) string {
+	if len(e.Args) < 1 {
+		g.addDiag(diagnostic.Error, ".flip() requires 1 argument (axis)", e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	pNew := g.freshVar("p")
+	axisName := ""
+	if ident, ok := e.Args[0].Value.(*ast.Ident); ok {
+		axisName = ident.Name
+	}
+
+	switch axisName {
+	case "x":
+		g.emit("vec3 %s = vec3(-%s.x, %s.y, %s.z);", pNew, g.pointVar, g.pointVar, g.pointVar)
+	case "y":
+		g.emit("vec3 %s = vec3(%s.x, -%s.y, %s.z);", pNew, g.pointVar, g.pointVar, g.pointVar)
+	case "z":
+		g.emit("vec3 %s = vec3(%s.x, %s.y, -%s.z);", pNew, g.pointVar, g.pointVar, g.pointVar)
+	default:
+		g.emit("vec3 %s = %s;", pNew, g.pointVar)
+	}
+
+	oldPoint := g.pointVar
+	g.pointVar = pNew
+	result := g.emitSDF(e.Receiver)
+	g.pointVar = oldPoint
+	return result
 }
 
 // ---------------------------------------------------------------------------
