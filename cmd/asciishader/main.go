@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"runtime"
 	"runtime/pprof"
 	"strings"
@@ -94,6 +95,11 @@ type model struct {
 	// Playback
 	player   *clip.Player
 	playMode bool // --play mode
+
+	// File watching
+	watchFile    string    // path to current scene's source file
+	watchModTime time.Time // last known mod time
+	watchCheck   time.Time // last time we checked
 
 	// Profiling
 	profiling bool
@@ -321,6 +327,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.recState = recorder.RecordDone
 			}
 		}
+
+		// Check for file changes (polls every 500ms)
+		m.checkFileChanged()
 
 		// Render frame
 		if m.gpuMode && m.gpu != nil {
@@ -870,6 +879,15 @@ func (m *model) syncSceneGLSL() {
 	}
 	s := scene.Scenes[m.scene]
 
+	// Set up file watching
+	m.watchFile = s.FilePath
+	m.watchModTime = time.Time{}
+	if s.FilePath != "" {
+		if info, err := os.Stat(s.FilePath); err == nil {
+			m.watchModTime = info.ModTime()
+		}
+	}
+
 	// Prefer Chisel source if available
 	if s.Chisel != "" {
 		m.editor.SetChiselCode(s.Chisel)
@@ -893,6 +911,53 @@ func (m *model) syncSceneGLSL() {
 			}
 		}
 	}
+}
+
+// checkFileChanged polls the current scene's source file for changes.
+func (m *model) checkFileChanged() {
+	if m.watchFile == "" {
+		return
+	}
+	now := time.Now()
+	if now.Sub(m.watchCheck) < 500*time.Millisecond {
+		return
+	}
+	m.watchCheck = now
+
+	info, err := os.Stat(m.watchFile)
+	if err != nil {
+		return
+	}
+	if !info.ModTime().After(m.watchModTime) {
+		return
+	}
+	m.watchModTime = info.ModTime()
+
+	data, err := os.ReadFile(m.watchFile)
+	if err != nil {
+		return
+	}
+	content := string(data)
+
+	// Update scene and editor
+	s := &scene.Scenes[m.scene]
+	isChisel := strings.HasSuffix(m.watchFile, ".chisel")
+	if isChisel {
+		s.Chisel = content
+		m.editor.SetChiselCode(content)
+	} else {
+		s.GLSL = content
+		m.editor.ChiselMode = false
+		m.editor.SetCode(content)
+	}
+
+	// Recompile
+	if m.gpu != nil {
+		m.editor.Compile(m.gpu)
+	}
+
+	m.recMessage = fmt.Sprintf("Reloaded %s", filepath.Base(m.watchFile))
+	m.recMessageTime = time.Now()
 }
 
 // AppState interface methods for controls and recorder packages.

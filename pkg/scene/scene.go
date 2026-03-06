@@ -17,8 +17,9 @@ type Scene struct {
 	Name   string
 	SDF    func(p core.Vec3, time float64) float64
 	Color  func(p core.Vec3, time float64) core.Vec3 // material color at world point (RGB 0-1), nil = white
-	GLSL   string                          // optional GLSL code for GPU editor (sceneSDF + sceneColor)
-	Chisel string                          // optional Chisel source (compiled to GLSL)
+	GLSL     string // optional GLSL code for GPU editor (sceneSDF + sceneColor)
+	Chisel   string // optional Chisel source (compiled to GLSL)
+	FilePath string // source file path (for file watching)
 }
 
 var Scenes = []Scene{
@@ -849,15 +850,17 @@ func LoadShaderFiles() {
 					} else {
 						Scenes[i].GLSL = content
 					}
+					Scenes[i].FilePath = path
 					found = true
 					break
 				}
 			}
 			if !found {
 				s := Scene{
-					Name:  name,
-					SDF:   scenePlasma,
-					Color: colorPlasma,
+					Name:     name,
+					SDF:      scenePlasma,
+					Color:    colorPlasma,
+					FilePath: path,
 				}
 				if isChisel {
 					s.Chisel = content
