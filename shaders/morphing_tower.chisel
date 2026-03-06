@@ -1,0 +1,36 @@
+// Scene: Morphing Tower
+// Stacked sections morphing between shapes, each rotated 45° from the last
+// Showcases: extrude_to, 2D primitives, twist, smooth union
+
+// Each floor morphs from one 2D shape to the next
+floor1 = rect(1.6, 1.6).extrude_to(circle(1), 2)
+  .rot(90, x).at(0, 1, 0)
+
+floor2 = circle(1).extrude_to(hexagon(0.9), 2)
+  .rot(90, x).at(0, 3, 0)
+
+floor3 = hexagon(0.9).extrude_to(triangle(1.2), 2)
+  .rot(90, x).at(0, 5, 0)
+
+floor4 = triangle(1.2).extrude_to(rect(1.4, 1.4), 2)
+  .rot(90, x).at(0, 7, 0)
+
+// Transition rings between floors
+rings = torus(1.1, 0.06).at(0, 2, 0)
+  | torus(1.0, 0.06).at(0, 4, 0)
+  | torus(0.95, 0.06).at(0, 6, 0)
+
+// Combine
+tower = floor1 |~0.15 floor2 |~0.15 floor3 |~0.15 floor4
+  |~0.05 rings
+
+// Gentle twist and rotation
+tower
+  .twist(sin(t * 0.3) * 0.15)
+  .rot(t * 6, y)
+  .color(
+    0.85 - 0.4 * smoothstep(0, 8, p.y),
+    0.45 + 0.35 * smoothstep(0, 8, p.y),
+    0.3 + 0.5 * smoothstep(0, 8, p.y)
+  )
+| plane.at(y: -0.5).color(0.12, 0.12, 0.18)
