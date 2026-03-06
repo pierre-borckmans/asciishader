@@ -2292,6 +2292,35 @@ func (g *generator) emit2DSDF(expr ast.Expr, p2d string) string {
 	case *ast.MethodCall:
 		// Handle transforms on 2D shapes: .at(), .scale(), .rot(), .mirror()
 		return g.emit2DMethodCall(e, p2d)
+	case *ast.BinaryExpr:
+		// 2D boolean operations: (circle - rect), (circle | rect), etc.
+		left := g.emit2DSDF(e.Left, p2d)
+		right := g.emit2DSDF(e.Right, p2d)
+		switch e.Op {
+		case ast.Union:
+			return fmt.Sprintf("min(%s, %s)", left, right)
+		case ast.Subtract:
+			return fmt.Sprintf("max(%s, -%s)", left, right)
+		case ast.Intersect:
+			return fmt.Sprintf("max(%s, %s)", left, right)
+		case ast.SmoothUnion:
+			g.helpers["opSmoothUnion"] = true
+			k := "0.25"
+			if e.Blend != nil {
+				k = formatFloat(*e.Blend)
+			}
+			return fmt.Sprintf("opSmoothUnion(%s, %s, %s)", left, right, k)
+		default:
+			// Arithmetic ops
+			op := scalarBinaryOp(e.Op)
+			return fmt.Sprintf("(%s %s %s)", left, op, right)
+		}
+	case *ast.UnaryExpr:
+		operand := g.emit2DSDF(e.Operand, p2d)
+		if e.Op == ast.Neg {
+			return fmt.Sprintf("(-%s)", operand)
+		}
+		return operand
 	default:
 		return g.emitScalarExpr(expr)
 	}
