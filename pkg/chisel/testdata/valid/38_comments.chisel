@@ -1,0 +1,2 @@
+// Line comment before code
+sphere | /* inline block comment */ box

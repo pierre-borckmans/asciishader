@@ -1,0 +1,4 @@
+# Chained transforms
+rotateY
+vec3(1.0, 0.0, 0.0)
+sdSphere

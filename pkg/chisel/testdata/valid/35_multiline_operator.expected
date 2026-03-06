@@ -1,0 +1,5 @@
+# Multi-line smooth union must work (the bug we just fixed)
+opSmoothUnion
+sdSphere
+sdBox
+0.3

@@ -1,0 +1,4 @@
+# Displacement with math expression
+sdSphere
+sin(
+p.x

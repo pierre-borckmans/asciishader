@@ -1,0 +1,6 @@
+# Complex scene with variables, functions, for loop
+fn_pillar
+sdCylinder
+sdSphere
+sdBox
+opUnion

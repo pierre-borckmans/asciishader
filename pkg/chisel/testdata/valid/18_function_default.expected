@@ -1,0 +1,4 @@
+# Function with default parameter
+fn_f
+sdSphere
+float fn_f(vec3 p, float x, float r)

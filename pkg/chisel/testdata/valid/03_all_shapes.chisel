@@ -1,0 +1,1 @@
+sphere | box.at(3,0,0) | cylinder.at(6,0,0) | torus.at(9,0,0) | plane.at(0,-2,0) | octahedron.at(12,0,0) | capsule.at(15,0,0)

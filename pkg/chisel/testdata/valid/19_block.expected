@@ -1,0 +1,4 @@
+# Block expression with implicit union
+opUnion
+sdSphere
+sdBox

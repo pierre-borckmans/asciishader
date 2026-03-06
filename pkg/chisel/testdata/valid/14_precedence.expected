@@ -1,0 +1,7 @@
+# Precedence: subtract binds tighter than union
+# sphere | (box - cylinder)
+opUnion
+opSubtract
+sdSphere
+sdBox
+sdCylinder

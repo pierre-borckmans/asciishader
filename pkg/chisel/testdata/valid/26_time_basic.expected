@@ -1,0 +1,3 @@
+# Time-based animation: sin(t) for bobbing
+sin(uTime)
+sdSphere

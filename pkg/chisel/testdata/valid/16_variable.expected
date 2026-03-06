@@ -1,0 +1,4 @@
+# Variable used as shape parameter
+# The variable r is inlined as its identifier name in scope
+sdSphere
+sceneSDF

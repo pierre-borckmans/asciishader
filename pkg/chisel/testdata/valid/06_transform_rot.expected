@@ -1,0 +1,4 @@
+# Rotation around Y axis
+rotateY
+radians(45.0)
+sdSphere

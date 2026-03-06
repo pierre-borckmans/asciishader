@@ -1,0 +1,4 @@
+# User-defined function
+fn_f
+sdSphere
+float fn_f(vec3 p, float x)

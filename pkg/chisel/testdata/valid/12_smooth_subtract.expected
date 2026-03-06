@@ -1,0 +1,5 @@
+# Smooth subtract with blend radius
+opSmoothSubtract
+sdSphere
+sdBox
+0.2

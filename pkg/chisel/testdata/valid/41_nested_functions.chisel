@@ -1,0 +1,3 @@
+a(r) = sphere(r)
+b(r) = a(r).at(1, 0, 0)
+b(2)

@@ -1,0 +1,6 @@
+# All operators on newlines
+opSmoothUnion
+opSmoothSubtract
+sdSphere
+sdBox
+sdCylinder

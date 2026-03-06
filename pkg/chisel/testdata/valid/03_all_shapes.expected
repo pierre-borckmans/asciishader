@@ -1,0 +1,9 @@
+# Every 3D primitive
+sdSphere
+sdBox
+sdCylinder
+sdTorus
+sdPlane
+sdOctahedron
+sdCapsule
+opUnion

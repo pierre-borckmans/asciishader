@@ -1,0 +1,4 @@
+# Mirror along X axis
+abs(
+sdSphere
+vec3(2.0, 0.0, 0.0)

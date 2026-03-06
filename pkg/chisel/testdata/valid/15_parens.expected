@@ -1,0 +1,6 @@
+# Parens override precedence: (sphere | box) - cylinder
+opSubtract
+opUnion
+sdSphere
+sdBox
+sdCylinder

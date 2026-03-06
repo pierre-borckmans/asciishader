@@ -1,0 +1,5 @@
+# Basic sphere should produce sceneSDF and sceneColor
+sceneSDF
+sdSphere(p, 1.0)
+sceneColor
+return

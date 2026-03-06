@@ -1,0 +1,4 @@
+# Top-level implicit union of two shapes on separate lines
+opUnion
+sdSphere
+sdBox

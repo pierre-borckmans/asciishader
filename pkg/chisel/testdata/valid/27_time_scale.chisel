@@ -1,0 +1,1 @@
+sphere.scale(1 + sin(t) * 0.2)

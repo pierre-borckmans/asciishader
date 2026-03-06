@@ -1,0 +1,4 @@
+# Sphere with explicit radius
+sdSphere(p, 2.0)
+sceneSDF
+sceneColor

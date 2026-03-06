@@ -1,0 +1,10 @@
+// A realistic multi-shape scene
+pillar(h) = cylinder(0.3, h) | sphere(0.4).at(0, h/2, 0)
+
+base = box(4, 0.3, 3).at(0, -1.5, 0)
+
+pillars = for i in 0..3 {
+  pillar(3).at(-2 + i * 2, 0, 0)
+}
+
+base | pillars
