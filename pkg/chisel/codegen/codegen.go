@@ -440,11 +440,16 @@ func (g *generator) emitScalarFuncCall(e *ast.FuncCall) string {
 	}
 
 	if builtins[e.Name] {
+		// Map Chisel names to GLSL names
+		glslName := e.Name
+		if glslName == "atan2" {
+			glslName = "atan" // GLSL atan() accepts 1 or 2 args
+		}
 		var args []string
 		for _, a := range e.Args {
 			args = append(args, g.emitScalarExpr(a.Value))
 		}
-		return fmt.Sprintf("%s(%s)", e.Name, strings.Join(args, ", "))
+		return fmt.Sprintf("%s(%s)", glslName, strings.Join(args, ", "))
 	}
 
 	// Check for noise/easing/utility functions.
