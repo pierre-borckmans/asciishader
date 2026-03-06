@@ -1,0 +1,35 @@
+// Scene: DNA
+// Double helix that twists and untwists rhythmically
+
+// Helix parameters
+twist_amount = 1.5 + sin(t * 0.4) * 1.2
+
+// Strand: a long capsule twisted into a helix
+strand = capsule([0, -3, 0], [0, 3, 0], 0.08)
+  .at(0.4, 0, 0)
+  .twist(twist_amount)
+
+// Double helix: two strands 180° apart
+helix = strand | strand.rot(180, y)
+
+// Rungs connecting the strands
+rung(i) = capsule([-0.35, 0, 0], [0.35, 0, 0], 0.04)
+  .at(0, -2.7 + i * 0.45, 0)
+  .twist(twist_amount)
+
+rungs = for i in 0..13 {
+  rung(i)
+}
+
+// Combine
+dna = helix |~0.02 rungs
+
+// Slow rotation
+dna
+  .rot(t * 8, y)
+  .color(
+    0.2 + 0.6 * (sin(p.y * 2 + t) * 0.5 + 0.5),
+    0.4 + 0.3 * (cos(p.y * 1.5 + t * 0.7) * 0.5 + 0.5),
+    0.8 - 0.3 * (sin(p.y * 1.8 + t * 0.5) * 0.5 + 0.5)
+  )
+| plane.at(y: -3.5).color(0.1, 0.1, 0.15)
