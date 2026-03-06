@@ -4,13 +4,35 @@
 // Original: https://www.shadertoy.com/view/Xds3zN
 // The MIT License - Copyright © 2013 Inigo Quilez
 
+// ---- SDF Primitives (from prefix) ----
+
+float sdSphere(vec3 p, float r) {
+    return length(p) - r;
+}
+
+float sdBox(vec3 p, vec3 b) {
+    vec3 q = abs(p) - b;
+    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+}
+
+float sdCapsule(vec3 p, vec3 a, vec3 b, float r) {
+    vec3 pa = p - a, ba = b - a;
+    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    return length(pa - ba * h) - r;
+}
+
+float sdOctahedron(vec3 p, float s) {
+    p = abs(p);
+    return (p.x + p.y + p.z - s) * 0.57735027;
+}
+
 // ---- Helpers ----
 
 float dot2(in vec2 v) { return dot(v, v); }
 float dot2(in vec3 v) { return dot(v, v); }
 float ndot(in vec2 a, in vec2 b) { return a.x*b.x - a.y*b.y; }
 
-// ---- Additional SDF primitives (not in prefix) ----
+// ---- Additional SDF primitives ----
 
 float sdBoxFrame(vec3 p, vec3 b, float e) {
     p = abs(p) - b;
@@ -27,7 +49,6 @@ float sdEllipsoid(in vec3 p, in vec3 r) {
     return k0 * (k0 - 1.0) / k1;
 }
 
-// Overload: prefix has sdTorus(vec3, float, float)
 float sdTorus(vec3 p, vec2 t) {
     return length(vec2(length(p.xz) - t.x, p.y)) - t.y;
 }
@@ -99,7 +120,6 @@ float sdTriPrism(vec3 p, vec2 h) {
     return length(max(vec2(d1, d2), 0.0)) + min(max(d1, d2), 0.0);
 }
 
-// Overload: prefix has sdCylinder(vec3, float, float)
 float sdCylinder(vec3 p, vec2 h) {
     vec2 d = abs(vec2(length(p.xz), p.y)) - h;
     return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));

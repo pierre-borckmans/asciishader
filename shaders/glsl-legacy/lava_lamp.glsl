@@ -1,6 +1,23 @@
 // ---- Scene: Lava Lamp ----
 // Warm blobby masses rising and sinking, merging and splitting.
 
+// ---- SDF Primitives & Operations ----
+
+float sdSphere(vec3 p, float r) {
+    return length(p) - r;
+}
+
+float opSmoothUnion(float a, float b, float k) {
+    float h = clamp(0.5 + 0.5*(b-a)/k, 0.0, 1.0);
+    return mix(b, a, h) - k*h*(1.0-h);
+}
+
+vec3 rotateY(vec3 p, float a) {
+    float c = cos(a), s = sin(a);
+    return vec3(p.x*c + p.z*s, p.y, -p.x*s + p.z*c);
+}
+
+// ---- Scene ----
 float sceneSDF(vec3 p) {
     p = rotateY(p, uTime * 0.12);
 
