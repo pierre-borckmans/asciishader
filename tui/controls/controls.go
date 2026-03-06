@@ -291,6 +291,8 @@ func (ct *ControlsTab) Render(width int, m AppState) string {
 		blocksLabel = " Braille"
 	case core.RenderDensity:
 		blocksLabel = " Density"
+	case core.RenderSlice:
+		blocksLabel = " Slice"
 	}
 	blocksLine := pad(blocksLabel, width)
 	if ct.focus == ctrlBlocks {

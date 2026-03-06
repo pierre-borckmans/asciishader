@@ -266,6 +266,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.config.Camera.Target = m.camTarget
 		m.config.Time = m.time
 		m.config.OrthoScale = m.camDist * 0.75 // ortho scale tracks zoom
+		if m.config.RenderMode == core.RenderSlice {
+			m.config.SliceMode = 1
+			m.config.SliceY = m.camTarget.Y
+		} else {
+			m.config.SliceMode = 0
+		}
 
 		// Animated light
 		m.config.LightDir = core.V(
@@ -1052,6 +1058,8 @@ func (m model) View() tea.View {
 			modeStr = "BRAILLE"
 		case core.RenderDensity:
 			modeStr = "DENSITY"
+		case core.RenderSlice:
+			modeStr = "SLICE"
 		}
 		// Projection mode
 		switch m.config.Projection {

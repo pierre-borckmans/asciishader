@@ -8,7 +8,8 @@ const (
 	RenderHalfBlock = 3 // half-block ▀ with fg+bg color
 	RenderBraille   = 4 // braille 2×4 dot grid
 	RenderDensity   = 5 // classic density ramp
-	RenderModeCount = 6
+	RenderSlice     = 6 // 2D SDF slice heatmap
+	RenderModeCount = 7
 )
 
 // Camera holds the view parameters.
@@ -46,6 +47,8 @@ type RenderConfig struct {
 	AOSteps       int
 	Projection    int     // 0=perspective, 1=orthographic, 2=isometric
 	OrthoScale    float64 // orthographic view scale
+	SliceMode     int     // 0=normal, 1=SDF slice heatmap
+	SliceY        float64 // Y position of slice plane
 }
 
 // Projection mode constants

@@ -18,6 +18,8 @@ uniform int uAOSteps;
 uniform vec2 uTermSize;
 uniform int uProjection;  // 0=perspective, 1=orthographic, 2=isometric
 uniform float uOrthoScale; // orthographic view scale
+uniform int uSliceMode;   // 0=normal, 1=SDF slice heatmap
+uniform float uSliceY;    // Y position of slice plane
 
 out vec4 fragColor;
 
@@ -509,6 +511,40 @@ void main() {
         float halfW = halfH * aspect;
         rd = normalize(fwd + right * ndc.x * halfW + up * ndc.y * halfH);
         ro = uCameraPos;
+    }
+
+    if (uSliceMode == 1) {
+        // SDF slice heatmap: evaluate SDF at a 2D plane
+        float scale = uOrthoScale;
+        vec3 sliceP = vec3(ndc.x * scale * aspect, uSliceY, ndc.y * scale);
+        float d = sceneSDF(sliceP);
+
+        // Map distance to color: viridis-like palette
+        float nd = clamp(d * 2.0, -1.0, 1.0); // normalize
+        float t01 = nd * 0.5 + 0.5; // 0=inside, 1=outside
+
+        // Viridis-inspired: dark purple → teal → yellow
+        vec3 col;
+        if (t01 < 0.25) {
+            col = mix(vec3(0.267, 0.004, 0.329), vec3(0.282, 0.140, 0.458), t01 * 4.0);
+        } else if (t01 < 0.5) {
+            col = mix(vec3(0.282, 0.140, 0.458), vec3(0.127, 0.566, 0.551), (t01 - 0.25) * 4.0);
+        } else if (t01 < 0.75) {
+            col = mix(vec3(0.127, 0.566, 0.551), vec3(0.544, 0.774, 0.247), (t01 - 0.5) * 4.0);
+        } else {
+            col = mix(vec3(0.544, 0.774, 0.247), vec3(0.993, 0.906, 0.144), (t01 - 0.75) * 4.0);
+        }
+
+        // Contour lines at integer distances
+        float contour = 1.0 - smoothstep(0.0, 0.03, abs(fract(d * 5.0) - 0.5) - 0.45);
+        col = mix(col, vec3(0), contour * 0.4);
+
+        // Bright line at d=0 (surface boundary)
+        float zeroline = 1.0 - smoothstep(0.0, 0.015, abs(d));
+        col = mix(col, vec3(1), zeroline);
+
+        fragColor = vec4(col, 1.0);
+        return;
     }
 
     float t = raymarch(ro, rd);

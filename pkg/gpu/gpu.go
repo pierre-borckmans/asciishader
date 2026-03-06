@@ -90,6 +90,8 @@ type GPURenderer struct {
 	uTermSize     int32
 	uProjection   int32
 	uOrthoScale   int32
+	uSliceMode    int32
+	uSliceY       int32
 }
 
 func NewGPURenderer() (*GPURenderer, error) {
@@ -188,6 +190,8 @@ func (g *GPURenderer) Render(r *core.RenderConfig) string {
 	gl.Uniform1i(g.uAOSteps, int32(r.AOSteps))
 	gl.Uniform1i(g.uProjection, int32(r.Projection))
 	gl.Uniform1f(g.uOrthoScale, float32(r.OrthoScale))
+	gl.Uniform1i(g.uSliceMode, int32(r.SliceMode))
+	gl.Uniform1f(g.uSliceY, float32(r.SliceY))
 
 	// Draw fullscreen quad
 	gl.BindVertexArray(g.vao)
@@ -231,6 +235,8 @@ func (g *GPURenderer) RenderToCells(r *core.RenderConfig) [][]core.Cell {
 	gl.Uniform1i(g.uAOSteps, int32(r.AOSteps))
 	gl.Uniform1i(g.uProjection, int32(r.Projection))
 	gl.Uniform1f(g.uOrthoScale, float32(r.OrthoScale))
+	gl.Uniform1i(g.uSliceMode, int32(r.SliceMode))
+	gl.Uniform1f(g.uSliceY, float32(r.SliceY))
 
 	gl.BindVertexArray(g.vao)
 	gl.DrawArrays(gl.TRIANGLES, 0, 6)
@@ -276,6 +282,8 @@ func renderSubPixels(mode int) (subW, subH int) {
 		return 2, 4
 	case core.RenderDensity:
 		return 2, 3
+	case core.RenderSlice:
+		return 1, 2 // half-block for color fidelity
 	default: // RenderShapes
 		return 2, 3
 	}
@@ -314,6 +322,8 @@ func (g *GPURenderer) RenderCells(r *core.RenderConfig) [][]core.Cell {
 		return g.renderCellsBraille(tw, th)
 	case core.RenderDensity:
 		return g.renderCellsDensity(tw, th)
+	case core.RenderSlice:
+		return g.renderCellsHalfBlock(tw, th)
 	default:
 		return g.renderCellsShaped(r, tw, th)
 	}
@@ -793,6 +803,8 @@ func (g *GPURenderer) cacheUniforms() {
 	g.uTermSize = gl.GetUniformLocation(g.program, gl.Str("uTermSize\x00"))
 	g.uProjection = gl.GetUniformLocation(g.program, gl.Str("uProjection\x00"))
 	g.uOrthoScale = gl.GetUniformLocation(g.program, gl.Str("uOrthoScale\x00"))
+	g.uSliceMode = gl.GetUniformLocation(g.program, gl.Str("uSliceMode\x00"))
+	g.uSliceY = gl.GetUniformLocation(g.program, gl.Str("uSliceY\x00"))
 }
 
 // CompileUserCode compiles new user GLSL code into the shader program.
