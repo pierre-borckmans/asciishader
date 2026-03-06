@@ -1,0 +1,4 @@
+// Color conditional based on position
+sphere.color(
+  if p.y > 0 { [1, 0, 0] } else { [0, 0, 1] }
+)

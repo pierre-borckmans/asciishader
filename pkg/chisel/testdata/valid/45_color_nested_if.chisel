@@ -1,0 +1,6 @@
+// Nested conditional color — stripe pattern
+sphere.color(
+  if p.y > 0.5 { [1, 0, 0] }
+  else if p.y > 0 { [0, 1, 0] }
+  else { [0, 0, 1] }
+)

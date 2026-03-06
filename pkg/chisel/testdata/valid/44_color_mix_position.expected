@@ -1,0 +1,6 @@
+# Height-based color gradient
+sceneSDF
+sceneColor
+mix
+smoothstep
+p.y

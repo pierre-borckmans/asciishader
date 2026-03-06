@@ -1,0 +1,5 @@
+# Conditional color based on position
+sceneSDF
+sceneColor
+# The ternary should appear in sceneColor
+?

@@ -350,6 +350,23 @@ func (g *generator) emitScalarExpr(expr ast.Expr) string {
 			argStrs = append(argStrs, g.emitScalarExpr(a.Value))
 		}
 		return fmt.Sprintf("%s.%s(%s)", recv, e.Name, strings.Join(argStrs, ", "))
+	case *ast.IfExpr:
+		cond := g.emitScalarExpr(e.Cond)
+		thenExpr := "vec3(1.0)"
+		elseExpr := "vec3(1.0)"
+		if e.Then != nil && e.Then.Result != nil {
+			thenExpr = g.emitScalarExpr(e.Then.Result)
+		}
+		if e.Else != nil {
+			elseExpr = g.emitScalarExpr(e.Else)
+		}
+		return fmt.Sprintf("(%s ? %s : %s)", cond, thenExpr, elseExpr)
+	case *ast.Block:
+		// Block in scalar context: return the result expression
+		if e.Result != nil {
+			return g.emitScalarExpr(e.Result)
+		}
+		return "0.0"
 	default:
 		return g.emitSDF(expr)
 	}
