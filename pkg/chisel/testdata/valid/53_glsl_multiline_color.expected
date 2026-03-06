@@ -1,0 +1,5 @@
+# Multi-statement GLSL color escape emits a vec3 helper function
+glsl_color
+vec3
+return col
+sceneColor

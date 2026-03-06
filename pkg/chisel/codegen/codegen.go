@@ -359,14 +359,25 @@ func (g *generator) emitScalarExpr(expr ast.Expr) string {
 		}
 		return fmt.Sprintf("(%s ? %s : %s)", cond, thenExpr, elseExpr)
 	case *ast.GlslEscape:
-		// In scalar/color context, emit as vec3-returning inline code.
-		code := strings.ReplaceAll(e.Code, e.Param, g.pointVar)
+		// In scalar/color context, emit as a helper function returning vec3.
+		code := strings.ReplaceAll(e.Code, e.Param, "p")
 		code = strings.TrimSpace(code)
-		if strings.HasPrefix(code, "return ") {
+		// Simple one-liner: return expr; → inline
+		if !strings.Contains(code, "\n") && strings.HasPrefix(code, "return ") {
 			code = strings.TrimPrefix(code, "return ")
 			code = strings.TrimSuffix(code, ";")
+			return strings.ReplaceAll(code, "p", g.pointVar)
 		}
-		return code
+		// Multi-statement: emit as helper function
+		fnName := g.freshVar("glsl_color")
+		if g.fnDefs != nil {
+			fmt.Fprintf(g.fnDefs, "vec3 %s(vec3 p) {\n", fnName)
+			for _, line := range strings.Split(code, "\n") {
+				fmt.Fprintf(g.fnDefs, "    %s\n", line)
+			}
+			fmt.Fprintf(g.fnDefs, "}\n\n")
+		}
+		return fmt.Sprintf("%s(%s)", fnName, g.pointVar)
 	case *ast.Block:
 		// Block in scalar context: return the result expression
 		if e.Result != nil {
@@ -1542,47 +1553,30 @@ func (g *generator) emitIfExpr(e *ast.IfExpr) string {
 // ---------------------------------------------------------------------------
 
 func (g *generator) emitGlslEscape(e *ast.GlslEscape) string {
-	// Wrap the raw GLSL code in a helper function.
-	fnName := g.freshVar("glsl_sdf")
-	// We can't easily emit a function at this point in the body, so we
-	// inline the GLSL code. The code must evaluate to a float.
-	// We replace the param name with the current point variable.
-	code := strings.ReplaceAll(e.Code, e.Param, g.pointVar)
+	code := strings.ReplaceAll(e.Code, e.Param, "p")
+	code = strings.TrimSpace(code)
 
-	// If the code contains "return", we need to wrap in a block or function.
-	// For simplicity, inline it as an immediately-invoked block isn't possible
-	// in GLSL, so emit a helper function.
-	_ = fnName
-	d := g.freshVar("d")
-
-	// Simple case: the code is just an expression "return expr;"
-	if strings.HasPrefix(strings.TrimSpace(code), "return ") {
-		expr := strings.TrimSpace(code)
-		expr = strings.TrimPrefix(expr, "return ")
+	// Simple one-liner: return expr; → inline
+	if !strings.Contains(code, "\n") && strings.HasPrefix(code, "return ") {
+		expr := strings.TrimPrefix(code, "return ")
 		expr = strings.TrimSuffix(expr, ";")
+		expr = strings.ReplaceAll(expr, "p", g.pointVar)
+		d := g.freshVar("d")
 		g.emit("float %s = %s;", d, expr)
 		return d
 	}
 
-	// Complex case: multi-statement GLSL. Emit inline with a scope block.
-	// GLSL supports { } blocks, but we need to get a value out.
-	// Emit the statements and use a variable to capture the result.
-	g.emit("float %s;", d)
-	g.emit("{")
-	// Split the code into lines and emit each.
-	for _, line := range strings.Split(code, ";") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
+	// Multi-statement: emit as helper function
+	fnName := g.freshVar("glsl_sdf")
+	if g.fnDefs != nil {
+		fmt.Fprintf(g.fnDefs, "float %s(vec3 p) {\n", fnName)
+		for _, line := range strings.Split(code, "\n") {
+			fmt.Fprintf(g.fnDefs, "    %s\n", line)
 		}
-		if strings.HasPrefix(line, "return ") {
-			expr := strings.TrimPrefix(line, "return ")
-			g.emit("    %s = %s;", d, expr)
-		} else {
-			g.emit("    %s;", line)
-		}
+		fmt.Fprintf(g.fnDefs, "}\n\n")
 	}
-	g.emit("}")
+	d := g.freshVar("d")
+	g.emit("float %s = %s(%s);", d, fnName, g.pointVar)
 	return d
 }
 

@@ -1,0 +1,5 @@
+# Multi-statement GLSL escape emits a helper function
+glsl_sdf
+float
+return d
+sceneSDF

@@ -1,0 +1,6 @@
+// Multi-statement GLSL escape for SDF
+glsl(p) {
+    float d = length(p) - 1.0;
+    d += sin(p.x * 10.0) * 0.05;
+    return d;
+}

@@ -1,0 +1,7 @@
+// Multi-statement GLSL escape for color
+sphere.color(glsl(p) {
+    vec3 col = vec3(0.5);
+    col.r = sin(p.x * 5.0) * 0.5 + 0.5;
+    col.b = cos(p.z * 5.0) * 0.5 + 0.5;
+    return col;
+})
