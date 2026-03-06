@@ -1,0 +1,2 @@
+// Revolve hexagon into donut shape
+hexagon(0.5).revolve(2)

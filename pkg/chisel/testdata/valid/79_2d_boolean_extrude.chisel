@@ -1,0 +1,2 @@
+// Boolean on 2D shapes then extrude
+(circle(1) - rect(0.5, 2)).extrude(1)

@@ -1,0 +1,2 @@
+// Extrude triangle into prism
+triangle(1).extrude(2)

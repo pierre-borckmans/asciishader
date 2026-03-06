@@ -1,0 +1,5 @@
+# 2D boolean then extruded — currently emits raw expression
+# TODO: proper 2D boolean support in emit2DSDF
+sdExtrude
+circle
+rect

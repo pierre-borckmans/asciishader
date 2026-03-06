@@ -85,7 +85,7 @@ func NewBuiltinScope() *Scope {
 
 	// 2D shape primitives.
 	for _, name := range []string{
-		"circle", "rect", "hexagon", "polygon",
+		"circle", "rect", "hexagon", "polygon", "triangle",
 	} {
 		s.Symbols[name] = &Symbol{Name: name, Type: TypeSDF2D}
 	}

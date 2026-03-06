@@ -535,6 +535,16 @@ func (g *generator) emitIdent(e *ast.Ident) string {
 		}
 	}
 
+	// 2D shapes used bare without .extrude()/.revolve(): auto-extrude with height 1.
+	if is2DShape(name) {
+		g.addDiag(diagnostic.Warning, fmt.Sprintf("2D shape '%s' used without .extrude() or .revolve(); auto-extruding with height 1", name), e.NodeSpan())
+		p2d := fmt.Sprintf("%s.xy", g.pointVar)
+		d2dExpr := shape2DDefault(name, p2d)
+		d := g.freshVar("d")
+		g.emit("float %s = sdExtrude(%s, %s.z, 0.5);", d, d2dExpr, g.pointVar)
+		return d
+	}
+
 	// Built-in shapes (bare idents without parens).
 	if isBuiltinShape(name) {
 		d := g.freshVar("d")
@@ -571,6 +581,16 @@ func (g *generator) emitIdent(e *ast.Ident) string {
 // ---------------------------------------------------------------------------
 
 func (g *generator) emitFuncCall(e *ast.FuncCall) string {
+	// 2D shapes with args but without .extrude()/.revolve(): auto-extrude with height 1.
+	if is2DShape(e.Name) {
+		g.addDiag(diagnostic.Warning, fmt.Sprintf("2D shape '%s' used without .extrude() or .revolve(); auto-extruding with height 1", e.Name), e.NodeSpan())
+		p2d := fmt.Sprintf("%s.xy", g.pointVar)
+		d2dExpr := g.shape2DCall(e.Name, p2d, e.Args)
+		d := g.freshVar("d")
+		g.emit("float %s = sdExtrude(%s, %s.z, 0.5);", d, d2dExpr, g.pointVar)
+		return d
+	}
+
 	// Check for built-in shapes.
 	if isBuiltinShape(e.Name) {
 		d := g.freshVar("d")
@@ -681,6 +701,10 @@ func (g *generator) emitMethodCall(e *ast.MethodCall) string {
 		return g.emitOrient(e)
 	case "flip":
 		return g.emitFlip(e)
+	case "extrude":
+		return g.emitExtrude(e)
+	case "revolve":
+		return g.emitRevolve(e)
 	default:
 		// Unknown method — try to emit receiver and treat as pass-through.
 		g.addDiag(diagnostic.Warning, fmt.Sprintf("unknown method .%s(), ignoring", e.Name), e.NodeSpan())
@@ -1283,6 +1307,47 @@ func (g *generator) emitFlip(e *ast.MethodCall) string {
 	result := g.emitSDF(e.Receiver)
 	g.pointVar = oldPoint
 	return result
+}
+
+// ---------------------------------------------------------------------------
+// Extrude & Revolve (2D → 3D)
+// ---------------------------------------------------------------------------
+
+// emitExtrude handles .extrude(height) on 2D SDF shapes.
+// Generates: sdExtrude(sdf2d(p.xy), p.z, h*0.5)
+func (g *generator) emitExtrude(e *ast.MethodCall) string {
+	if len(e.Args) < 1 {
+		g.addDiag(diagnostic.Error, ".extrude() requires 1 argument (height)", e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	h := g.emitScalarExpr(e.Args[0].Value)
+
+	// Emit the 2D SDF using pointVar.xy
+	p2d := fmt.Sprintf("%s.xy", g.pointVar)
+	d2d := g.emit2DSDF(e.Receiver, p2d)
+
+	d := g.freshVar("d")
+	g.emit("float %s = sdExtrude(%s, %s.z, (%s)*0.5);", d, d2d, g.pointVar, h)
+	return d
+}
+
+// emitRevolve handles .revolve(offset) on 2D SDF shapes.
+// Creates a surface of revolution: evaluates the 2D SDF at vec2(length(p.xz) - offset, p.y)
+func (g *generator) emitRevolve(e *ast.MethodCall) string {
+	offset := "0.0"
+	if len(e.Args) >= 1 {
+		offset = g.emitScalarExpr(e.Args[0].Value)
+	}
+
+	// Create a 2D point from revolving: vec2(length(p.xz) - offset, p.y)
+	p2d := g.freshVar("p2d")
+	g.emit("vec2 %s = vec2(length(%s.xz) - %s, %s.y);", p2d, g.pointVar, offset, g.pointVar)
+
+	// Emit the 2D SDF using this revolved point
+	d2d := g.emit2DSDF(e.Receiver, p2d)
+
+	return d2d
 }
 
 // ---------------------------------------------------------------------------
@@ -2126,11 +2191,170 @@ var builtinShapeNames = map[string]bool{
 	"dodecahedron":     true,
 	"icosahedron":      true,
 	"slab":             true,
+	// 2D shape primitives (require .extrude() or .revolve() to render).
+	"circle":   true,
+	"rect":     true,
+	"hexagon":  true,
+	"triangle": true,
 }
 
 // isBuiltinShape reports whether name is a built-in shape.
 func isBuiltinShape(name string) bool {
 	return builtinShapeNames[name]
+}
+
+// builtin2DShapeNames lists the 2D shape identifiers that require extrude/revolve.
+var builtin2DShapeNames = map[string]bool{
+	"circle":   true,
+	"rect":     true,
+	"hexagon":  true,
+	"triangle": true,
+}
+
+// is2DShape reports whether name is a 2D shape primitive.
+func is2DShape(name string) bool {
+	return builtin2DShapeNames[name]
+}
+
+// shape2DDefault returns the GLSL 2D SDF call for a bare shape ident (no args).
+func shape2DDefault(name, p2d string) string {
+	switch name {
+	case "circle":
+		return fmt.Sprintf("sdCircle2D(%s, 1.0)", p2d)
+	case "rect":
+		return fmt.Sprintf("sdRect2D(%s, vec2(0.5))", p2d)
+	case "hexagon":
+		return fmt.Sprintf("sdHexagon2D(%s, 1.0)", p2d)
+	case "triangle":
+		return fmt.Sprintf("sdEquilateralTriangle2D(%s, 1.0)", p2d)
+	}
+	return fmt.Sprintf("sdCircle2D(%s, 1.0)", p2d)
+}
+
+// shape2DCall returns the GLSL 2D SDF call for a shape function call with args.
+func (g *generator) shape2DCall(name, p2d string, args []ast.Arg) string {
+	switch name {
+	case "circle":
+		if len(args) == 0 {
+			return fmt.Sprintf("sdCircle2D(%s, 1.0)", p2d)
+		}
+		r := g.emitScalarExpr(args[0].Value)
+		return fmt.Sprintf("sdCircle2D(%s, %s)", p2d, r)
+
+	case "rect":
+		if len(args) == 0 {
+			return fmt.Sprintf("sdRect2D(%s, vec2(0.5))", p2d)
+		}
+		if len(args) == 1 {
+			s := g.emitScalarExpr(args[0].Value)
+			return fmt.Sprintf("sdRect2D(%s, vec2((%s)*0.5))", p2d, s)
+		}
+		w := g.emitScalarExpr(args[0].Value)
+		h := g.emitScalarExpr(args[1].Value)
+		return fmt.Sprintf("sdRect2D(%s, vec2((%s)*0.5, (%s)*0.5))", p2d, w, h)
+
+	case "hexagon":
+		if len(args) == 0 {
+			return fmt.Sprintf("sdHexagon2D(%s, 1.0)", p2d)
+		}
+		r := g.emitScalarExpr(args[0].Value)
+		return fmt.Sprintf("sdHexagon2D(%s, %s)", p2d, r)
+
+	case "triangle":
+		if len(args) == 0 {
+			return fmt.Sprintf("sdEquilateralTriangle2D(%s, 1.0)", p2d)
+		}
+		r := g.emitScalarExpr(args[0].Value)
+		return fmt.Sprintf("sdEquilateralTriangle2D(%s, %s)", p2d, r)
+	}
+
+	return fmt.Sprintf("sdCircle2D(%s, 1.0)", p2d)
+}
+
+// emit2DSDF generates the GLSL for a 2D SDF expression, using p2d as the vec2 point.
+// It walks the receiver chain to find the 2D shape call and any transforms applied.
+func (g *generator) emit2DSDF(expr ast.Expr, p2d string) string {
+	switch e := expr.(type) {
+	case *ast.Ident:
+		if is2DShape(e.Name) {
+			return shape2DDefault(e.Name, p2d)
+		}
+		// Check scope for AST variable.
+		if entry, ok := g.scope[e.Name]; ok && entry.kind == entryAST {
+			return g.emit2DSDF(entry.node, p2d)
+		}
+		return g.emitScalarExpr(expr)
+	case *ast.FuncCall:
+		if is2DShape(e.Name) {
+			return g.shape2DCall(e.Name, p2d, e.Args)
+		}
+		return g.emitScalarExpr(expr)
+	case *ast.MethodCall:
+		// Handle transforms on 2D shapes: .at(), .scale(), .rot(), .mirror()
+		return g.emit2DMethodCall(e, p2d)
+	default:
+		return g.emitScalarExpr(expr)
+	}
+}
+
+// emit2DMethodCall handles method calls on 2D SDF receivers by applying
+// transforms in the XY plane before evaluating the 2D SDF.
+func (g *generator) emit2DMethodCall(e *ast.MethodCall, p2d string) string {
+	switch e.Name {
+	case "at":
+		// .at(x, y) on a 2D shape translates in the XY plane
+		x, y := "0.0", "0.0"
+		if len(e.Args) >= 1 {
+			x = g.emitScalarExpr(e.Args[0].Value)
+		}
+		if len(e.Args) >= 2 {
+			y = g.emitScalarExpr(e.Args[1].Value)
+		}
+		pNew := g.freshVar("p2d")
+		g.emit("vec2 %s = %s - vec2(%s, %s);", pNew, p2d, x, y)
+		return g.emit2DSDF(e.Receiver, pNew)
+
+	case "scale":
+		if len(e.Args) >= 1 {
+			s := g.emitScalarExpr(e.Args[0].Value)
+			pNew := g.freshVar("p2d")
+			g.emit("vec2 %s = %s / %s;", pNew, p2d, s)
+			inner := g.emit2DSDF(e.Receiver, pNew)
+			return fmt.Sprintf("(%s * %s)", inner, s)
+		}
+		return g.emit2DSDF(e.Receiver, p2d)
+
+	case "rot":
+		if len(e.Args) >= 1 {
+			deg := g.emitScalarExpr(e.Args[0].Value)
+			pNew := g.freshVar("p2d")
+			aVar := g.freshVar("a2d")
+			g.emit("float %s = radians(%s);", aVar, deg)
+			g.emit("vec2 %s = vec2(cos(%s) * %s.x + sin(%s) * %s.y, -sin(%s) * %s.x + cos(%s) * %s.y);",
+				pNew, aVar, p2d, aVar, p2d, aVar, p2d, aVar, p2d)
+			return g.emit2DSDF(e.Receiver, pNew)
+		}
+		return g.emit2DSDF(e.Receiver, p2d)
+
+	case "mirror":
+		pNew := g.freshVar("p2d")
+		g.emit("vec2 %s = %s;", pNew, p2d)
+		for _, a := range e.Args {
+			if ident, ok := a.Value.(*ast.Ident); ok {
+				switch ident.Name {
+				case "x":
+					g.emit("%s.x = abs(%s.x);", pNew, pNew)
+				case "y":
+					g.emit("%s.y = abs(%s.y);", pNew, pNew)
+				}
+			}
+		}
+		return g.emit2DSDF(e.Receiver, pNew)
+
+	default:
+		// For other methods, try to pass through to the 2D shape
+		return g.emit2DSDF(e.Receiver, p2d)
+	}
 }
 
 // shapeDefault returns the GLSL call for a bare shape identifier (no args).

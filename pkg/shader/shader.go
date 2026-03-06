@@ -296,6 +296,46 @@ float sdSlab(vec3 p, float h) {
     return abs(p.y) - h;
 }
 
+// ---- 2D SDF Primitives ----
+
+float sdCircle2D(vec2 p, float r) {
+    return length(p) - r;
+}
+
+float sdRect2D(vec2 p, vec2 b) {
+    vec2 d = abs(p) - b;
+    return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
+}
+
+float sdRoundedRect2D(vec2 p, vec2 b, float r) {
+    vec2 d = abs(p) - b;
+    return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - r;
+}
+
+float sdHexagon2D(vec2 p, float r) {
+    const vec3 k = vec3(-0.866025404, 0.5, 0.577350269);
+    p = abs(p);
+    p -= 2.0 * min(dot(k.xy, p), 0.0) * k.xy;
+    p -= vec2(clamp(p.x, -k.z * r, k.z * r), r);
+    return length(p) * sign(p.y);
+}
+
+float sdEquilateralTriangle2D(vec2 p, float r) {
+    const float k = sqrt(3.0);
+    p.x = abs(p.x) - r;
+    p.y = p.y + r / k;
+    if (p.x + k * p.y > 0.0) p = vec2(p.x - k * p.y, -k * p.x - p.y) / 2.0;
+    p.x -= clamp(p.x, -2.0 * r, 0.0);
+    return -length(p) * sign(p.y);
+}
+
+// ---- 2D to 3D Operations ----
+
+float sdExtrude(float d2d, float pz, float h) {
+    vec2 w = vec2(d2d, abs(pz) - h);
+    return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
+}
+
 // ---- Operations ----
 
 float opUnion(float a, float b) { return min(a, b); }

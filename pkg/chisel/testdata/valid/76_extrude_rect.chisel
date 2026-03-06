@@ -1,0 +1,2 @@
+// Extrude rectangle into box
+rect(2, 1).extrude(1)

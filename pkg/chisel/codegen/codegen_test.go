@@ -655,6 +655,93 @@ func TestEasing_NotEmittedWhenUnused(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// 2D SDF Pipeline — Extrude & Revolve
+// ---------------------------------------------------------------------------
+
+func TestExtrude_Circle(t *testing.T) {
+	glsl := compile(t, "circle(2).extrude(3)")
+	assertContains(t, glsl, "sdCircle2D", "2D circle SDF")
+	assertContains(t, glsl, "sdExtrude", "extrude wrapper")
+	assertContains(t, glsl, "2.0", "circle radius")
+	assertContains(t, glsl, "(3.0)*0.5", "half-height")
+}
+
+func TestExtrude_Rect(t *testing.T) {
+	glsl := compile(t, "rect(2, 1).extrude(1)")
+	assertContains(t, glsl, "sdRect2D", "2D rect SDF")
+	assertContains(t, glsl, "sdExtrude", "extrude wrapper")
+	assertContains(t, glsl, "(2.0)*0.5", "half-width")
+	assertContains(t, glsl, "(1.0)*0.5", "half-height")
+}
+
+func TestExtrude_Triangle(t *testing.T) {
+	glsl := compile(t, "triangle(0.5).extrude(2)")
+	assertContains(t, glsl, "sdEquilateralTriangle2D", "2D triangle SDF")
+	assertContains(t, glsl, "sdExtrude", "extrude wrapper")
+	assertContains(t, glsl, "0.5", "triangle radius")
+}
+
+func TestExtrude_HexagonBare(t *testing.T) {
+	glsl := compile(t, "hexagon.extrude(1)")
+	assertContains(t, glsl, "sdHexagon2D", "2D hexagon SDF")
+	assertContains(t, glsl, "sdExtrude", "extrude wrapper")
+}
+
+func TestRevolve_Circle(t *testing.T) {
+	glsl := compile(t, "circle(0.3).revolve(2)")
+	assertContains(t, glsl, "sdCircle2D", "2D circle SDF")
+	assertContains(t, glsl, "length(", "length for revolve radius")
+	assertContains(t, glsl, ".xz", "XZ plane for revolve")
+}
+
+func TestRevolve_Hexagon(t *testing.T) {
+	glsl := compile(t, "hexagon(1).revolve(3)")
+	assertContains(t, glsl, "sdHexagon2D", "2D hexagon SDF")
+	assertContains(t, glsl, "length(", "length for revolve radius")
+	assertContains(t, glsl, ".xz", "XZ plane for revolve")
+}
+
+func TestRevolve_NoOffset(t *testing.T) {
+	glsl := compile(t, "circle(1).revolve()")
+	assertContains(t, glsl, "sdCircle2D", "2D circle SDF")
+	assertContains(t, glsl, "0.0", "default zero offset")
+}
+
+func TestExtrude_CircleBareIdent(t *testing.T) {
+	glsl := compile(t, "circle.extrude(2)")
+	assertContains(t, glsl, "sdCircle2D", "2D circle SDF from bare ident")
+	assertContains(t, glsl, "sdExtrude", "extrude wrapper")
+	assertContains(t, glsl, "1.0", "default radius 1")
+}
+
+func TestExtrude_RectBareIdent(t *testing.T) {
+	glsl := compile(t, "rect.extrude(1)")
+	assertContains(t, glsl, "sdRect2D", "2D rect SDF from bare ident")
+	assertContains(t, glsl, "sdExtrude", "extrude wrapper")
+}
+
+func Test2DShape_BareCircleAutoExtrude(t *testing.T) {
+	// Using a 2D shape without extrude/revolve should still compile (with warning)
+	glsl := compile(t, "circle(2)")
+	assertContains(t, glsl, "sdCircle2D", "2D circle SDF")
+	assertContains(t, glsl, "sdExtrude", "auto-extrude fallback")
+}
+
+func TestExtrude_WithAt(t *testing.T) {
+	glsl := compile(t, "circle(2).at(1, 0).extrude(3)")
+	assertContains(t, glsl, "sdCircle2D", "2D circle SDF")
+	assertContains(t, glsl, "sdExtrude", "extrude wrapper")
+	assertContains(t, glsl, "vec2(1.0, 0.0)", "2D translation")
+}
+
+func TestExtrude_WithScale(t *testing.T) {
+	glsl := compile(t, "circle(1).scale(2).extrude(3)")
+	assertContains(t, glsl, "sdCircle2D", "2D circle SDF")
+	assertContains(t, glsl, "sdExtrude", "extrude wrapper")
+	assertContains(t, glsl, "/ 2.0", "scale division in 2D")
+}
+
+// ---------------------------------------------------------------------------
 // Task 5.3 — Utility Functions (pulse, saw, tri, remap, saturate)
 // ---------------------------------------------------------------------------
 

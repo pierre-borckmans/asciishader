@@ -659,6 +659,9 @@ func (p *parser) parsePratt(minPrec int) ast.Expr {
 	}
 
 	for {
+		// Skip comments before checking for infix operators so that
+		// comments between operands don't break the expression.
+		p.skipComments()
 		tok := p.peek()
 
 		// Check for infix operator.
