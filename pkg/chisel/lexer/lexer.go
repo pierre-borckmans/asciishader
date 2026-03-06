@@ -61,6 +61,28 @@ func isContinuation(k token.TokenKind) bool {
 	return false
 }
 
+// isContinuationStart returns true if the given token kind at the START of a
+// new line should suppress the preceding newline. This allows multi-line
+// expressions like:
+//
+//	sphere
+//	  .at(1, 0, 0)    ← dot continues
+//	|~0.3              ← operator continues
+//	box
+func isContinuationStart(k token.TokenKind) bool {
+	switch k {
+	case token.TokDot,
+		token.TokPipe, token.TokPipeSmooth, token.TokPipeChamfer,
+		token.TokAmp, token.TokAmpSmooth, token.TokAmpChamfer,
+		token.TokMinusSmooth, token.TokMinusChamfer:
+		// Note: TokMinus is NOT here — bare `-` at start of line is ambiguous
+		// (could be unary negation for a new expression). Smooth/chamfer
+		// variants (-~ -/) are unambiguous continuations.
+		return true
+	}
+	return false
+}
+
 // lexer holds the state during tokenization.
 type lexer struct {
 	filename string
@@ -616,8 +638,9 @@ func (l *lexer) insertNewlines() {
 
 		shouldEmit := false
 		if canEndExpr(prevKind) {
-			// Suppress newline before dot (method chain continuation).
-			if nextKind != token.TokDot {
+			// Suppress newline before continuation tokens:
+			// dot (method chain), operators (multi-line boolean expressions)
+			if !isContinuationStart(nextKind) {
 				shouldEmit = true
 			}
 		}

@@ -669,6 +669,9 @@ func (p *parser) parsePratt(minPrec int) ast.Expr {
 
 		opTok := p.advance() // consume operator
 
+		// Skip newlines after operator (multi-line expressions).
+		p.skipCommentsAndNewlines()
+
 		// Check for blend radius on smooth/chamfer operators.
 		var blend *float64
 		if isSmoothOrChamfer(opTok.Kind) {
@@ -680,6 +683,9 @@ func (p *parser) parsePratt(minPrec int) ast.Expr {
 				}
 			}
 		}
+
+		// Skip newlines after blend radius (e.g. |~0.3\nsphere).
+		p.skipCommentsAndNewlines()
 
 		right := p.parsePratt(prec)
 		if right == nil {

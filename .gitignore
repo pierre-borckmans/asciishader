@@ -1,6 +1,6 @@
-./asciishader
+/asciishader
 cpu.prof
 *.asciirec
 .idea/
-chisel
-chisel-lsp
+/chisel
+/chisel-lsp
