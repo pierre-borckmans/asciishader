@@ -179,7 +179,9 @@ float sdSolidAngle(vec3 pos, vec2 c, float ra) {
 float sdRhombus(vec3 p, float la, float lb, float h, float ra) {
     p = abs(p);
     vec2 b = vec2(la, lb);
-    float f = clamp((b.x*b.x + b.y*b.y - 2.0*(p.x*b.x + p.z*b.y))/(b.x*b.x + b.y*b.y), -1.0, 1.0);
+    // ndot(a,b) = a.x*b.x - a.y*b.y (NOT regular dot product)
+    float nd = b.x*(b.x - 2.0*p.x) - b.y*(b.y - 2.0*p.z);
+    float f = clamp(nd / dot(b, b), -1.0, 1.0);
     vec2 q = vec2(length(p.xz - 0.5*b*vec2(1.0 - f, 1.0 + f))*sign(p.x*b.y + p.z*b.x - b.x*b.y) - ra, p.y - h);
     return min(max(q.x, q.y), 0.0) + length(max(q, 0.0));
 }
