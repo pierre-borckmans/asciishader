@@ -3,6 +3,7 @@
 package chisel
 
 import (
+	"asciishader/pkg/chisel/analyzer"
 	"asciishader/pkg/chisel/codegen"
 	"asciishader/pkg/chisel/diagnostic"
 	"asciishader/pkg/chisel/lexer"
@@ -35,6 +36,10 @@ func Compile(source string) (string, []diagnostic.Diagnostic) {
 			return "", allDiags
 		}
 	}
+
+	// Analyze (warnings only — don't block compilation).
+	analyzeDiags := analyzer.Analyze(prog)
+	allDiags = append(allDiags, analyzeDiags...)
 
 	// Generate GLSL.
 	glsl, genDiags := codegen.Generate(prog)

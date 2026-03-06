@@ -1,0 +1,2 @@
+// Easing function in transform
+sphere.at(0, ease_in(fract(t)), 0)

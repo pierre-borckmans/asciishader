@@ -1,0 +1,2 @@
+# Raymarch settings emit #define
+#define MAX_STEPS 128

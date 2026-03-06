@@ -1,0 +1,2 @@
+raymarch { steps: 128 }
+sphere

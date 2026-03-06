@@ -1,0 +1,1 @@
+cylinder(0.3, 2).orient(x) | cylinder(0.3, 2).orient(z)

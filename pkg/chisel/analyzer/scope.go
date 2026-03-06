@@ -96,6 +96,11 @@ func NewBuiltinScope() *Scope {
 		"floor", "ceil", "fract", "sign", "length", "normalize", "dot", "cross",
 		"distance", "reflect", "mix", "smoothstep", "step", "clamp",
 		"atan", "asin", "acos", "atan2", "mod", "noise", "fbm", "voronoi",
+		"ease_in", "ease_out", "ease_in_out",
+		"ease_cubic_in", "ease_cubic_out", "ease_cubic_in_out",
+		"ease_elastic", "ease_bounce", "ease_back", "ease_expo",
+		"pulse", "saw", "tri", "remap", "saturate",
+		"radians", "degrees",
 	} {
 		s.Symbols[name] = &Symbol{Name: name, Type: TypeFloat}
 	}

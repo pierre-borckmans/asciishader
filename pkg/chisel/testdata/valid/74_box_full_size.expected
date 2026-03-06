@@ -1,0 +1,2 @@
+# Box halves the size: box(2) -> vec3((2.0)*0.5)
+(2.0)*0.5

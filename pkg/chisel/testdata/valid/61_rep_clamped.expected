@@ -1,0 +1,4 @@
+# Clamped repetition uses clamp and round
+clamp
+round
+sdSphere

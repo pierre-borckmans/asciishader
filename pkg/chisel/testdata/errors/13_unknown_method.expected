@@ -1,0 +1,2 @@
+# Unknown method produces a warning
+unknown method .translate()

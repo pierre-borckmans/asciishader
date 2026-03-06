@@ -1,0 +1,3 @@
+# User-defined color function emits vec3 variant
+fn_c_v
+vec3
