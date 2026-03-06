@@ -1,3 +1,4 @@
-# Orient x=.zyx, z=no-op
+# Orient x=.yxz, z=.xzy
 sdCylinder
-.zyx
+.yxz
+.xzy

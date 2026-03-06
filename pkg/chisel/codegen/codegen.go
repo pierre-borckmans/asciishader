@@ -1259,13 +1259,13 @@ func (g *generator) emitOrient(e *ast.MethodCall) string {
 	pNew := g.freshVar("p")
 	switch axisName {
 	case "x":
-		// Z→X: shape's Z axis now points along X
-		g.emit("vec3 %s = %s.zyx;", pNew, g.pointVar)
-	case "y":
-		// Z→Y: shape's Z axis now points along Y
+		// Y→X: shape's Y axis now points along X
+		g.emit("vec3 %s = %s.yxz;", pNew, g.pointVar)
+	case "z":
+		// Y→Z: shape's Y axis now points along Z
 		g.emit("vec3 %s = %s.xzy;", pNew, g.pointVar)
 	default:
-		// Z→Z: no change (default orientation)
+		// Y→Y: no change (default orientation)
 		pNew = g.pointVar
 	}
 
