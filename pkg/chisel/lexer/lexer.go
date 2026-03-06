@@ -74,11 +74,10 @@ func isContinuationStart(k token.TokenKind) bool {
 	case token.TokDot,
 		token.TokPipe, token.TokPipeSmooth, token.TokPipeChamfer,
 		token.TokAmp, token.TokAmpSmooth, token.TokAmpChamfer,
-		token.TokMinusSmooth, token.TokMinusChamfer,
+		token.TokMinus, token.TokMinusSmooth, token.TokMinusChamfer,
 		token.TokElse:
-		// Note: TokMinus is NOT here — bare `-` at start of line is ambiguous
-		// (could be unary negation for a new expression). Smooth/chamfer
-		// variants (-~ -/) are unambiguous continuations.
+		// TokMinus at start of line continues as SDF subtract.
+		// For unary negation of a new expression, wrap in parens: (-expr)
 		// TokElse continues an if expression across lines.
 		return true
 	}
