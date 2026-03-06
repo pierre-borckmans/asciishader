@@ -2,19 +2,12 @@
 // Textured cylindrical grip with knurled pattern
 // Port of fogleman/sdf/examples/knurling.py
 
-// Knurling pattern: 24 thin boxes arranged around the cylinder
-// Smaller cross-section (0.4) for shallower cuts
-pattern = for i in 0..24 {
-  box(0.4, 8, 0.4).rot(45, y)
-    .at(cos(i * TAU / 24) * 1.6, 0, sin(i * TAU / 24) * 1.6)
-}
+// Knurling: box rotated 45°, arrayed 24× at radius 1.6, twisted both ways
+pattern = box(1, 4, 1).rot(45, y).array(24, 1.6)
 
 knurling = rounded_cylinder(1, 0.1, 5)
-// Subtract union of both twist directions (creates diamond crosshatch)
 -~0.1 (pattern.twist(0.75) | pattern.twist(-0.75))
-// Central hole
 -~0.1 cylinder(0.5, 100)
-// Vent holes at top and bottom
 -~0.1 cylinder(0.25, 100).orient(x).at(0, -2.5, 0)
 -~0.1 cylinder(0.25, 100).orient(x).at(0, 2.5, 0)
 

@@ -699,6 +699,8 @@ func (g *generator) emitMethodCall(e *ast.MethodCall) string {
 		return g.emitBounds(e)
 	case "orient":
 		return g.emitOrient(e)
+	case "array":
+		return g.emitArray(e)
 	case "flip":
 		return g.emitFlip(e)
 	case "extrude":
@@ -975,6 +977,40 @@ func (g *generator) emitRep(e *ast.MethodCall) string {
 
 	oldPoint := g.pointVar
 	g.pointVar = pNew
+	result := g.emitSDF(e.Receiver)
+	g.pointVar = oldPoint
+
+	return result
+}
+
+// emitArray handles .array(count, radius: r) — circular array via angular space folding.
+// Evaluates the shape once and folds angular space for perfect uniformity.
+func (g *generator) emitArray(e *ast.MethodCall) string {
+	if len(e.Args) < 2 {
+		g.addDiag(diagnostic.Error, ".array() requires 2 arguments (count, radius: r)", e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	count := g.emitScalarExpr(e.Args[0].Value)
+	radius := g.emitScalarExpr(e.Args[1].Value)
+
+	// Fold angular space in XZ plane around Y axis
+	angle := g.freshVar("angle")
+	sector := g.freshVar("sector")
+	g.emit("float %s = atan(%s.z, %s.x);", angle, g.pointVar, g.pointVar)
+	g.emit("float %s = %s / %s;", sector, "(2.0 * PI)", count)
+	g.emit("%s = mod(%s + %s * 0.5, %s) - %s * 0.5;", angle, angle, sector, sector, sector)
+
+	// Create folded point: radius in XZ plane mapped to X, Y stays, Z zeroed
+	pNew := g.freshVar("p")
+	g.emit("vec3 %s = vec3(length(%s.xz) - %s, %s.y, 0.0);", pNew, g.pointVar, radius, g.pointVar)
+	// Rotate back by folded angle for proper box orientation
+	pRot := g.freshVar("p")
+	g.emit("vec3 %s = vec3(cos(%s) * %s.x - sin(%s) * %s.z, %s.y, sin(%s) * %s.x + cos(%s) * %s.z);",
+		pRot, angle, pNew, angle, pNew, pNew, angle, pNew, angle, pNew)
+
+	oldPoint := g.pointVar
+	g.pointVar = pRot
 	result := g.emitSDF(e.Receiver)
 	g.pointVar = oldPoint
 
