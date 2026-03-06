@@ -1,4 +1,3 @@
-# Orient swaps axes
+# Orient: x swaps Z→X (.zyx), z is no-op (default)
 sdCylinder
-.yxz
-.xzy
+.zyx
