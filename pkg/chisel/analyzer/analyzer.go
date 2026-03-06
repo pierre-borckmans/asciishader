@@ -15,7 +15,7 @@ var knownMethods = []string{
 	"morph", "shell", "onion", "displace", "dilate", "erode",
 	"round", "elongate", "twist", "bend", "swizzle", "bounds", "flip",
 	"color", "metallic", "roughness", "emission", "opacity", "mat",
-	"extrude", "revolve",
+	"extrude", "extrude_to", "revolve",
 	"red", "blue", "green", "white", "black", "yellow",
 	"cyan", "magenta", "orange", "gray",
 }

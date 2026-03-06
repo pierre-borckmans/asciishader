@@ -703,6 +703,8 @@ func (g *generator) emitMethodCall(e *ast.MethodCall) string {
 		return g.emitFlip(e)
 	case "extrude":
 		return g.emitExtrude(e)
+	case "extrude_to":
+		return g.emitExtrudeTo(e)
 	case "revolve":
 		return g.emitRevolve(e)
 	default:
@@ -1329,6 +1331,39 @@ func (g *generator) emitExtrude(e *ast.MethodCall) string {
 
 	d := g.freshVar("d")
 	g.emit("float %s = sdExtrude(%s, %s.z, (%s)*0.5);", d, d2d, g.pointVar, h)
+	return d
+}
+
+// emitExtrudeTo handles .extrude_to(other_2d_shape, height) — morph between
+// two 2D profiles along the Z axis.
+// Generates: mix(sdf2d_A(p.xy), sdf2d_B(p.xy), t) where t = (p.z + h) / (2*h)
+func (g *generator) emitExtrudeTo(e *ast.MethodCall) string {
+	if len(e.Args) < 2 {
+		g.addDiag(diagnostic.Error, ".extrude_to() requires 2 arguments (target_shape, height)", e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	targetExpr := e.Args[0].Value
+	h := g.emitScalarExpr(e.Args[1].Value)
+
+	p2d := fmt.Sprintf("%s.xy", g.pointVar)
+
+	// Emit both 2D SDFs
+	d2dA := g.emit2DSDF(e.Receiver, p2d)
+	d2dB := g.emit2DSDF(targetExpr, p2d)
+
+	// Interpolation factor: 0 at bottom (-h/2), 1 at top (+h/2)
+	halfH := g.freshVar("hh")
+	g.emit("float %s = (%s)*0.5;", halfH, h)
+	t := g.freshVar("t")
+	g.emit("float %s = clamp((%s.z + %s) / (2.0 * %s), 0.0, 1.0);", t, g.pointVar, halfH, halfH)
+
+	// Mix the two 2D SDFs and extrude
+	d2d := g.freshVar("d2d")
+	g.emit("float %s = mix(%s, %s, %s);", d2d, d2dA, d2dB, t)
+
+	d := g.freshVar("d")
+	g.emit("float %s = sdExtrude(%s, %s.z, %s);", d, d2d, g.pointVar, halfH)
 	return d
 }
 
