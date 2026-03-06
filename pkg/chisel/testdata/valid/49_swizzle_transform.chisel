@@ -1,0 +1,2 @@
+// Swizzle transform — swap Y and Z axes
+torus(0.25, 0.05).swizzle(x, z, y).at(1, 0.3, 1)

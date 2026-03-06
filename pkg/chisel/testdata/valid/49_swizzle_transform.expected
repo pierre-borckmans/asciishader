@@ -1,0 +1,5 @@
+# Swizzle must rearrange point components
+sdTorus
+.x
+.z
+.y

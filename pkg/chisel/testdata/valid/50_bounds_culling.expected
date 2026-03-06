@@ -1,0 +1,5 @@
+# Bounding box culling with if/else
+sdBox
+if
+sdSphere
+opUnion

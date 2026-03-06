@@ -13,7 +13,7 @@ import (
 var knownMethods = []string{
 	"at", "scale", "rot", "orient", "mirror", "rep", "array",
 	"morph", "shell", "onion", "displace", "dilate", "erode",
-	"round", "elongate", "twist", "bend",
+	"round", "elongate", "twist", "bend", "swizzle", "bounds",
 	"color", "metallic", "roughness", "emission", "opacity", "mat",
 	"extrude", "revolve",
 	"red", "blue", "green", "white", "black", "yellow",

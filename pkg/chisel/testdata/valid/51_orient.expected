@@ -1,0 +1,4 @@
+# Orient swaps axes
+sdCylinder
+.yxz
+.xzy

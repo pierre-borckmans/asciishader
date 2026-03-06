@@ -1,0 +1,2 @@
+// Orient — align shape along axis
+cylinder(0.5, 2).orient(x) | cylinder(0.5, 2).orient(z)

@@ -633,6 +633,12 @@ func (g *generator) emitMethodCall(e *ast.MethodCall) string {
 		return g.emitTwist(e)
 	case "bend":
 		return g.emitBend(e)
+	case "swizzle":
+		return g.emitSwizzle(e)
+	case "bounds":
+		return g.emitBounds(e)
+	case "orient":
+		return g.emitOrient(e)
 	default:
 		// Unknown method — try to emit receiver and treat as pass-through.
 		g.addDiag(diagnostic.Warning, fmt.Sprintf("unknown method .%s(), ignoring", e.Name), e.NodeSpan())
@@ -1104,6 +1110,105 @@ func (g *generator) emitBend(e *ast.MethodCall) string {
 	g.pointVar = oldPoint
 
 	return result
+}
+
+// emitSwizzle handles .swizzle(x, z, y) — rearranges point components.
+// Args are axis identifiers: x, y, z (mapped to component indices).
+func (g *generator) emitSwizzle(e *ast.MethodCall) string {
+	if len(e.Args) < 3 {
+		g.addDiag(diagnostic.Error, ".swizzle() requires 3 arguments (e.g. x, z, y)", e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	// Map each arg to a component name
+	components := make([]string, 3)
+	for i := 0; i < 3; i++ {
+		comp := "x"
+		if ident, ok := e.Args[i].Value.(*ast.Ident); ok {
+			comp = ident.Name
+		}
+		components[i] = fmt.Sprintf("%s.%s", g.pointVar, comp)
+	}
+
+	pNew := g.freshVar("p")
+	g.emit("vec3 %s = vec3(%s, %s, %s);", pNew, components[0], components[1], components[2])
+
+	oldPoint := g.pointVar
+	g.pointVar = pNew
+	result := g.emitSDF(e.Receiver)
+	g.pointVar = oldPoint
+
+	return result
+}
+
+// emitBounds handles .bounds(center, half_extents) — bounding box culling.
+// Skips evaluation of the inner SDF group if the point is far from the box.
+func (g *generator) emitBounds(e *ast.MethodCall) string {
+	if len(e.Args) < 2 {
+		g.addDiag(diagnostic.Error, ".bounds() requires 2 arguments (center, half_extents)", e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	center := g.emitScalarExpr(e.Args[0].Value)
+	halfExt := g.emitScalarExpr(e.Args[1].Value)
+
+	// Compute bounding box distance
+	bbDist := g.freshVar("bb")
+	g.emit("float %s = sdBox(%s - %s, %s);", bbDist, g.pointVar, center, halfExt)
+
+	// Result variable
+	d := g.freshVar("d")
+	g.emit("float %s;", d)
+	g.emit("if (%s < 0.5) {", bbDist)
+	g.indent++
+
+	inner := g.emitSDF(e.Receiver)
+	g.emit("%s = %s;", d, inner)
+
+	g.indent--
+	g.emit("} else {")
+	g.indent++
+	// Outside bounding box: use the box distance as approximation
+	g.emit("%s = %s;", d, bbDist)
+	g.indent--
+	g.emit("}")
+
+	return d
+}
+
+// emitOrient handles .orient(axis) — aligns the shape's Y axis to the given direction.
+func (g *generator) emitOrient(e *ast.MethodCall) string {
+	if len(e.Args) < 1 {
+		g.addDiag(diagnostic.Error, ".orient() requires 1 argument (axis)", e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	axisName := ""
+	if ident, ok := e.Args[0].Value.(*ast.Ident); ok {
+		axisName = ident.Name
+	}
+
+	pNew := g.freshVar("p")
+	switch axisName {
+	case "x":
+		// Swap Y and X: rotate 90° around Z
+		g.emit("vec3 %s = %s.yxz;", pNew, g.pointVar)
+	case "z":
+		// Swap Y and Z: rotate 90° around X
+		g.emit("vec3 %s = %s.xzy;", pNew, g.pointVar)
+	default:
+		// Y is default orientation, no change
+		pNew = g.pointVar
+	}
+
+	if pNew != g.pointVar {
+		oldPoint := g.pointVar
+		g.pointVar = pNew
+		result := g.emitSDF(e.Receiver)
+		g.pointVar = oldPoint
+		return result
+	}
+	return g.emitSDF(e.Receiver)
 }
 
 // ---------------------------------------------------------------------------
