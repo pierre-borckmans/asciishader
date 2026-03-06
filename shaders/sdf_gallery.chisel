@@ -1,0 +1,52 @@
+// Scene: SDF Gallery
+// Structured port of Inigo Quilez's SDF Primitives showcase
+// Original: https://www.shadertoy.com/view/Xds3zN
+
+// Ground plane with checker pattern
+ground = plane.color(
+  if mod(floor(3 * p.x) + floor(3 * p.z), 2) > 0.5 { [0.5, 0.5, 0.5] } else { [0.35, 0.35, 0.35] }
+)
+
+// Color from material ID (Inigo's sin-based palette)
+c(m) = [0.5 + 0.45 * sin(m * 2), 0.5 + 0.45 * sin(m * 2 + 1), 0.5 + 0.45 * sin(m * 2 + 2)]
+
+// --- Row 1: x = -2 ---
+row1 = {
+  sphere(0.25).at(-2, 0.25, 0).color(c(26.9))
+  | rhombus(0.15, 0.25, 0.04, 0.08).swizzle(x, z, y).at(-2, 0.25, 1).color(c(17))
+}.bounds([-2, 0.3, 0.25], [0.3, 0.3, 1.0])
+
+// --- Row 2: x = 0 ---
+row2 = {
+  capped_torus([0.866025, -0.5], 0.25, 0.05).at(0, 0.3, 1).scale(1, -1, 1).color(c(25))
+  | box_frame(0.3, 0.25, 0.2, 0.025).at(0, 0.25, 0).color(c(16.9))
+  | cone([0.6, 0.8], 0.45).at(0, 0.45, -1).color(c(55))
+  | capped_cone(0.25, 0.25, 0.1).at(0, 0.25, -2).color(c(13.67))
+  | solid_angle([0.6, 0.8], 0.4).at(0, 0, -3).color(c(49.13))
+}.bounds([0, 0.3, -1], [0.35, 0.3, 2.5])
+
+// --- Row 3: x = 1 ---
+row3 = {
+  torus(0.25, 0.05).swizzle(x, z, y).at(1, 0.3, 1).color(c(7.1))
+  | box(0.3, 0.25, 0.1).at(1, 0.25, 0).color(c(3))
+  | capsule([-0.1, 0.1, -0.1], [0.2, 0.4, 0.2], 0.1).at(1, 0, -1).color(c(31.9))
+  | cylinder(0.15, 0.25).at(1, 0.25, -2).color(c(8))
+  | hex_prism(0.2, 0.05).at(1, 0.2, -3).color(c(18.4))
+}.bounds([1, 0.3, -1], [0.35, 0.3, 2.5])
+
+// --- Row 4: x = -1 ---
+row4 = {
+  pyramid(1).at(-1, -0.6, -3).color(c(13.56))
+  | octahedron(0.35).at(-1, 0.15, -2).color(c(23.56))
+  | tri_prism(0.3, 0.05).at(-1, 0.15, -1).color(c(43.5))
+  | ellipsoid(0.2, 0.25, 0.05).at(-1, 0.25, 0).color(c(43.17))
+}.bounds([-1, 0.35, -1], [0.35, 0.35, 2.5])
+
+// --- Row 5: x = 2 ---
+row5 = {
+  octagon_prism(0.2, 0.05).at(2, 0.2, -3).color(c(51.8))
+  | round_cone(0.2, 0.1, 0.3).at(2, 0.2, 1).color(c(37))
+}.bounds([2, 0.3, -1], [0.35, 0.3, 2.5])
+
+// --- Combine all ---
+ground | row1 | row2 | row3 | row4 | row5
