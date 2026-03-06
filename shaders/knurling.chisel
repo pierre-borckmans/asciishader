@@ -1,0 +1,28 @@
+// Scene: Knurling
+// Textured cylindrical grip with knurled pattern
+// Port of fogleman/sdf/examples/knurling.py
+
+// Main body
+rounded_cylinder(1, 0.1, 5)
+
+// Knurling pattern: rotated boxes in circular array, twisted both ways
+-~0.1 {
+  for i in 0..24 {
+    box(1, 1, 4).rot(45, z)
+      .at(cos(i * TAU / 24) * 1.6, sin(i * TAU / 24) * 1.6, 0)
+  }
+}.twist(0.75)
+
+-~0.1 {
+  for i in 0..24 {
+    box(1, 1, 4).rot(45, z)
+      .at(cos(i * TAU / 24) * 1.6, sin(i * TAU / 24) * 1.6, 0)
+  }
+}.twist(-0.75)
+
+// Central hole
+-~0.1 cylinder(0.5, 100)
+
+// Vent holes
+-~0.1 cylinder(0.25, 100).orient(x).at(0, 0, -2.5)
+-~0.1 cylinder(0.25, 100).orient(x).at(0, 0, 2.5)

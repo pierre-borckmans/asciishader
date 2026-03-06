@@ -1,0 +1,12 @@
+// Scene: Blobby
+// Organic blob from smooth-unioned spheres and capsules
+// Port of fogleman/sdf/examples/blobby.py
+
+s = sphere(0.75).at(0, 0, -3)
+  |~1 sphere(0.75).at(0, 0, 3)
+  |~1 capsule([0, 0, -3], [0, 0, 3], 0.5)
+
+sphere(1.5)
+|~1 s.orient(x)
+|~1 s.orient(y)
+|~1 s.orient(z)
