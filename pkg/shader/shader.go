@@ -184,6 +184,65 @@ float sdRhombus(vec3 p, float la, float lb, float h, float ra) {
     return min(max(q.x, q.y), 0.0) + length(max(q, 0.0));
 }
 
+float sdHorseshoe(vec3 p, vec2 c, float r, float le, vec2 w) {
+    p.x = abs(p.x);
+    float l = length(p.xy);
+    p.xy = mat2(-c.x, c.y, c.y, c.x) * p.xy;
+    p.xy = vec2((p.y > 0.0 || p.x > 0.0) ? p.x : l * sign(-c.x),
+                (p.x > 0.0) ? p.y : l);
+    p.xy = vec2(p.x, abs(p.y - r)) - vec2(le, 0.0);
+    vec2 q = vec2(length(max(p.xy, 0.0)) + min(0.0, max(p.x, p.y)), p.z);
+    vec2 d = abs(q) - w;
+    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+}
+
+float sdCylinderAB(vec3 p, vec3 a, vec3 b, float r) {
+    vec3 pa = p - a;
+    vec3 ba = b - a;
+    float baba = dot(ba, ba);
+    float paba = dot(pa, ba);
+    float x = length(pa * baba - ba * paba) - r * baba;
+    float y = abs(paba - baba * 0.5) - baba * 0.5;
+    float x2 = x * x;
+    float y2 = y * y * baba;
+    float d = (max(x, y) < 0.0) ? -min(x2, y2) : (((x > 0.0) ? x2 : 0.0) + ((y > 0.0) ? y2 : 0.0));
+    return sign(d) * sqrt(abs(d)) / baba;
+}
+
+float sdCappedConeAB(vec3 p, vec3 a, vec3 b, float ra, float rb) {
+    float rba = rb - ra;
+    float baba = dot(b - a, b - a);
+    float papa = dot(p - a, p - a);
+    float paba = dot(p - a, b - a) / baba;
+    float x = sqrt(papa - paba * paba * baba);
+    float cax = max(0.0, x - ((paba < 0.5) ? ra : rb));
+    float cay = abs(paba - 0.5) - 0.5;
+    float k = rba * rba + baba;
+    float f = clamp((rba * (x - ra) + paba * baba) / k, 0.0, 1.0);
+    float cbx = x - ra - f * rba;
+    float cby = paba - f;
+    float s = (cbx < 0.0 && cay < 0.0) ? -1.0 : 1.0;
+    return s * sqrt(min(cax * cax + cay * cay * baba, cbx * cbx + cby * cby * baba));
+}
+
+float sdRoundConeAB(vec3 p, vec3 a, vec3 b, float r1, float r2) {
+    vec3 ba = b - a;
+    float l2 = dot(ba, ba);
+    float rr = r1 - r2;
+    float a2 = l2 - rr * rr;
+    float il2 = 1.0 / l2;
+    vec3 pa = p - a;
+    float y = dot(pa, ba);
+    float z = y - l2;
+    float x2 = dot(pa * l2 - ba * y, pa * l2 - ba * y);
+    float y2 = y * y * l2;
+    float z2 = z * z * l2;
+    float k = sign(rr) * rr * rr * x2;
+    if (sign(z) * a2 * z2 > k) return sqrt(x2 + z2) * il2 - r2;
+    if (sign(y) * a2 * y2 < k) return sqrt(x2 + y2) * il2 - r1;
+    return (sqrt(x2 * a2 * il2) + y * rr) * il2 - r1;
+}
+
 // ---- Operations ----
 
 float opUnion(float a, float b) { return min(a, b); }

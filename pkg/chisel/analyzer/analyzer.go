@@ -43,7 +43,7 @@ var methodAliases = map[string]string{
 var shapeArity = map[string]struct{ min, max int }{
 	"sphere":     {0, 1},
 	"box":        {0, 3},
-	"cylinder":   {0, 2},
+	"cylinder":   {0, 3},
 	"torus":      {0, 2},
 	"capsule":    {0, 3},
 	"cone":       {0, 3},
@@ -54,6 +54,9 @@ var shapeArity = map[string]struct{ min, max int }{
 	"circle":     {0, 1},
 	"rect":       {0, 2},
 	"hexagon":    {0, 1},
+	"horseshoe":  {1, 4},
+	"capped_cone": {0, 4},
+	"round_cone":  {0, 4},
 }
 
 // Analyze walks the AST and performs semantic analysis, returning any

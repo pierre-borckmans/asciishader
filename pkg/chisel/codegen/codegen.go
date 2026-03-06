@@ -2120,6 +2120,7 @@ var builtinShapeNames = map[string]bool{
 	"capped_cone":   true,
 	"solid_angle":   true,
 	"rhombus":       true,
+	"horseshoe":     true,
 }
 
 // isBuiltinShape reports whether name is a built-in shape.
@@ -2170,6 +2171,8 @@ func shapeDefault(name, pv string) string {
 		return fmt.Sprintf("sdSolidAngle(%s, vec2(0.6, 0.8), 0.4)", pv)
 	case "rhombus":
 		return fmt.Sprintf("sdRhombus(%s, 0.5, 0.5, 0.1, 0.05)", pv)
+	case "horseshoe":
+		return fmt.Sprintf("sdHorseshoe(%s, vec2(0.866, 0.5), 0.3, 0.3, vec2(0.05, 0.1))", pv)
 	}
 	return fmt.Sprintf("sdSphere(%s, 1.0)", pv) // fallback
 }
@@ -2203,6 +2206,13 @@ func (g *generator) shapeCall(name, pv string, args []ast.Arg) string {
 	case "cylinder":
 		if len(args) == 0 {
 			return fmt.Sprintf("sdCylinder(%s, 0.5, 2.0)", pv)
+		}
+		if len(args) == 3 {
+			// cylinder(a, b, r) — endpoint variant
+			a := g.emitScalarExpr(args[0].Value)
+			b := g.emitScalarExpr(args[1].Value)
+			r := g.emitScalarExpr(args[2].Value)
+			return fmt.Sprintf("sdCylinderAB(%s, %s, %s, %s)", pv, a, b, r)
 		}
 		r := g.emitScalarExpr(args[0].Value)
 		h := "2.0"
@@ -2342,6 +2352,14 @@ func (g *generator) shapeCall(name, pv string, args []ast.Arg) string {
 		return fmt.Sprintf("sdOctogonPrism(%s, %s, %s)", pv, r, h)
 
 	case "round_cone":
+		if len(args) == 4 {
+			// round_cone(a, b, r1, r2) — endpoint variant
+			a := g.emitScalarExpr(args[0].Value)
+			b := g.emitScalarExpr(args[1].Value)
+			r1 := g.emitScalarExpr(args[2].Value)
+			r2 := g.emitScalarExpr(args[3].Value)
+			return fmt.Sprintf("sdRoundConeAB(%s, %s, %s, %s, %s)", pv, a, b, r1, r2)
+		}
 		r1 := g.scalarArgOr(args, 0, "0.2")
 		r2 := g.scalarArgOr(args, 1, "0.1")
 		h := g.scalarArgOr(args, 2, "0.3")
@@ -2353,6 +2371,14 @@ func (g *generator) shapeCall(name, pv string, args []ast.Arg) string {
 		return fmt.Sprintf("sdTriPrism(%s, vec2(%s, %s))", pv, s, h)
 
 	case "capped_cone":
+		if len(args) == 4 {
+			// capped_cone(a, b, ra, rb) — endpoint variant
+			a := g.emitScalarExpr(args[0].Value)
+			b := g.emitScalarExpr(args[1].Value)
+			ra := g.emitScalarExpr(args[2].Value)
+			rb := g.emitScalarExpr(args[3].Value)
+			return fmt.Sprintf("sdCappedConeAB(%s, %s, %s, %s, %s)", pv, a, b, ra, rb)
+		}
 		h := g.scalarArgOr(args, 0, "0.5")
 		r1 := g.scalarArgOr(args, 1, "0.5")
 		r2 := g.scalarArgOr(args, 2, "0.2")
@@ -2369,6 +2395,13 @@ func (g *generator) shapeCall(name, pv string, args []ast.Arg) string {
 		h := g.scalarArgOr(args, 2, "0.1")
 		ra := g.scalarArgOr(args, 3, "0.05")
 		return fmt.Sprintf("sdRhombus(%s, %s, %s, %s, %s)", pv, la, lb, h, ra)
+
+	case "horseshoe":
+		sc := g.emitScalarExpr(args[0].Value)
+		r := g.scalarArgOr(args, 1, "0.3")
+		le := g.scalarArgOr(args, 2, "0.3")
+		w := g.scalarArgOr(args, 3, "vec2(0.05, 0.1)")
+		return fmt.Sprintf("sdHorseshoe(%s, %s, %s, %s, %s)", pv, sc, r, le, w)
 	}
 
 	return fmt.Sprintf("sdSphere(%s, 1.0)", pv) // fallback
