@@ -491,11 +491,16 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				if dx < 0 { dx = -dx }
 				if dy < 0 { dy = -dy }
 				if now.Sub(m.lastClickTime) < 300*time.Millisecond && dx < 3 && dy < 3 {
-					m.camAngleX = 0
-					m.camAngleY = 0
 					m.camDist = 4.0
 					m.camTarget = core.V(0, 0, 0)
 					m.autoRotate = false
+					if m.config.Projection == core.ProjectionIsometric {
+						m.camAngleY = 0.785  // 45°
+						m.camAngleX = 0.615  // ~35.26°
+					} else {
+						m.camAngleX = 0
+						m.camAngleY = 0
+					}
 					m.lastClickTime = time.Time{}
 					return m, nil
 				}
@@ -815,11 +820,16 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 	case "^":
 		m.config.AOSteps = max(m.config.AOSteps-1, 0)
 	case "r":
-		m.camAngleX = 0
-		m.camAngleY = 0
 		m.camDist = 4.0
 		m.camTarget = core.V(0, 0, 0)
 		m.autoRotate = false
+		if m.config.Projection == core.ProjectionIsometric {
+			m.camAngleY = 0.785
+			m.camAngleX = 0.615
+		} else {
+			m.camAngleX = 0
+			m.camAngleY = 0
+		}
 		m.config.Contrast = 1.25
 		m.config.Spread = 0.75
 		m.config.ExtDist = 1.0
