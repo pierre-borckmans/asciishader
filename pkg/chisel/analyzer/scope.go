@@ -78,6 +78,7 @@ func NewBuiltinScope() *Scope {
 		"rounded_box", "box_frame", "capped_torus", "hex_prism",
 		"octagon_prism", "round_cone", "tri_prism", "capped_cone",
 		"solid_angle", "rhombus", "horseshoe",
+		"rounded_cylinder", "tetrahedron", "dodecahedron", "icosahedron", "slab",
 	} {
 		s.Symbols[name] = &Symbol{Name: name, Type: TypeSDF3D}
 	}

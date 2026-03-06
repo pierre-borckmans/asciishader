@@ -2120,7 +2120,12 @@ var builtinShapeNames = map[string]bool{
 	"capped_cone":   true,
 	"solid_angle":   true,
 	"rhombus":       true,
-	"horseshoe":     true,
+	"horseshoe":         true,
+	"rounded_cylinder": true,
+	"tetrahedron":      true,
+	"dodecahedron":     true,
+	"icosahedron":      true,
+	"slab":             true,
 }
 
 // isBuiltinShape reports whether name is a built-in shape.
@@ -2173,6 +2178,16 @@ func shapeDefault(name, pv string) string {
 		return fmt.Sprintf("sdRhombus(%s, 0.5, 0.5, 0.1, 0.05)", pv)
 	case "horseshoe":
 		return fmt.Sprintf("sdHorseshoe(%s, vec2(0.866, 0.5), 0.3, 0.3, vec2(0.05, 0.1))", pv)
+	case "rounded_cylinder":
+		return fmt.Sprintf("sdRoundedCylinder(%s, 0.5, 0.1, 0.5)", pv)
+	case "tetrahedron":
+		return fmt.Sprintf("sdTetrahedron(%s, 1.0)", pv)
+	case "dodecahedron":
+		return fmt.Sprintf("sdDodecahedron(%s, 1.0)", pv)
+	case "icosahedron":
+		return fmt.Sprintf("sdIcosahedron(%s, 1.0)", pv)
+	case "slab":
+		return fmt.Sprintf("sdSlab(%s, 0.25)", pv)
 	}
 	return fmt.Sprintf("sdSphere(%s, 1.0)", pv) // fallback
 }
@@ -2423,6 +2438,37 @@ func (g *generator) shapeCall(name, pv string, args []ast.Arg) string {
 		le := g.scalarArgOr(args, 2, "0.3")
 		w := g.scalarArgOr(args, 3, "vec2(0.05, 0.1)")
 		return fmt.Sprintf("sdHorseshoe(%s, %s, %s, %s, %s)", pv, sc, r, le, w)
+
+	case "rounded_cylinder":
+		if len(args) == 0 {
+			return fmt.Sprintf("sdRoundedCylinder(%s, 0.5, 0.1, 0.5)", pv)
+		}
+		ra := g.emitScalarExpr(args[0].Value)
+		rb := g.scalarArgOr(args, 1, "0.1")
+		h := "0.5"
+		if len(args) >= 3 {
+			h = fmt.Sprintf("(%s)*0.5", g.emitScalarExpr(args[2].Value))
+		}
+		return fmt.Sprintf("sdRoundedCylinder(%s, %s, %s, %s)", pv, ra, rb, h)
+
+	case "tetrahedron":
+		r := g.scalarArgOr(args, 0, "1.0")
+		return fmt.Sprintf("sdTetrahedron(%s, %s)", pv, r)
+
+	case "dodecahedron":
+		r := g.scalarArgOr(args, 0, "1.0")
+		return fmt.Sprintf("sdDodecahedron(%s, %s)", pv, r)
+
+	case "icosahedron":
+		r := g.scalarArgOr(args, 0, "1.0")
+		return fmt.Sprintf("sdIcosahedron(%s, %s)", pv, r)
+
+	case "slab":
+		if len(args) == 0 {
+			return fmt.Sprintf("sdSlab(%s, 0.25)", pv)
+		}
+		th := g.emitScalarExpr(args[0].Value)
+		return fmt.Sprintf("sdSlab(%s, (%s)*0.5)", pv, th)
 	}
 
 	return fmt.Sprintf("sdSphere(%s, 1.0)", pv) // fallback

@@ -245,6 +245,57 @@ float sdRoundConeAB(vec3 p, vec3 a, vec3 b, float r1, float r2) {
     return (sqrt(x2 * a2 * il2) + y * rr) * il2 - r1;
 }
 
+float sdRoundedCylinder(vec3 p, float ra, float rb, float h) {
+    vec2 d = vec2(length(p.xz) - ra + rb, abs(p.y) - h);
+    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)) - rb;
+}
+
+float sdTetrahedron(vec3 p, float r) {
+    float md = max(max(-p.x - p.y - p.z, p.x + p.y - p.z),
+                   max(-p.x + p.y + p.z, p.x - p.y + p.z));
+    return (md - r) / sqrt(3.0);
+}
+
+float sdDodecahedron(vec3 p, float r) {
+    // Golden ratio related constants
+    float PHI = (1.0 + sqrt(5.0)) * 0.5;
+    // Normals of the 6 unique face planes (other 6 are reflections)
+    vec3 n1 = normalize(vec3(0, 1, PHI));
+    vec3 n2 = normalize(vec3(0, 1, -PHI));
+    vec3 n3 = normalize(vec3(1, PHI, 0));
+    vec3 n4 = normalize(vec3(1, -PHI, 0));
+    vec3 n5 = normalize(vec3(PHI, 0, 1));
+    vec3 n6 = normalize(vec3(PHI, 0, -1));
+    p = abs(p);
+    float d = dot(p, n1);
+    d = max(d, dot(p, n2));
+    d = max(d, dot(p, n3));
+    d = max(d, dot(p, n4));
+    d = max(d, dot(p, n5));
+    d = max(d, dot(p, n6));
+    return d - r;
+}
+
+float sdIcosahedron(vec3 p, float r) {
+    float PHI = (1.0 + sqrt(5.0)) * 0.5;
+    vec3 n1 = normalize(vec3(1, PHI, 0));
+    vec3 n2 = normalize(vec3(PHI, 0, 1));
+    vec3 n3 = normalize(vec3(0, 1, PHI));
+    vec3 n4 = normalize(vec3(1, 1, 1));
+    vec3 n5 = normalize(vec3(PHI - 1.0, 0, PHI));
+    p = abs(p);
+    float d = dot(p, n1);
+    d = max(d, dot(p, n2));
+    d = max(d, dot(p, n3));
+    d = max(d, dot(p, n4));
+    d = max(d, dot(p, n5));
+    return d - r;
+}
+
+float sdSlab(vec3 p, float h) {
+    return abs(p.y) - h;
+}
+
 // ---- Operations ----
 
 float opUnion(float a, float b) { return min(a, b); }

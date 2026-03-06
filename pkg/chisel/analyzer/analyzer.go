@@ -54,9 +54,14 @@ var shapeArity = map[string]struct{ min, max int }{
 	"circle":     {0, 1},
 	"rect":       {0, 2},
 	"hexagon":    {0, 1},
-	"horseshoe":  {1, 4},
-	"capped_cone": {0, 4},
-	"round_cone":  {0, 4},
+	"horseshoe":        {1, 4},
+	"capped_cone":      {0, 4},
+	"round_cone":       {0, 4},
+	"rounded_cylinder": {0, 3},
+	"tetrahedron":      {0, 1},
+	"dodecahedron":     {0, 1},
+	"icosahedron":      {0, 1},
+	"slab":             {0, 1},
 }
 
 // Analyze walks the AST and performs semantic analysis, returning any
