@@ -266,10 +266,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.config.Camera.Target = m.camTarget
 		m.config.Time = m.time
 		m.config.OrthoScale = m.camDist * 0.75 // ortho scale tracks zoom
-		if m.config.RenderMode == core.RenderSlice {
+		switch m.config.RenderMode {
+		case core.RenderSlice:
 			m.config.SliceMode = 1
-			m.config.SliceY = m.camTarget.Y
-		} else {
+		case core.RenderCost:
+			m.config.SliceMode = 2
+		default:
 			m.config.SliceMode = 0
 		}
 
@@ -1072,6 +1074,8 @@ func (m model) View() tea.View {
 			modeStr = "DENSITY"
 		case core.RenderSlice:
 			modeStr = "SLICE"
+		case core.RenderCost:
+			modeStr = "COST"
 		}
 		// Projection mode
 		switch m.config.Projection {

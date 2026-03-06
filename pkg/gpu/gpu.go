@@ -284,6 +284,8 @@ func renderSubPixels(mode int) (subW, subH int) {
 		return 2, 3
 	case core.RenderSlice:
 		return 1, 2 // half-block for color fidelity
+	case core.RenderCost:
+		return 1, 2
 	default: // RenderShapes
 		return 2, 3
 	}
@@ -323,6 +325,8 @@ func (g *GPURenderer) RenderCells(r *core.RenderConfig) [][]core.Cell {
 	case core.RenderDensity:
 		return g.renderCellsDensity(tw, th)
 	case core.RenderSlice:
+		return g.renderCellsHalfBlock(tw, th)
+	case core.RenderCost:
 		return g.renderCellsHalfBlock(tw, th)
 	default:
 		return g.renderCellsShaped(r, tw, th)

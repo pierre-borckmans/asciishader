@@ -9,7 +9,8 @@ const (
 	RenderBraille   = 4 // braille 2×4 dot grid
 	RenderDensity   = 5 // classic density ramp
 	RenderSlice     = 6 // 2D SDF slice heatmap
-	RenderModeCount = 7
+	RenderCost      = 7 // raymarching step count heatmap
+	RenderModeCount = 8
 )
 
 // Camera holds the view parameters.

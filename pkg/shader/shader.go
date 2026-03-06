@@ -18,7 +18,7 @@ uniform int uAOSteps;
 uniform vec2 uTermSize;
 uniform int uProjection;  // 0=perspective, 1=orthographic, 2=isometric
 uniform float uOrthoScale; // orthographic view scale
-uniform int uSliceMode;   // 0=normal, 1=SDF slice heatmap
+uniform int uSliceMode;   // 0=normal, 1=SDF slice heatmap, 2=cost heatmap
 uniform float uSliceY;    // Y position of slice plane
 
 out vec4 fragColor;
@@ -405,6 +405,19 @@ float raymarch(vec3 ro, vec3 rd) {
     return MAX_DIST;
 }
 
+// Raymarch returning step count for cost visualization
+vec2 raymarchCost(vec3 ro, vec3 rd) {
+    float t = 0.0;
+    for (int i = 0; i < MAX_STEPS; i++) {
+        vec3 p = ro + rd * t;
+        float d = sceneSDF(p);
+        if (d < SURF_DIST) return vec2(t, float(i));
+        t += d;
+        if (t > MAX_DIST) return vec2(MAX_DIST, float(i));
+    }
+    return vec2(MAX_DIST, float(MAX_STEPS));
+}
+
 // ---- Shading ----
 vec3 calcNormal(vec3 p) {
     float e = NORMAL_EPS;
@@ -543,6 +556,33 @@ void main() {
         // Bright line at d=0 (surface boundary)
         float zeroline = 1.0 - smoothstep(0.0, 0.015, abs(d));
         col = mix(col, vec3(1), zeroline);
+
+        fragColor = vec4(col, 1.0);
+        return;
+    }
+
+    if (uSliceMode == 2) {
+        // Cost heatmap: step count visualization
+        vec2 rc = raymarchCost(ro, rd);
+        float steps = rc.y;
+        float ratio = steps / float(MAX_STEPS);
+
+        // Blue (cheap) → green → yellow → red (expensive)
+        vec3 col;
+        if (ratio < 0.25) {
+            col = mix(vec3(0.05, 0.1, 0.3), vec3(0.1, 0.4, 0.8), ratio * 4.0);
+        } else if (ratio < 0.5) {
+            col = mix(vec3(0.1, 0.4, 0.8), vec3(0.2, 0.8, 0.3), (ratio - 0.25) * 4.0);
+        } else if (ratio < 0.75) {
+            col = mix(vec3(0.2, 0.8, 0.3), vec3(0.9, 0.8, 0.1), (ratio - 0.5) * 4.0);
+        } else {
+            col = mix(vec3(0.9, 0.8, 0.1), vec3(1.0, 0.2, 0.1), (ratio - 0.75) * 4.0);
+        }
+
+        // Darken background (missed rays)
+        if (rc.x >= MAX_DIST) {
+            col *= 0.3;
+        }
 
         fragColor = vec4(col, 1.0);
         return;
