@@ -17,6 +17,7 @@ row1 = {
 }.bounds([-2, 0.3, 0.25], [0.3, 0.3, 1.0])
 
 // --- Row 2: x = 0 ---
+// Note: .flip(y).at() = flip after translate, matching GLSL (pos-offset)*vec3(1,-1,1)
 row2 = {
   capped_torus([0.866025, -0.5], 0.25, 0.05).flip(y).at(0, 0.3, 1).color(c(25))
   | box_frame(0.3, 0.25, 0.2, 0.025).at(0, 0.25, 0).color(c(16.9))
@@ -35,6 +36,7 @@ row3 = {
 }.bounds([1, 0.3, -1], [0.35, 0.3, 2.5])
 
 // --- Row 4: x = -1 ---
+// Note: horseshoe not ported (needs cos/sin args + vec2 params not supported)
 row4 = {
   pyramid(1).at(-1, -0.6, -3).color(c(13.56))
   | octahedron(0.35).at(-1, 0.15, -2).color(c(23.56))
@@ -43,6 +45,8 @@ row4 = {
 }.bounds([-1, 0.35, -1], [0.35, 0.35, 2.5])
 
 // --- Row 5: x = 2 ---
+// Note: arbitrary-endpoint cylinder, capped_cone, round_cone not ported
+// (need endpoint-based variants which Chisel doesn't support yet)
 row5 = {
   octagon_prism(0.2, 0.05).at(2, 0.2, -3).color(c(51.8))
   | round_cone(0.2, 0.1, 0.3).at(2, 0.2, 1).color(c(37))
