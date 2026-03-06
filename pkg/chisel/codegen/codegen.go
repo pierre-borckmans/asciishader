@@ -114,21 +114,32 @@ func Generate(prog *ast.Program) (string, []diagnostic.Diagnostic) {
 		// Single colored shape — always return its color.
 		fmt.Fprintf(&out, "    return %s;\n", g.colors[0].colorExpr)
 	} else {
-		// Multiple colored shapes — duplicate sceneSDF body to get SDF variables,
-		// then compare distances to pick the closest color.
-		out.WriteString(g.body.String())
+		// Multiple colored shapes — re-emit SDF body with bounds skipped
+		// so all distance variables are available for color comparison.
+		colorGen := &generator{
+			scope:      g.scope,
+			funcs:      g.funcs,
+			helpers:    g.helpers,
+			emittedFn:  g.emittedFn,
+			fnDefs:     g.fnDefs,
+			pointVar:   "p",
+			skipBounds: true,
+		}
+		colorGen.emitSDF(sceneExpr)
+		out.WriteString(colorGen.body.String())
+		// Use the color entries from the color pass
+		colorColors := colorGen.colors
 
 		// Compare distances: return the closest shape's color.
-		for i := 0; i < len(g.colors)-1; i++ {
-			cmp := g.colors[i].sdfVar
-			// Build comparison against the remaining colors.
-			restCmp := g.colors[i+1].sdfVar
-			for j := i + 2; j < len(g.colors); j++ {
-				restCmp = fmt.Sprintf("min(%s, %s)", restCmp, g.colors[j].sdfVar)
+		for i := 0; i < len(colorColors)-1; i++ {
+			cmp := colorColors[i].sdfVar
+			restCmp := colorColors[i+1].sdfVar
+			for j := i + 2; j < len(colorColors); j++ {
+				restCmp = fmt.Sprintf("min(%s, %s)", restCmp, colorColors[j].sdfVar)
 			}
-			fmt.Fprintf(&out, "    if (%s < %s) return %s;\n", cmp, restCmp, g.colors[i].colorExpr)
+			fmt.Fprintf(&out, "    if (%s < %s) return %s;\n", cmp, restCmp, colorColors[i].colorExpr)
 		}
-		fmt.Fprintf(&out, "    return %s;\n", g.colors[len(g.colors)-1].colorExpr)
+		fmt.Fprintf(&out, "    return %s;\n", colorColors[len(colorColors)-1].colorExpr)
 	}
 	out.WriteString("}\n")
 
@@ -168,6 +179,7 @@ type generator struct {
 	helpers    map[string]bool            // which GLSL helper functions are needed
 	emittedFn  map[string]map[string]bool  // which user functions have been emitted, keyed by name then return type
 	fnDefs     *strings.Builder            // buffer for emitted function definitions
+	skipBounds bool                        // when true, .bounds() passes through without if-wrapper (for sceneColor)
 	indent     int                        // current indent level (for nested code)
 
 	// loopVars tracks current loop variable substitution values during unrolling.
@@ -1171,9 +1183,10 @@ func (g *generator) emitSwizzle(e *ast.MethodCall) string {
 
 // emitBounds handles .bounds(center, half_extents) — bounding box culling.
 // Skips evaluation of the inner SDF group if the point is far from the box.
+// In sceneColor context (skipBounds=true), passes through without the if-wrapper
+// so all SDF variables are available for color distance comparisons.
 func (g *generator) emitBounds(e *ast.MethodCall) string {
-	if len(e.Args) < 2 {
-		g.addDiag(diagnostic.Error, ".bounds() requires 2 arguments (center, half_extents)", e.NodeSpan())
+	if len(e.Args) < 2 || g.skipBounds {
 		return g.emitSDF(e.Receiver)
 	}
 
@@ -1196,7 +1209,6 @@ func (g *generator) emitBounds(e *ast.MethodCall) string {
 	g.indent--
 	g.emit("} else {")
 	g.indent++
-	// Outside bounding box: use the box distance as approximation
 	g.emit("%s = %s;", d, bbDist)
 	g.indent--
 	g.emit("}")
