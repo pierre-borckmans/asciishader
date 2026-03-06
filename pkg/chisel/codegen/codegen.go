@@ -47,7 +47,7 @@ func Generate(prog *ast.Program) (string, []diagnostic.Diagnostic) {
 		scope:     make(map[string]scopeEntry),
 		funcs:     make(map[string]*ast.AssignStmt),
 		helpers:   make(map[string]bool),
-		emittedFn: make(map[string]bool),
+		emittedFn: make(map[string]map[string]bool),
 	}
 
 	// First pass: collect top-level assignments (variables & functions),
@@ -75,13 +75,9 @@ func Generate(prog *ast.Program) (string, []diagnostic.Diagnostic) {
 		sceneExpr = &ast.Ident{Name: "sphere"}
 	}
 
-	// Second pass: emit GLSL function definitions for user functions.
+	// Function definitions are emitted on-demand during code generation.
 	var fnDefs strings.Builder
-	for name, fn := range g.funcs {
-		if !g.emittedFn[name] {
-			g.emitFuncDef(&fnDefs, name, fn)
-		}
-	}
+	g.fnDefs = &fnDefs
 
 	// Third pass: emit sceneSDF body.
 	g.pointVar = "p"
@@ -170,7 +166,8 @@ type generator struct {
 	scope      map[string]scopeEntry
 	funcs      map[string]*ast.AssignStmt // user-defined functions
 	helpers    map[string]bool            // which GLSL helper functions are needed
-	emittedFn  map[string]bool            // which user functions have been emitted
+	emittedFn  map[string]map[string]bool  // which user functions have been emitted, keyed by name then return type
+	fnDefs     *strings.Builder            // buffer for emitted function definitions
 	indent     int                        // current indent level (for nested code)
 
 	// loopVars tracks current loop variable substitution values during unrolling.
@@ -455,15 +452,26 @@ func (g *generator) emitScalarFuncCall(e *ast.FuncCall) string {
 		return result
 	}
 
-	// User-defined function call in scalar context: fn_name(p, args...)
+	// User-defined function call in scalar/color context: fn_name_v(p, args...)
 	if fn, ok := g.funcs[e.Name]; ok {
-		_ = fn
 		var args []string
 		args = append(args, g.pointVar)
 		for _, a := range e.Args {
 			args = append(args, g.emitScalarExpr(a.Value))
 		}
-		return fmt.Sprintf("fn_%s(%s)", e.Name, strings.Join(args, ", "))
+		// Fill in defaults for missing positional args.
+		if fn.Params != nil {
+			for i := len(e.Args); i < len(fn.Params); i++ {
+				if fn.Params[i].Default != nil {
+					args = append(args, g.emitScalarExpr(fn.Params[i].Default))
+				}
+			}
+		}
+		// Ensure the vec3 variant of this function is emitted.
+		if g.fnDefs != nil {
+			g.emitFuncDef(g.fnDefs, e.Name, fn, "vec3")
+		}
+		return fmt.Sprintf("fn_%s_v(%s)", e.Name, strings.Join(args, ", "))
 	}
 
 	// Fallback: emit as-is.
@@ -560,6 +568,10 @@ func (g *generator) emitFuncCall(e *ast.FuncCall) string {
 					args = append(args, g.emitScalarExpr(fn.Params[i].Default))
 				}
 			}
+		}
+		// Ensure the float variant of this function is emitted.
+		if g.fnDefs != nil {
+			g.emitFuncDef(g.fnDefs, e.Name, fn, "float")
 		}
 		g.emit("float %s = fn_%s(%s);", d, e.Name, strings.Join(args, ", "))
 		return d
@@ -1573,11 +1585,14 @@ func (g *generator) emitGlslEscape(e *ast.GlslEscape) string {
 // User-defined function emission
 // ---------------------------------------------------------------------------
 
-func (g *generator) emitFuncDef(out *strings.Builder, name string, fn *ast.AssignStmt) {
-	if g.emittedFn[name] {
+func (g *generator) emitFuncDef(out *strings.Builder, name string, fn *ast.AssignStmt, retType string) {
+	if g.emittedFn[name] == nil {
+		g.emittedFn[name] = make(map[string]bool)
+	}
+	if g.emittedFn[name][retType] {
 		return
 	}
-	g.emittedFn[name] = true
+	g.emittedFn[name][retType] = true
 
 	// Build parameter list: always starts with vec3 p.
 	var params []string
@@ -1592,6 +1607,7 @@ func (g *generator) emitFuncDef(out *strings.Builder, name string, fn *ast.Assig
 		funcs:     g.funcs,
 		helpers:   g.helpers,
 		emittedFn: g.emittedFn,
+		fnDefs:    out, // propagate so nested function calls can emit their definitions
 		pointVar:  "p",
 		loopVars:  nil,
 	}
@@ -1607,7 +1623,12 @@ func (g *generator) emitFuncDef(out *strings.Builder, name string, fn *ast.Assig
 		}
 	}
 
-	result := fnGen.emitSDF(fn.Value)
+	var result string
+	if retType == "vec3" {
+		result = fnGen.emitScalarExpr(fn.Value)
+	} else {
+		result = fnGen.emitSDF(fn.Value)
+	}
 
 	// Merge any helpers/diags from the function emission.
 	for k, v := range fnGen.helpers {
@@ -1615,7 +1636,13 @@ func (g *generator) emitFuncDef(out *strings.Builder, name string, fn *ast.Assig
 	}
 	g.diags = append(g.diags, fnGen.diags...)
 
-	fmt.Fprintf(out, "float fn_%s(%s) {\n", name, strings.Join(params, ", "))
+	// Use suffix for vec3 variant to avoid GLSL name collision
+	fnSuffix := name
+	if retType == "vec3" {
+		fnSuffix = name + "_v"
+	}
+
+	fmt.Fprintf(out, "%s fn_%s(%s) {\n", retType, fnSuffix, strings.Join(params, ", "))
 	out.WriteString(fnGen.body.String())
 	fmt.Fprintf(out, "    return %s;\n", result)
 	out.WriteString("}\n\n")
