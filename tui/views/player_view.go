@@ -158,9 +158,8 @@ func (pv *PlayerView) renderPlayback(width, height int) string {
 	if pv.Player.Loop {
 		loopStr = " LOOP"
 	}
-	track := pv.Player.Clip().Tracks[pv.Player.ScaleIdx]
 	status := fmt.Sprintf(" Frame %d/%d%s%s  |  space: pause  l: loop  esc: back",
-		pv.Player.CurrentFrame+1, len(track.Frames), pauseStr, loopStr)
+		pv.Player.CurrentFrame+1, len(pv.Player.Clip().Frames), pauseStr, loopStr)
 
 	statusStyle := lipgloss.NewStyle().
 		Background(lipgloss.Color("235")).

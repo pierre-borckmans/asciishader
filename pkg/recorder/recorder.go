@@ -16,16 +16,9 @@ const (
 	RecordIdle      RecordingState = iota
 	RecordSelecting                // Region selection UI active
 	RecordLive                     // Capturing keyframes
-	RecordBaking                   // Re-rendering frames at each scale
+	RecordBaking                   // Re-rendering frames
 	RecordDone                     // Bake complete, file saved
 )
-
-// RecordScale defines a scale multiplier and its resulting dimensions.
-type RecordScale struct {
-	Factor float64
-	Width  int
-	Height int
-}
 
 // Recorder manages the recording pipeline.
 type Recorder struct {
@@ -33,43 +26,27 @@ type Recorder struct {
 	RegionX, RegionY int
 	RegionW, RegionH int
 
-	// Scales to render
-	Scales []RecordScale
-
 	// Captured keyframes during live recording
 	Keyframes []clip.Keyframe
 	StartTime time.Time
 
 	// Bake state
-	bakeScaleIdx int
 	bakeFrameIdx int
-	bakeFrames   [][][]clip.ClipCell // [scaleIdx][frameIdx] = flat core.Cell grid
-	bakeTrackRaw [][]byte            // compressed track data per scale
+	bakeFrames   [][]clip.ClipCell // [frameIdx] = flat cell grid
 
 	// Output
 	OutputPath string
 	Error      error
 }
 
-// NewRecorder creates a new recorder with default region and scales.
-func NewRecorder(regionX, regionY, regionW, regionH int, scales []RecordScale) *Recorder {
+// NewRecorder creates a new recorder.
+func NewRecorder(regionX, regionY, regionW, regionH int) *Recorder {
 	return &Recorder{
 		RegionX: regionX,
 		RegionY: regionY,
 		RegionW: regionW,
 		RegionH: regionH,
-		Scales:  scales,
 	}
-}
-
-// DefaultScales returns the default scale set for a given base region size.
-func DefaultScales(baseW, baseH int) []RecordScale {
-	scales := []RecordScale{
-		{0.5, max(1, baseW/2), max(1, baseH/2)},
-		{1.0, baseW, baseH},
-		{2.0, baseW * 2, baseH * 2},
-	}
-	return scales
 }
 
 // CaptureKeyframe snapshots the current model state as a keyframe.
@@ -101,60 +78,39 @@ func (rec *Recorder) StartLive() {
 
 // StartBake initializes the bake phase.
 func (rec *Recorder) StartBake() {
-	rec.bakeScaleIdx = 0
 	rec.bakeFrameIdx = 0
-	rec.bakeFrames = make([][][]clip.ClipCell, len(rec.Scales))
-	for i := range rec.bakeFrames {
-		rec.bakeFrames[i] = make([][]clip.ClipCell, len(rec.Keyframes))
-	}
-	rec.bakeTrackRaw = nil
+	rec.bakeFrames = make([][]clip.ClipCell, len(rec.Keyframes))
 }
 
 // BakeProgress returns (current, total) for progress display.
 func (rec *Recorder) BakeProgress() (int, int) {
-	total := len(rec.Scales) * len(rec.Keyframes)
-	current := rec.bakeScaleIdx*len(rec.Keyframes) + rec.bakeFrameIdx
-	return current, total
+	return rec.bakeFrameIdx, len(rec.Keyframes)
 }
 
-// BakeDone returns true when all frames at all scales have been rendered.
+// BakeDone returns true when all frames have been rendered.
 func (rec *Recorder) BakeDone() bool {
-	return rec.bakeScaleIdx >= len(rec.Scales)
+	return rec.bakeFrameIdx >= len(rec.Keyframes)
 }
 
-// BakeStep renders one frame at the current scale. Must be called on the main
-// thread (GPU context). Returns true when bake is complete.
+// BakeStep renders one frame. Returns true when bake is complete.
 func (rec *Recorder) BakeStep(m AppState) bool {
 	if rec.BakeDone() {
 		return true
 	}
 
-	scale := rec.Scales[rec.bakeScaleIdx]
 	kf := rec.Keyframes[rec.bakeFrameIdx]
+	rec.applyKeyframe(m, kf)
 
-	// Apply keyframe state to model/renderer for this frame
-	rec.applyKeyframe(m, kf, scale.Width, scale.Height)
-
-	// Render at this scale's resolution
 	cells := m.GetGPU().RenderToCells(m.GetRenderConfig())
+	rec.bakeFrames[rec.bakeFrameIdx] = rec.extractRegion(cells)
 
-	// Extract the region and convert to ClipCells
-	clipCells := rec.extractRegion(cells, scale.Width, scale.Height)
-	rec.bakeFrames[rec.bakeScaleIdx][rec.bakeFrameIdx] = clipCells
-
-	// Advance to next frame/scale
 	rec.bakeFrameIdx++
-	if rec.bakeFrameIdx >= len(rec.Keyframes) {
-		rec.bakeFrameIdx = 0
-		rec.bakeScaleIdx++
-	}
-
 	return rec.BakeDone()
 }
 
 // applyKeyframe configures the renderer from a keyframe for baking.
-func (rec *Recorder) applyKeyframe(m AppState, kf clip.Keyframe, w, h int) {
-	m.GetRenderConfig().Resize(w, h)
+func (rec *Recorder) applyKeyframe(m AppState, kf clip.Keyframe) {
+	m.GetRenderConfig().Resize(rec.RegionW, rec.RegionH)
 	m.GetRenderConfig().Time = float64(kf.ShaderTime)
 	m.GetRenderConfig().Contrast = float64(kf.Contrast)
 	m.GetRenderConfig().Ambient = float64(kf.Ambient)
@@ -162,7 +118,6 @@ func (rec *Recorder) applyKeyframe(m AppState, kf clip.Keyframe, w, h int) {
 	m.GetRenderConfig().ShadowSteps = int(kf.ShadowSteps)
 	m.GetRenderConfig().AOSteps = int(kf.AOSteps)
 
-	// Camera
 	camAngleX := float64(kf.CamAngleX)
 	camAngleY := float64(kf.CamAngleY)
 	camDist := float64(kf.CamDist)
@@ -175,7 +130,6 @@ func (rec *Recorder) applyKeyframe(m AppState, kf clip.Keyframe, w, h int) {
 	}
 	m.GetRenderConfig().Camera.Target = camTarget
 
-	// Animated light (same formula as main tick)
 	shaderTime := float64(kf.ShaderTime)
 	m.GetRenderConfig().LightDir = core.V(
 		math.Sin(shaderTime*0.5)*0.5,
@@ -184,9 +138,9 @@ func (rec *Recorder) applyKeyframe(m AppState, kf clip.Keyframe, w, h int) {
 	).Normalize()
 }
 
-// extractRegion converts the full core.Cell grid to a flat ClipCell slice at the given dimensions.
-// During baking, the renderer is already sized to the scale dimensions, so we take the full grid.
-func (rec *Recorder) extractRegion(cells [][]core.Cell, w, h int) []clip.ClipCell {
+// extractRegion converts the full core.Cell grid to a flat ClipCell slice.
+func (rec *Recorder) extractRegion(cells [][]core.Cell) []clip.ClipCell {
+	w, h := rec.RegionW, rec.RegionH
 	out := make([]clip.ClipCell, w*h)
 	for y := 0; y < h && y < len(cells); y++ {
 		for x := 0; x < w && x < len(cells[y]); x++ {
@@ -203,46 +157,27 @@ func (rec *Recorder) Finalize() error {
 	}
 
 	numFrames := len(rec.Keyframes)
-	numScales := len(rec.Scales)
-
-	// Build header
 	lastKf := rec.Keyframes[numFrames-1]
 	header := clip.ClipHeader{
 		FPS:        30,
 		NumFrames:  uint16(numFrames),
-		NumScales:  uint8(numScales),
-		BaseWidth:  uint16(rec.RegionW),
-		BaseHeight: uint16(rec.RegionH),
+		Width:      uint16(rec.RegionW),
+		Height:     uint16(rec.RegionH),
 		DurationMs: lastKf.TimeMs,
 	}
 
-	// Build scale table and compress tracks
-	scales := make([]clip.ScaleEntry, numScales)
-	trackData := make([][]byte, numScales)
+	raw := clip.EncodeTrack(rec.bakeFrames)
 
-	for i, sc := range rec.Scales {
-		scales[i] = clip.ScaleEntry{
-			Width:  uint16(sc.Width),
-			Height: uint16(sc.Height),
-		}
-
-		// Delta-encode the frames for this scale
-		raw := clip.EncodeTrack(rec.bakeFrames[i])
-
-		// Zlib compress
-		compressed, err := clip.CompressTrack(raw)
-		if err != nil {
-			return fmt.Errorf("compress scale %d: %w", i, err)
-		}
-		trackData[i] = compressed
+	compressed, err := clip.CompressTrack(raw)
+	if err != nil {
+		return fmt.Errorf("compress: %w", err)
 	}
 
-	// Generate filename
 	if rec.OutputPath == "" {
 		rec.OutputPath = fmt.Sprintf("recording_%s.asciirec", time.Now().Format("20060102_150405"))
 	}
 
-	return clip.WriteClip(rec.OutputPath, header, scales, rec.Keyframes, trackData)
+	return clip.WriteClip(rec.OutputPath, header, rec.Keyframes, compressed)
 }
 
 // RecordingDuration returns the elapsed time since recording started.

@@ -13,6 +13,34 @@ func IsIFrame(frameIdx int) bool {
 	return frameIdx%iFrameInterval == 0
 }
 
+// appendVarint appends a varint-encoded uint32.
+func appendVarint(out []byte, v uint32) []byte {
+	for v >= 0x80 {
+		out = append(out, byte(v)|0x80)
+		v >>= 7
+	}
+	return append(out, byte(v))
+}
+
+// readVarint reads a varint from data at pos.
+func readVarint(data []byte, pos int) (uint32, int, error) {
+	var v uint32
+	var shift uint
+	for i := 0; i < 5; i++ {
+		if pos >= len(data) {
+			return 0, pos, fmt.Errorf("varint: unexpected EOF at %d", pos)
+		}
+		b := data[pos]
+		pos++
+		v |= uint32(b&0x7F) << shift
+		if b < 0x80 {
+			return v, pos, nil
+		}
+		shift += 7
+	}
+	return 0, pos, fmt.Errorf("varint: too long at %d", pos)
+}
+
 // EncodeIFrame writes a full W×H grid as raw bytes.
 // Each cell = 3 bytes: char (uint8) + color (uint16 LE).
 func EncodeIFrame(grid []ClipCell) []byte {
@@ -26,36 +54,46 @@ func EncodeIFrame(grid []ClipCell) []byte {
 }
 
 // EncodePFrame computes the delta between prev and curr grids.
-// Format: numChanges (uint16) + per change: index (uint16) + char (uint8) + rgb565 (uint16) = 5 bytes.
+// Format: numChanges(varint) + per change: deltaIndex(varint) + ch(u8) + xorColor(u16 LE).
 func EncodePFrame(prev, curr []ClipCell) []byte {
-	// Count changes
-	var changes [][2]int // index, position in curr
+	type change struct {
+		idx      int
+		ch       byte
+		xorColor uint16
+	}
+	var changes []change
 	for i := range curr {
 		if i >= len(prev) || curr[i].Ch != prev[i].Ch || curr[i].Color != prev[i].Color {
-			changes = append(changes, [2]int{i, i})
+			prevColor := uint16(0)
+			if i < len(prev) {
+				prevColor = prev[i].Color
+			}
+			changes = append(changes, change{
+				idx:      i,
+				ch:       curr[i].Ch,
+				xorColor: curr[i].Color ^ prevColor,
+			})
 		}
 	}
 
-	numChanges := len(changes)
-	if numChanges > 65535 {
-		numChanges = 65535
-	}
+	out := appendVarint(nil, uint32(len(changes)))
 
-	out := make([]byte, 2+numChanges*5)
-	binary.LittleEndian.PutUint16(out[0:], uint16(numChanges))
-
-	for j := 0; j < numChanges; j++ {
-		idx := changes[j][0]
-		off := 2 + j*5
-		binary.LittleEndian.PutUint16(out[off:], uint16(idx))
-		out[off+2] = curr[idx].Ch
-		binary.LittleEndian.PutUint16(out[off+3:], curr[idx].Color)
+	prevIdx := 0
+	for j, c := range changes {
+		delta := c.idx
+		if j > 0 {
+			delta = c.idx - prevIdx
+		}
+		out = appendVarint(out, uint32(delta))
+		out = append(out, c.ch)
+		out = append(out, byte(c.xorColor), byte(c.xorColor>>8))
+		prevIdx = c.idx
 	}
 
 	return out
 }
 
-// EncodeTrack encodes a full sequence of frames into raw bytes (before zlib).
+// EncodeTrack encodes a full sequence of frames into raw bytes (before compression).
 func EncodeTrack(frames [][]ClipCell) []byte {
 	var out []byte
 	for i, frame := range frames {
@@ -76,7 +114,6 @@ func DecodeTrack(data []byte, w, h, numFrames int) ([][]ClipCell, error) {
 
 	for i := 0; i < numFrames; i++ {
 		if IsIFrame(i) {
-			// I-frame: full grid
 			need := cellCount * ClipCellBytes
 			if pos+need > len(data) {
 				return nil, fmt.Errorf("I-frame %d: need %d bytes at pos %d, have %d", i, need, pos, len(data))
@@ -92,35 +129,46 @@ func DecodeTrack(data []byte, w, h, numFrames int) ([][]ClipCell, error) {
 			frames[i] = frame
 			pos += need
 		} else {
-			// P-frame: delta from previous
-			if pos+2 > len(data) {
-				return nil, fmt.Errorf("P-frame %d: missing header at pos %d", i, pos)
+			numChanges, newPos, err := readVarint(data, pos)
+			if err != nil {
+				return nil, fmt.Errorf("P-frame %d: %w", i, err)
 			}
-			numChanges := int(binary.LittleEndian.Uint16(data[pos:]))
-			pos += 2
+			pos = newPos
 
-			need := numChanges * 5
-			if pos+need > len(data) {
-				return nil, fmt.Errorf("P-frame %d: need %d bytes at pos %d, have %d", i, need, pos, len(data))
-			}
-
-			// Start from copy of previous frame
 			prev := frames[i-1]
 			frame := make([]ClipCell, cellCount)
 			copy(frame, prev)
 
-			for j := 0; j < numChanges; j++ {
-				off := pos + j*5
-				idx := int(binary.LittleEndian.Uint16(data[off:]))
+			idx := 0
+			for j := uint32(0); j < numChanges; j++ {
+				delta, newPos, err := readVarint(data, pos)
+				if err != nil {
+					return nil, fmt.Errorf("P-frame %d change %d: %w", i, j, err)
+				}
+				pos = newPos
+
+				if j == 0 {
+					idx = int(delta)
+				} else {
+					idx += int(delta)
+				}
+
+				if pos+3 > len(data) {
+					return nil, fmt.Errorf("P-frame %d change %d: need 3 bytes at pos %d", i, j, pos)
+				}
+
+				ch := data[pos]
+				xorColor := binary.LittleEndian.Uint16(data[pos+1:])
+				pos += 3
+
 				if idx < cellCount {
 					frame[idx] = ClipCell{
-						Ch:    data[off+2],
-						Color: binary.LittleEndian.Uint16(data[off+3:]),
+						Ch:    ch,
+						Color: prev[idx].Color ^ xorColor,
 					}
 				}
 			}
 			frames[i] = frame
-			pos += need
 		}
 	}
 

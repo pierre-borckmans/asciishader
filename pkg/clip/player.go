@@ -8,14 +8,13 @@ import (
 // Player plays back a loaded .asciirec clip.
 type Player struct {
 	clip         *Clip
-	ScaleIdx     int     // which scale track to use
-	CurrentFrame int     // current frame index
-	timeAcc      float64 // accumulated time in seconds
-	frameDur     float64 // duration of one frame in seconds
+	CurrentFrame int
+	timeAcc      float64
+	frameDur     float64
 	Loop         bool
 	Paused       bool
-	width        int // available display width
-	height       int // available display height
+	width        int
+	height       int
 }
 
 // NewPlayer creates a player for the given clip.
@@ -30,49 +29,15 @@ func NewPlayer(c *Clip) *Player {
 	}
 }
 
-// SetSize sets the available display area and selects the best scale track.
+// SetSize sets the available display area.
 func (p *Player) SetSize(w, h int) {
 	p.width = w
 	p.height = h
-	p.pickScale()
 }
 
 // Clip returns the underlying clip.
 func (p *Player) Clip() *Clip {
 	return p.clip
-}
-
-// pickScale selects the largest scale track that fits within (width, height).
-// If none fits, uses the smallest scale.
-func (p *Player) pickScale() {
-	bestIdx := 0
-	bestArea := 0
-
-	for i, se := range p.clip.Scales {
-		sw := int(se.Width)
-		sh := int(se.Height)
-		if sw <= p.width && sh <= p.height {
-			area := sw * sh
-			if area > bestArea {
-				bestArea = area
-				bestIdx = i
-			}
-		}
-	}
-
-	// If nothing fits, use smallest
-	if bestArea == 0 {
-		smallestArea := int(p.clip.Scales[0].Width) * int(p.clip.Scales[0].Height)
-		for i, se := range p.clip.Scales {
-			area := int(se.Width) * int(se.Height)
-			if area < smallestArea {
-				smallestArea = area
-				bestIdx = i
-			}
-		}
-	}
-
-	p.ScaleIdx = bestIdx
 }
 
 // SetLoop toggles looping.
@@ -86,8 +51,7 @@ func (p *Player) Tick(dt float64) {
 		return
 	}
 
-	track := p.clip.Tracks[p.ScaleIdx]
-	numFrames := len(track.Frames)
+	numFrames := len(p.clip.Frames)
 	if numFrames == 0 {
 		return
 	}
@@ -109,12 +73,11 @@ func (p *Player) Tick(dt float64) {
 
 // Seek jumps to a specific frame.
 func (p *Player) Seek(frame int) {
-	track := p.clip.Tracks[p.ScaleIdx]
 	if frame < 0 {
 		frame = 0
 	}
-	if frame >= len(track.Frames) {
-		frame = len(track.Frames) - 1
+	if frame >= len(p.clip.Frames) {
+		frame = len(p.clip.Frames) - 1
 	}
 	p.CurrentFrame = frame
 	p.timeAcc = 0
@@ -122,16 +85,14 @@ func (p *Player) Seek(frame int) {
 
 // Render builds the ANSI string for the current frame.
 func (p *Player) Render() string {
-	track := p.clip.Tracks[p.ScaleIdx]
-	if len(track.Frames) == 0 || p.CurrentFrame >= len(track.Frames) {
+	if len(p.clip.Frames) == 0 || p.CurrentFrame >= len(p.clip.Frames) {
 		return ""
 	}
 
-	frame := track.Frames[p.CurrentFrame]
-	w := track.Width
-	h := track.Height
+	frame := p.clip.Frames[p.CurrentFrame]
+	w := p.clip.Width
+	h := p.clip.Height
 
-	// Build ANSI output (same approach as render.go)
 	out := make([]byte, 0, w*h*20+h*10)
 	prevR, prevG, prevB := -1, -1, -1
 
@@ -167,7 +128,6 @@ func (p *Player) Render() string {
 		out = append(out, "\033[0m"...)
 	}
 
-	// Center in available space if larger than the track
 	rendered := string(out)
 	if p.width > w || p.height > h {
 		rendered = p.centerContent(rendered, w, h)
@@ -180,13 +140,11 @@ func (p *Player) Render() string {
 func (p *Player) centerContent(content string, contentW, contentH int) string {
 	lines := strings.Split(content, "\n")
 
-	// Vertical centering
 	padTop := 0
 	if p.height > contentH {
 		padTop = (p.height - contentH) / 2
 	}
 
-	// Horizontal centering
 	padLeft := 0
 	if p.width > contentW {
 		padLeft = (p.width - contentW) / 2

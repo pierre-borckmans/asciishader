@@ -689,8 +689,7 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		case "enter":
 			// Confirm selection, start recording
 			rs := m.regionSelector
-			scales := recorder.DefaultScales(rs.W, rs.H)
-			m.recorder = recorder.NewRecorder(rs.X, rs.Y, rs.W, rs.H, scales)
+			m.recorder = recorder.NewRecorder(rs.X, rs.Y, rs.W, rs.H)
 			m.recorder.StartLive()
 			m.recState = recorder.RecordLive
 			rs.Recording = true
@@ -1425,7 +1424,7 @@ func (pm playerModel) View() tea.View {
 
 	// Status line
 	status := fmt.Sprintf(" Playing: %s | Frame %d/%d | q: quit | space: pause | l: loop",
-		pm.clipPath, pm.player.CurrentFrame+1, len(pm.player.Clip().Tracks[pm.player.ScaleIdx].Frames))
+		pm.clipPath, pm.player.CurrentFrame+1, len(pm.player.Clip().Frames))
 
 	statusStyle := lipgloss.NewStyle().
 		Background(lipgloss.Color("#333333")).

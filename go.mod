@@ -7,6 +7,7 @@ require (
 	charm.land/bubbletea/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.0
 	github.com/go-gl/gl v0.0.0-20231021071112-07e5d0ea2e71
+	github.com/klauspost/compress v1.18.4
 	github.com/lrstanley/bubblezone/v2 v2.0.0
 	github.com/mattn/go-runewidth v0.0.20
 	golang.org/x/image v0.36.0
