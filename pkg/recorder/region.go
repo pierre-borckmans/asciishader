@@ -313,4 +313,3 @@ func ansiCut(s string, start, end int) string {
 	buf.WriteString("\033[0m")
 	return buf.String()
 }
-

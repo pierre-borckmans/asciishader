@@ -41,19 +41,19 @@ var methodAliases = map[string]string{
 // A shape with multiple valid arities is represented by the maximum count;
 // we check that the call has at most that many positional args.
 var shapeArity = map[string]struct{ min, max int }{
-	"sphere":    {0, 1},
-	"box":       {0, 3},
-	"cylinder":  {0, 2},
-	"torus":     {0, 2},
-	"capsule":   {0, 3},
-	"cone":      {0, 3},
-	"plane":     {0, 0},
+	"sphere":     {0, 1},
+	"box":        {0, 3},
+	"cylinder":   {0, 2},
+	"torus":      {0, 2},
+	"capsule":    {0, 3},
+	"cone":       {0, 3},
+	"plane":      {0, 0},
 	"octahedron": {0, 1},
-	"pyramid":   {0, 1},
-	"ellipsoid": {0, 3},
-	"circle":    {0, 1},
-	"rect":      {0, 2},
-	"hexagon":   {0, 1},
+	"pyramid":    {0, 1},
+	"ellipsoid":  {0, 3},
+	"circle":     {0, 1},
+	"rect":       {0, 2},
+	"hexagon":    {0, 1},
 }
 
 // Analyze walks the AST and performs semantic analysis, returning any

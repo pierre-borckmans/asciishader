@@ -76,11 +76,11 @@ func TestBuildAndWalk_UnionWithMethodCall(t *testing.T) {
 		"ExprStmt",
 		"BinaryExpr",
 		"Ident",      // sphere
-		"MethodCall",  // box.at(...)
-		"Ident",       // box
-		"NumberLit",   // 2
-		"NumberLit",   // 0
-		"NumberLit",   // 0
+		"MethodCall", // box.at(...)
+		"Ident",      // box
+		"NumberLit",  // 2
+		"NumberLit",  // 0
+		"NumberLit",  // 0
 	}
 
 	if !reflect.DeepEqual(visited, expected) {
@@ -269,8 +269,8 @@ func TestAllExprTypes(t *testing.T) {
 		&HexColorLit{BaseNode: BaseNode{Span: span()}, R: 1, G: 0, B: 0, A: 1},
 		&Ident{BaseNode: BaseNode{Span: span()}, Name: "x"},
 		&BinaryExpr{BaseNode: BaseNode{Span: span()},
-			Left: &Ident{BaseNode: BaseNode{Span: span()}, Name: "a"},
-			Op:   SmoothUnion,
+			Left:  &Ident{BaseNode: BaseNode{Span: span()}, Name: "a"},
+			Op:    SmoothUnion,
 			Right: &Ident{BaseNode: BaseNode{Span: span()}, Name: "b"},
 			Blend: &blend,
 		},
@@ -278,11 +278,11 @@ func TestAllExprTypes(t *testing.T) {
 			Operand: &NumberLit{BaseNode: BaseNode{Span: span()}, Value: 1}},
 		&MethodCall{BaseNode: BaseNode{Span: span()},
 			Receiver: &Ident{BaseNode: BaseNode{Span: span()}, Name: "s"},
-			Name: "at",
-			Args: []Arg{{Value: &NumberLit{BaseNode: BaseNode{Span: span()}, Value: 0}}},
+			Name:     "at",
+			Args:     []Arg{{Value: &NumberLit{BaseNode: BaseNode{Span: span()}, Value: 0}}},
 		},
 		&Swizzle{BaseNode: BaseNode{Span: span()},
-			Receiver: &Ident{BaseNode: BaseNode{Span: span()}, Name: "p"},
+			Receiver:   &Ident{BaseNode: BaseNode{Span: span()}, Name: "p"},
 			Components: "xz",
 		},
 		&FuncCall{BaseNode: BaseNode{Span: span()}, Name: "sphere",

@@ -60,12 +60,12 @@ type GPURenderer struct {
 	vao     uint32
 	fbo     uint32
 	rbo     uint32
-	pixW     int // pixel width (termW * 2)
-	pixH     int // pixel height (termH * subH)
-	termW    int // terminal columns
-	termH    int // terminal rows
-	subH     int // sub-pixel rows per core.Cell (3 for shape, 2 for quadrant)
-	pixels   []byte
+	pixW    int // pixel width (termW * 2)
+	pixH    int // pixel height (termH * subH)
+	termW   int // terminal columns
+	termH   int // terminal rows
+	subH    int // sub-pixel rows per core.Cell (3 for shape, 2 for quadrant)
+	pixels  []byte
 
 	// Reusable buffers (avoid per-frame allocation)
 	cellBuf [][]core.Cell
@@ -249,9 +249,9 @@ func (g *GPURenderer) pixelColor(px, py int) core.Vec3 {
 	}
 	off := (py*g.pixW + px) * 4
 	return core.Vec3{
-		float64(g.pixels[off]) / 255,
-		float64(g.pixels[off+1]) / 255,
-		float64(g.pixels[off+2]) / 255,
+		X: float64(g.pixels[off]) / 255,
+		Y: float64(g.pixels[off+1]) / 255,
+		Z: float64(g.pixels[off+2]) / 255,
 	}
 }
 
@@ -373,7 +373,7 @@ func (g *GPURenderer) renderCellsShaped(r *render.Renderer, tw, th int) [][]core
 				float64(pixels[off02+2]) + float64(pixels[off12+2])
 
 			const inv6x255 = 1.0 / (6 * 255)
-			line[cx] = core.Cell{Ch: rune(ch), Col: core.Vec3{colR * inv6x255, colG * inv6x255, colB * inv6x255}}
+			line[cx] = core.Cell{Ch: rune(ch), Col: core.Vec3{X: colR * inv6x255, Y: colG * inv6x255, Z: colB * inv6x255}}
 		}
 	}
 	return lines
@@ -441,7 +441,7 @@ func (g *GPURenderer) renderCellsDual(r *render.Renderer, tw, th int) [][]core.C
 				}
 			}
 
-			line[cx] = core.Cell{Ch: rune(ch), Col: core.Vec3{colR / 24 / 255, colG / 24 / 255, colB / 24 / 255}}
+			line[cx] = core.Cell{Ch: rune(ch), Col: core.Vec3{X: colR / 24 / 255, Y: colG / 24 / 255, Z: colB / 24 / 255}}
 		}
 	}
 	return lines
@@ -585,16 +585,16 @@ func (g *GPURenderer) renderCellsHalfBlock(tw, th int) [][]core.Cell {
 				// Both lit: ▀ with fg=top, bg=bottom
 				line[cx] = core.Cell{
 					Ch:    '▀',
-					Col:   core.Vec3{topR, topG, topB},
-					Bg:    core.Vec3{botR, botG, botB},
+					Col:   core.Vec3{X: topR, Y: topG, Z: topB},
+					Bg:    core.Vec3{X: botR, Y: botG, Z: botB},
 					HasBg: true,
 				}
 			} else if topHit {
 				// Only top lit: ▀ with fg=top, no bg
-				line[cx] = core.Cell{Ch: '▀', Col: core.Vec3{topR, topG, topB}}
+				line[cx] = core.Cell{Ch: '▀', Col: core.Vec3{X: topR, Y: topG, Z: topB}}
 			} else {
 				// Only bottom lit: ▄ with fg=bottom, no bg
-				line[cx] = core.Cell{Ch: '▄', Col: core.Vec3{botR, botG, botB}}
+				line[cx] = core.Cell{Ch: '▄', Col: core.Vec3{X: botR, Y: botG, Z: botB}}
 			}
 		}
 	}
@@ -689,7 +689,7 @@ func (g *GPURenderer) renderCellsBraille(tw, th int) [][]core.Cell {
 				}
 			}
 			inv := 1.0 / (litCount * 255)
-			line[cx] = core.Cell{Ch: 0x2800 + pattern, Col: core.Vec3{colR * inv, colG * inv, colB * inv}}
+			line[cx] = core.Cell{Ch: 0x2800 + pattern, Col: core.Vec3{X: colR * inv, Y: colG * inv, Z: colB * inv}}
 		}
 	}
 	return lines
@@ -748,7 +748,7 @@ func (g *GPURenderer) renderCellsDensity(tw, th int) [][]core.Cell {
 				float64(pixels[off01+2]) + float64(pixels[off11+2]) +
 				float64(pixels[off02+2]) + float64(pixels[off12+2])
 
-			line[cx] = core.Cell{Ch: ch, Col: core.Vec3{colR * inv6x255, colG * inv6x255, colB * inv6x255}}
+			line[cx] = core.Cell{Ch: ch, Col: core.Vec3{X: colR * inv6x255, Y: colG * inv6x255, Z: colB * inv6x255}}
 		}
 	}
 	return lines

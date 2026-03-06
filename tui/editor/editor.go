@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	"asciishader/tui/components"
 	"asciishader/pkg/chisel"
 	"asciishader/pkg/chisel/diagnostic"
 	gpupkg "asciishader/pkg/gpu"
 	"asciishader/pkg/shader"
+	"asciishader/tui/components"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"

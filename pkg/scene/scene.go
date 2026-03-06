@@ -14,12 +14,12 @@ const maxDist = 50.0
 
 // Scene is a distance function + description
 type Scene struct {
-	Name   string
-	SDF    func(p core.Vec3, time float64) float64
-	Color  func(p core.Vec3, time float64) core.Vec3 // material color at world point (RGB 0-1), nil = white
-	GLSL     string // optional GLSL code for GPU editor (sceneSDF + sceneColor)
-	Chisel   string // optional Chisel source (compiled to GLSL)
-	FilePath string // source file path (for file watching)
+	Name     string
+	SDF      func(p core.Vec3, time float64) float64
+	Color    func(p core.Vec3, time float64) core.Vec3 // material color at world point (RGB 0-1), nil = white
+	GLSL     string                                    // optional GLSL code for GPU editor (sceneSDF + sceneColor)
+	Chisel   string                                    // optional Chisel source (compiled to GLSL)
+	FilePath string                                    // source file path (for file watching)
 }
 
 var Scenes = []Scene{
@@ -490,7 +490,7 @@ func colorPlasmaRainbow(p core.Vec3, t float64) core.Vec3 {
 
 	// Brighten at peaks of displacement, slightly dim in troughs
 	bright := 0.6 + 0.4*core.Clamp(wave*0.5+0.5, 0, 1)
-	return core.V(col.X * bright, col.Y * bright, col.Z * bright)
+	return core.V(col.X*bright, col.Y*bright, col.Z*bright)
 }
 
 // --- Deep Nebula ---
@@ -718,7 +718,7 @@ func colorJellyfish(p core.Vec3, t float64) core.Vec3 {
 	h := depth*math.Pi*2 + t*0.8 + math.Atan2(p.Z, p.X)*0.5
 	col := HueToRGB(h)
 	glow := math.Sin(depth*8-t*3)*0.3 + 0.7
-	return core.V(col.X * glow, col.Y * glow, col.Z * glow)
+	return core.V(col.X*glow, col.Y*glow, col.Z*glow)
 }
 
 // --- Frozen Star ---

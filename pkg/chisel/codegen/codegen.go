@@ -1897,13 +1897,13 @@ func (g *generator) writeSettingComments(out *strings.Builder) {
 
 // builtinShapeNames lists all recognized built-in shape identifiers.
 var builtinShapeNames = map[string]bool{
-	"sphere":    true,
-	"box":       true,
-	"cylinder":  true,
-	"torus":     true,
-	"plane":     true,
+	"sphere":     true,
+	"box":        true,
+	"cylinder":   true,
+	"torus":      true,
+	"plane":      true,
 	"octahedron": true,
-	"capsule":   true,
+	"capsule":    true,
 }
 
 // isBuiltinShape reports whether name is a built-in shape.

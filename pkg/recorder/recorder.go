@@ -171,12 +171,12 @@ func (rec *Recorder) applyKeyframe(m AppState, kf clip.Keyframe, w, h int) {
 	camAngleX := float64(kf.CamAngleX)
 	camAngleY := float64(kf.CamAngleY)
 	camDist := float64(kf.CamDist)
-	camTarget := core.Vec3{float64(kf.CamTargetX), float64(kf.CamTargetY), float64(kf.CamTargetZ)}
+	camTarget := core.Vec3{X: float64(kf.CamTargetX), Y: float64(kf.CamTargetY), Z: float64(kf.CamTargetZ)}
 
 	m.GetRenderer().Camera.Pos = core.Vec3{
-		camTarget.X + math.Sin(camAngleY)*math.Cos(camAngleX)*camDist,
-		camTarget.Y + math.Sin(camAngleX)*camDist,
-		camTarget.Z - math.Cos(camAngleY)*math.Cos(camAngleX)*camDist,
+		X: camTarget.X + math.Sin(camAngleY)*math.Cos(camAngleX)*camDist,
+		Y: camTarget.Y + math.Sin(camAngleX)*camDist,
+		Z: camTarget.Z - math.Cos(camAngleY)*math.Cos(camAngleX)*camDist,
 	}
 	m.GetRenderer().Camera.Target = camTarget
 

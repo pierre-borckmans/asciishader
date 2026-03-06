@@ -17,9 +17,6 @@ const (
 	normalEps = 0.001
 )
 
-
-
-
 // Renderer does the raymarching
 type Renderer struct {
 	Width, Height int
@@ -84,9 +81,9 @@ func (r *Renderer) normal(p core.Vec3) core.Vec3 {
 	t := r.Time
 	d := r.Scene(p, t)
 	return core.Vec3{
-		r.Scene(core.V(p.X+e, p.Y, p.Z), t) - d,
-		r.Scene(core.V(p.X, p.Y+e, p.Z), t) - d,
-		r.Scene(core.V(p.X, p.Y, p.Z+e), t) - d,
+		X: r.Scene(core.V(p.X+e, p.Y, p.Z), t) - d,
+		Y: r.Scene(core.V(p.X, p.Y+e, p.Z), t) - d,
+		Z: r.Scene(core.V(p.X, p.Y, p.Z+e), t) - d,
 	}.Normalize()
 }
 

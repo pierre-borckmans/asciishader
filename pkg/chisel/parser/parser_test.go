@@ -1619,7 +1619,7 @@ func TestParseVecInExpr(t *testing.T) {
 
 func TestParseHexColorFunc(t *testing.T) {
 	cases := []struct {
-		input    string
+		input      string
 		r, g, b, a float64
 	}{
 		{"#ff0000", 1, 0, 0, 1},
@@ -1649,9 +1649,9 @@ func TestParseHexColorFunc(t *testing.T) {
 
 func TestSwizzleVsMethod(t *testing.T) {
 	cases := []struct {
-		input    string
+		input     string
 		isSwizzle bool
-		name     string
+		name      string
 	}{
 		{"v.x", true, "x"},
 		{"v.xy", true, "xy"},

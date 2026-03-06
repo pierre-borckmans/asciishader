@@ -152,7 +152,7 @@ const (
 	CIKMethod   = 2
 	CIKFunction = 3
 	CIKVariable = 6
-	CIKClass    = 7  // used for shapes
+	CIKClass    = 7 // used for shapes
 	CIKKeyword  = 14
 	CIKSnippet  = 15
 	CIKColor    = 16
@@ -269,7 +269,7 @@ var keywordDocs = map[string]string{
 	"light":    "light { ... }\nConfigure scene lighting.",
 	"camera":   "camera { pos: [...], target: [...], fov: 60 }\nConfigure camera.",
 	"bg":       "bg #color or bg { ... }\nSet background color or gradient.",
-	"raymarch":  "raymarch { steps: 128, precision: 0.001 }\nConfigure raymarching parameters.",
+	"raymarch": "raymarch { steps: 128, precision: 0.001 }\nConfigure raymarching parameters.",
 	"post":     "post { gamma: 2.2, bloom: { ... } }\nPost-processing effects.",
 	"mat":      "mat name = { color: [...], metallic: 1 }\nDefine a named material.",
 	"debug":    "debug normals | steps | distance | ao | uv | depth\nVisualize scene internals.",
@@ -281,11 +281,11 @@ var keywordDocs = map[string]string{
 // ---------------------------------------------------------------------------
 
 type server struct {
-	mu        sync.Mutex
-	docs      map[string]string // URI -> content
-	writer    *bufio.Writer
-	writeMu   sync.Mutex
-	shutdown  bool
+	mu       sync.Mutex
+	docs     map[string]string // URI -> content
+	writer   *bufio.Writer
+	writeMu  sync.Mutex
+	shutdown bool
 }
 
 func newServer() *server {

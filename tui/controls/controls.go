@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strconv"
 
-	"asciishader/tui/components"
 	"asciishader/pkg/core"
 	"asciishader/pkg/render"
+	"asciishader/tui/components"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

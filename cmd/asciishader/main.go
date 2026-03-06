@@ -11,16 +11,16 @@ import (
 	"time"
 
 	"asciishader/pkg/clip"
-	"asciishader/tui/components"
-	"asciishader/tui/controls"
-	"asciishader/tui/editor"
-	"asciishader/pkg/recorder"
 	"asciishader/pkg/core"
 	gpupkg "asciishader/pkg/gpu"
-	"asciishader/tui/layout"
+	"asciishader/pkg/recorder"
 	"asciishader/pkg/render"
 	"asciishader/pkg/scene"
 	"asciishader/pkg/shape"
+	"asciishader/tui/components"
+	"asciishader/tui/controls"
+	"asciishader/tui/editor"
+	"asciishader/tui/layout"
 	"asciishader/tui/views"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -262,9 +262,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Update camera (orbit around camTarget)
 		m.renderer.Camera.Pos = core.Vec3{
-			m.camTarget.X + math.Sin(m.camAngleY)*math.Cos(m.camAngleX)*m.camDist,
-			m.camTarget.Y + math.Sin(m.camAngleX)*m.camDist,
-			m.camTarget.Z - math.Cos(m.camAngleY)*math.Cos(m.camAngleX)*m.camDist,
+		X: m.camTarget.X + math.Sin(m.camAngleY)*math.Cos(m.camAngleX)*m.camDist,
+		Y: m.camTarget.Y + math.Sin(m.camAngleX)*m.camDist,
+		Z: m.camTarget.Z - math.Cos(m.camAngleY)*math.Cos(m.camAngleX)*m.camDist,
 		}
 		m.renderer.Camera.Target = m.camTarget
 		m.renderer.Time = m.time
@@ -272,7 +272,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.renderer.ColorFunc = scene.Scenes[m.scene].Color
 
 		// Animated light
-		m.renderer.LightDir =core.V(
+		m.renderer.LightDir = core.V(
 			math.Sin(m.time*0.5)*0.5,
 			0.8,
 			math.Cos(m.time*0.5)*0.5-0.5,
@@ -438,7 +438,7 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.bottomPanel.IsExpanded() {
 		middleH := m.height - hh - footerHeight()
 		bpY := hh + middleH - m.bottomPanel.Height() + 2 // +2 for separator + title row
-		bpX := sidebarWidth + 2 + 1                       // sidebar + left gap + left padding
+		bpX := sidebarWidth + 2 + 1                      // sidebar + left gap + left padding
 		m.editor.ScrollView.SetPosition(bpX, bpY)
 		if m.editor.ScrollView.HandleMouse(msg) {
 			return m, nil
@@ -518,8 +518,8 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			dx := msg.X - m.mouseLastX
 			dy := msg.Y - m.mouseLastY
 			// Pan in camera's right/up plane
-			right := core.Vec3{math.Cos(m.camAngleY), 0, math.Sin(m.camAngleY)}
-			up :=core.V(0, 1, 0)
+			right := core.Vec3{X: math.Cos(m.camAngleY), Y: 0, Z: math.Sin(m.camAngleY)}
+			up := core.V(0, 1, 0)
 			panSpeed := m.camDist * 0.01
 			m.camTarget = m.camTarget.Add(right.Mul(float64(dx) * panSpeed))
 			m.camTarget = m.camTarget.Add(up.Mul(float64(dy) * panSpeed * 2.2))
@@ -804,7 +804,7 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		m.camAngleX = 0
 		m.camAngleY = 0
 		m.camDist = 4.0
-		m.camTarget =core.V(0, 0, 0)
+		m.camTarget = core.V(0, 0, 0)
 		m.autoRotate = false
 		m.renderer.Contrast = 1.25
 		m.renderer.Spread = 0.75
@@ -961,21 +961,21 @@ func (m *model) checkFileChanged() {
 }
 
 // AppState interface methods for controls and recorder packages.
-func (m *model) GetRenderer() *render.Renderer     { return m.renderer }
-func (m *model) GetGPU() *gpupkg.GPURenderer        { return m.gpu }
-func (m *model) IsGPUMode() bool                     { return m.gpuMode }
-func (m *model) SetGPUMode(v bool)                   { m.gpuMode = v }
-func (m *model) GetScene() int                       { return m.scene }
-func (m *model) SetScene(v int)                      { m.scene = v }
-func (m *model) NumScenes() int                      { return len(scene.Scenes) }
-func (m *model) SceneName(i int) string              { return scene.Scenes[i].Name }
-func (m *model) GetTime() float64                    { return m.time }
-func (m *model) SetTime(v float64)                   { m.time = v }
-func (m *model) SyncSceneGLSL()                      { m.syncSceneGLSL() }
-func (m *model) GetCamAngleX() float64               { return m.camAngleX }
-func (m *model) GetCamAngleY() float64               { return m.camAngleY }
-func (m *model) GetCamDist() float64                 { return m.camDist }
-func (m *model) GetCamTarget() core.Vec3             { return m.camTarget }
+func (m *model) GetRenderer() *render.Renderer { return m.renderer }
+func (m *model) GetGPU() *gpupkg.GPURenderer   { return m.gpu }
+func (m *model) IsGPUMode() bool               { return m.gpuMode }
+func (m *model) SetGPUMode(v bool)             { m.gpuMode = v }
+func (m *model) GetScene() int                 { return m.scene }
+func (m *model) SetScene(v int)                { m.scene = v }
+func (m *model) NumScenes() int                { return len(scene.Scenes) }
+func (m *model) SceneName(i int) string        { return scene.Scenes[i].Name }
+func (m *model) GetTime() float64              { return m.time }
+func (m *model) SetTime(v float64)             { m.time = v }
+func (m *model) SyncSceneGLSL()                { m.syncSceneGLSL() }
+func (m *model) GetCamAngleX() float64         { return m.camAngleX }
+func (m *model) GetCamAngleY() float64         { return m.camAngleY }
+func (m *model) GetCamDist() float64           { return m.camDist }
+func (m *model) GetCamTarget() core.Vec3       { return m.camTarget }
 
 // resizeViewport updates the renderer dimensions based on current layout.
 func (m *model) resizeViewport() {

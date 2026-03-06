@@ -250,26 +250,26 @@ func (*GlslEscape) exprNode() {}
 type BinaryOp int
 
 const (
-	Union             BinaryOp = iota // |
-	SmoothUnion                       // |~
-	ChamferUnion                      // |/
-	Subtract                          // - (SDF)
-	SmoothSubtract                    // -~
-	ChamferSubtract                   // -/
-	Intersect                         // &
-	SmoothIntersect                   // &~
-	ChamferIntersect                  // &/
-	Add                               // +
-	Sub                               // - (arithmetic)
-	Mul                               // *
-	Div                               // /
-	Mod                               // %
-	Eq                                // ==
-	Neq                               // !=
-	Lt                                // <
-	Gt                                // >
-	Lte                               // <=
-	Gte                               // >=
+	Union            BinaryOp = iota // |
+	SmoothUnion                      // |~
+	ChamferUnion                     // |/
+	Subtract                         // - (SDF)
+	SmoothSubtract                   // -~
+	ChamferSubtract                  // -/
+	Intersect                        // &
+	SmoothIntersect                  // &~
+	ChamferIntersect                 // &/
+	Add                              // +
+	Sub                              // - (arithmetic)
+	Mul                              // *
+	Div                              // /
+	Mod                              // %
+	Eq                               // ==
+	Neq                              // !=
+	Lt                               // <
+	Gt                               // >
+	Lte                              // <=
+	Gte                              // >=
 )
 
 var binaryOpNames = [...]string{
