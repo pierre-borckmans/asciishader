@@ -14,28 +14,8 @@ type Scene struct {
 	FilePath string // source file path (for file watching)
 }
 
-var Scenes = []Scene{
-	{Name: "Bullet Train"},
-	{Name: "Sphere & Cube"},
-	{Name: "Torus Knot"},
-	{Name: "Morphing Shapes"},
-	{Name: "Infinite Pillars"},
-	{Name: "Alien Egg"},
-	{Name: "Alien Egg Color"},
-	{Name: "Gyroid"},
-	{Name: "Crystal Cluster"},
-	{Name: "Plasma Orb"},
-	{Name: "Plasma Rainbow"},
-	{Name: "Deep Nebula"},
-	{Name: "Solar Flare"},
-	{Name: "Void Bloom"},
-	{Name: "Jellyfish"},
-	{Name: "Frozen Star"},
-	{Name: "Railway Express"},
-	{Name: "Lava Lamp"},
-	{Name: "Mercury"},
-	{Name: "Amoeba"},
-}
+// Scenes is populated by LoadShaderFiles from .glsl and .chisel files in shaders/.
+var Scenes []Scene
 
 // LoadShaderFiles scans the shaders/ directory for .glsl and .chisel files and
 // associates them with scenes. For each file, if a built-in scene with a
