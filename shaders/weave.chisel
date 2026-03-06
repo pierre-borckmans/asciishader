@@ -1,0 +1,20 @@
+// Scene: Weave
+// Woven ribbon pattern
+// Port of fogleman/sdf/examples/weave.py
+
+// Ribbon: rounded box, bent along a path
+ribbon = rounded_box(3.2, 1, 0.25, 0.1).at(1.5, 0, 0.0625)
+  .bend_linear([0.75, 0, 0], [2.25, 0, 0], [0, 0, -0.1875], ease_in_out)
+  .array(3, 0)
+
+// Repeat in a grid
+f = ribbon.rep(2.7, 5.4, 0, padding: 1)
+| ribbon.rep(2.7, 5.4, 0, padding: 1).at(1.35, 2.7, 0)
+
+// Clip to a cylinder
+f = f & cylinder(10)
+
+// Add a ring frame
+| (cylinder(12) - cylinder(10)) &~0.25 slab(1, z)
+
+f

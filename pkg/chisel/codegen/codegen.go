@@ -693,6 +693,8 @@ func (g *generator) emitMethodCall(e *ast.MethodCall) string {
 		return g.emitTwist(e)
 	case "bend":
 		return g.emitBend(e)
+	case "bend_linear":
+		return g.emitBendLinear(e)
 	case "swizzle":
 		return g.emitSwizzle(e)
 	case "bounds":
@@ -938,15 +940,24 @@ func (g *generator) emitRep(e *ast.MethodCall) string {
 		return g.emitSDF(e.Receiver)
 	}
 
-	// Check for count: named arg
+	// Check for count: and padding: named args
 	var countArg ast.Expr
+	var paddingArg ast.Expr
 	var positionalArgs []ast.Arg
 	for _, a := range e.Args {
 		if a.Name == "count" {
 			countArg = a.Value
+		} else if a.Name == "padding" {
+			paddingArg = a.Value
 		} else if a.Name == "" {
 			positionalArgs = append(positionalArgs, a)
 		}
+	}
+
+	// padding is accepted but not yet fully supported
+	if paddingArg != nil {
+		_ = paddingArg
+		g.addDiag(diagnostic.Warning, "padding parameter is accepted but not yet fully supported", e.NodeSpan())
 	}
 
 	pNew := g.freshVar("p")
@@ -1207,6 +1218,54 @@ func (g *generator) emitBend(e *ast.MethodCall) string {
 	g.emit("float %s = %s * %s.x;", angleVar, k, g.pointVar)
 	g.emit("vec3 %s = vec3(cos(%s) * %s.x - sin(%s) * %s.y, sin(%s) * %s.x + cos(%s) * %s.y, %s.z);",
 		pNew, angleVar, g.pointVar, angleVar, g.pointVar, angleVar, g.pointVar, angleVar, g.pointVar, g.pointVar)
+
+	oldPoint := g.pointVar
+	g.pointVar = pNew
+	result := g.emitSDF(e.Receiver)
+	g.pointVar = oldPoint
+
+	return result
+}
+
+// emitBendLinear handles .bend_linear(p0, p1, offset, easing)
+// Projects the current point onto the p0→p1 line segment, applies an optional
+// easing function, and displaces the point by offset * ease factor.
+func (g *generator) emitBendLinear(e *ast.MethodCall) string {
+	if len(e.Args) < 3 {
+		g.addDiag(diagnostic.Error, ".bend_linear() requires at least 3 arguments (p0, p1, offset)", e.NodeSpan())
+		return g.emitSDF(e.Receiver)
+	}
+
+	p0 := g.emitScalarExpr(e.Args[0].Value)
+	p1 := g.emitScalarExpr(e.Args[1].Value)
+	offset := g.emitScalarExpr(e.Args[2].Value)
+
+	// Easing function (optional 4th arg, default linear)
+	easeFn := ""
+	if len(e.Args) >= 4 {
+		if ident, ok := e.Args[3].Value.(*ast.Ident); ok {
+			easeFn = ident.Name
+		}
+	}
+
+	dir := g.freshVar("dir")
+	proj := g.freshVar("proj")
+	ease := g.freshVar("ease")
+	pNew := g.freshVar("p")
+
+	g.emit("vec3 %s = %s - %s;", dir, p1, p0)
+	g.emit("float %s = clamp(dot(%s - %s, %s) / dot(%s, %s), 0.0, 1.0);",
+		proj, g.pointVar, p0, dir, dir, dir)
+
+	if easeFn != "" && easeFn != "linear" {
+		helperName := "chisel_" + easeFn
+		g.helpers[helperName] = true
+		g.emit("float %s = %s(%s);", ease, helperName, proj)
+	} else {
+		g.emit("float %s = %s;", ease, proj)
+	}
+
+	g.emit("vec3 %s = %s - %s * %s;", pNew, g.pointVar, offset, ease)
 
 	oldPoint := g.pointVar
 	g.pointVar = pNew
@@ -2546,6 +2605,11 @@ func (g *generator) shapeCall(name, pv string, args []ast.Arg) string {
 		if len(args) == 0 {
 			return fmt.Sprintf("sdCylinder(%s, 0.5, 1.0)", pv)
 		}
+		if len(args) == 1 {
+			// cylinder(r) — infinite cylinder
+			r := g.emitScalarExpr(args[0].Value)
+			return fmt.Sprintf("sdInfiniteCylinder(%s, %s)", pv, r)
+		}
 		if len(args) == 3 {
 			// cylinder(a, b, r) — endpoint variant
 			a := g.emitScalarExpr(args[0].Value)
@@ -2553,11 +2617,9 @@ func (g *generator) shapeCall(name, pv string, args []ast.Arg) string {
 			r := g.emitScalarExpr(args[2].Value)
 			return fmt.Sprintf("sdCylinderAB(%s, %s, %s, %s)", pv, a, b, r)
 		}
+		// 2 args: finite cylinder
 		r := g.emitScalarExpr(args[0].Value)
-		h := "1.0"
-		if len(args) >= 2 {
-			h = fmt.Sprintf("(%s)*0.5", g.emitScalarExpr(args[1].Value))
-		}
+		h := fmt.Sprintf("(%s)*0.5", g.emitScalarExpr(args[1].Value))
 		return fmt.Sprintf("sdCylinder(%s, %s, %s)", pv, r, h)
 
 	case "torus":
@@ -2792,6 +2854,16 @@ func (g *generator) shapeCall(name, pv string, args []ast.Arg) string {
 			return fmt.Sprintf("sdSlab(%s, 0.25)", pv)
 		}
 		th := g.emitScalarExpr(args[0].Value)
+		if len(args) >= 2 {
+			if ident, ok := args[1].Value.(*ast.Ident); ok {
+				switch ident.Name {
+				case "x":
+					return fmt.Sprintf("sdSlabX(%s, (%s)*0.5)", pv, th)
+				case "z":
+					return fmt.Sprintf("sdSlabZ(%s, (%s)*0.5)", pv, th)
+				}
+			}
+		}
 		return fmt.Sprintf("sdSlab(%s, (%s)*0.5)", pv, th)
 	}
 

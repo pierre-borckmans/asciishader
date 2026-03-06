@@ -13,7 +13,7 @@ import (
 var knownMethods = []string{
 	"at", "scale", "rot", "orient", "mirror", "rep", "array",
 	"morph", "shell", "onion", "displace", "dilate", "erode",
-	"round", "elongate", "twist", "bend", "swizzle", "bounds", "flip",
+	"round", "elongate", "twist", "bend", "bend_linear", "swizzle", "bounds", "flip",
 	"color", "metallic", "roughness", "emission", "opacity", "mat",
 	"extrude", "extrude_to", "revolve",
 	"red", "blue", "green", "white", "black", "yellow",
@@ -63,7 +63,7 @@ var shapeArity = map[string]struct{ min, max int }{
 	"tetrahedron":      {0, 1},
 	"dodecahedron":     {0, 1},
 	"icosahedron":      {0, 1},
-	"slab":             {0, 1},
+	"slab":             {0, 2},
 }
 
 // Analyze walks the AST and performs semantic analysis, returning any

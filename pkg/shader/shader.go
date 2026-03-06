@@ -298,6 +298,18 @@ float sdSlab(vec3 p, float h) {
     return abs(p.y) - h;
 }
 
+float sdSlabX(vec3 p, float h) {
+    return abs(p.x) - h;
+}
+
+float sdSlabZ(vec3 p, float h) {
+    return abs(p.z) - h;
+}
+
+float sdInfiniteCylinder(vec3 p, float r) {
+    return length(p.xz) - r;
+}
+
 // ---- 2D SDF Primitives ----
 
 float sdCircle2D(vec2 p, float r) {
