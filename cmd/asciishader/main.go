@@ -550,10 +550,21 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 	case tea.MouseWheelMsg:
 		if inViewport {
-			if mouse.Button == tea.MouseWheelUp {
-				m.camDist = core.Clamp(m.camDist*0.92, 0.5, 30)
-			} else if mouse.Button == tea.MouseWheelDown {
-				m.camDist = core.Clamp(m.camDist/0.92, 0.5, 30)
+			if m.config.RenderMode == core.RenderSlice {
+				// In slice mode, scroll moves slice depth along view direction
+				fwd := m.config.Camera.Target.Sub(m.config.Camera.Pos).Normalize()
+				step := m.camDist * 0.05
+				if mouse.Button == tea.MouseWheelUp {
+					m.camTarget = m.camTarget.Add(fwd.Mul(step))
+				} else if mouse.Button == tea.MouseWheelDown {
+					m.camTarget = m.camTarget.Sub(fwd.Mul(step))
+				}
+			} else {
+				if mouse.Button == tea.MouseWheelUp {
+					m.camDist = core.Clamp(m.camDist*0.92, 0.5, 30)
+				} else if mouse.Button == tea.MouseWheelDown {
+					m.camDist = core.Clamp(m.camDist/0.92, 0.5, 30)
+				}
 			}
 		}
 	}
