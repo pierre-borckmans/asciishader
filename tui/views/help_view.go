@@ -5,7 +5,7 @@ import (
 
 	"asciishader/tui/components"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // HelpView is a scrollable keybinding reference.

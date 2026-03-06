@@ -5,7 +5,7 @@ import (
 
 	"asciishader/tui/styles"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // ComposeHeader creates a full-width header bar with title and right-aligned info.

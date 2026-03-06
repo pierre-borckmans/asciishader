@@ -5,7 +5,7 @@ import (
 
 	"asciishader/tui/styles"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // FooterBinding represents a key binding shown in the footer bar.

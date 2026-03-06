@@ -6,7 +6,7 @@ import (
 
 	"asciishader/tui/components"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // RegionSelector handles the interactive region selection overlay.

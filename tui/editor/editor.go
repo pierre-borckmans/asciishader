@@ -10,9 +10,9 @@ import (
 	"asciishader/pkg/shader"
 	"asciishader/tui/components"
 
-	"github.com/charmbracelet/bubbles/textarea"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textarea"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // EditorTab wraps a textarea for editing GLSL code with compile support.
@@ -171,7 +171,7 @@ func (et *EditorTab) compileGLSL(gpu *gpupkg.GPURenderer, code string) {
 
 // Update processes a bubbletea message. Returns (handled, cmd).
 func (et *EditorTab) Update(msg tea.Msg) (bool, tea.Cmd) {
-	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		if keyMsg.String() == "ctrl+r" {
 			return true, nil // caller handles compile
 		}

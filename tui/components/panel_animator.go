@@ -3,7 +3,7 @@ package components
 import (
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // PanelAnimTickMsg signals that a panel animation should advance one frame.

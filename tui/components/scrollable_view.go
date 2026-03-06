@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/mattn/go-runewidth"
 )
 
@@ -184,9 +184,10 @@ func (sv *ScrollableView) EnsureLineVisible(lineIdx int) {
 
 // HandleMouseWheel handles mouse wheel events, returns true if handled
 func (sv *ScrollableView) HandleMouseWheel(msg tea.MouseMsg) bool {
-	switch msg.Button {
-	case tea.MouseButtonWheelUp:
-		if msg.Shift {
+	mouse := msg.Mouse()
+	switch mouse.Button {
+	case tea.MouseWheelUp:
+		if mouse.Mod.Contains(tea.ModShift) {
 			if sv.hScrollOffset > 0 {
 				sv.ScrollLeft(1)
 			}
@@ -196,8 +197,8 @@ func (sv *ScrollableView) HandleMouseWheel(msg tea.MouseMsg) bool {
 			}
 		}
 		return true
-	case tea.MouseButtonWheelDown:
-		if msg.Shift {
+	case tea.MouseWheelDown:
+		if mouse.Mod.Contains(tea.ModShift) {
 			if sv.hScrollOffset < sv.maxHScroll() {
 				sv.ScrollRight(1)
 			}
@@ -207,12 +208,12 @@ func (sv *ScrollableView) HandleMouseWheel(msg tea.MouseMsg) bool {
 			}
 		}
 		return true
-	case tea.MouseButtonWheelLeft:
+	case tea.MouseWheelLeft:
 		if sv.hScrollOffset > 0 {
 			sv.ScrollLeft(1)
 		}
 		return true
-	case tea.MouseButtonWheelRight:
+	case tea.MouseWheelRight:
 		if sv.hScrollOffset < sv.maxHScroll() {
 			sv.ScrollRight(1)
 		}
@@ -224,13 +225,13 @@ func (sv *ScrollableView) HandleMouseWheel(msg tea.MouseMsg) bool {
 
 // HandleMouse handles all mouse events including clicks and drags on scrollbars.
 func (sv *ScrollableView) HandleMouse(msg tea.MouseMsg) bool {
-	if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown ||
-		msg.Button == tea.MouseButtonWheelLeft || msg.Button == tea.MouseButtonWheelRight {
+	if _, ok := msg.(tea.MouseWheelMsg); ok {
 		return sv.HandleMouseWheel(msg)
 	}
 
-	relX := msg.X - sv.screenX
-	relY := msg.Y - sv.screenY
+	mouse := msg.Mouse()
+	relX := mouse.X - sv.screenX
+	relY := mouse.Y - sv.screenY
 
 	hasVScroll := sv.CanScroll()
 	hasHScroll := sv.CanScrollHorizontally()
@@ -267,16 +268,18 @@ func (sv *ScrollableView) HandleMouse(msg tea.MouseMsg) bool {
 	sv.hoverHThumb = onHScrollbar && relX == sv.hThumbPos(hTrackWidth)
 	hoverChanged := sv.hoverVThumb != oldVHover || sv.hoverHThumb != oldHHover
 
+	_, isMotion := msg.(tea.MouseMotionMsg)
+
 	if !onVScrollbar && !onHScrollbar && !sv.draggingV && !sv.draggingH {
-		if hoverChanged && msg.Action == tea.MouseActionMotion {
+		if hoverChanged && isMotion {
 			return true
 		}
 		return false
 	}
 
-	switch msg.Action {
-	case tea.MouseActionPress:
-		if msg.Button == tea.MouseButtonLeft {
+	switch msg.(type) {
+	case tea.MouseClickMsg:
+		if mouse.Button == tea.MouseLeft {
 			if onVScrollbar {
 				sv.draggingV = true
 				sv.updateVScrollFromMouse(relY, vTrackHeight)
@@ -289,7 +292,7 @@ func (sv *ScrollableView) HandleMouse(msg tea.MouseMsg) bool {
 			}
 		}
 
-	case tea.MouseActionMotion:
+	case tea.MouseMotionMsg:
 		if sv.draggingV {
 			sv.updateVScrollFromMouse(relY, vTrackHeight)
 			return true
@@ -302,7 +305,7 @@ func (sv *ScrollableView) HandleMouse(msg tea.MouseMsg) bool {
 			return true
 		}
 
-	case tea.MouseActionRelease:
+	case tea.MouseReleaseMsg:
 		if sv.draggingV || sv.draggingH {
 			sv.draggingV = false
 			sv.draggingH = false

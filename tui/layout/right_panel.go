@@ -6,8 +6,8 @@ import (
 	"asciishader/tui/components"
 	"asciishader/tui/styles"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // RightPanel renders a panel on the right side of the TUI.
@@ -142,11 +142,10 @@ func (rp *RightPanel) HandleMouseEvent(msg tea.MouseMsg) bool {
 		return false
 	}
 
-	isWheel := msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown ||
-		msg.Button == tea.MouseButtonWheelLeft || msg.Button == tea.MouseButtonWheelRight
-	if isWheel {
+	if _, ok := msg.(tea.MouseWheelMsg); ok {
+		mouse := msg.Mouse()
 		sv := rp.scrollView
-		relX := msg.X - sv.ScreenX()
+		relX := mouse.X - sv.ScreenX()
 		if relX < -1 || relX >= rp.width {
 			return false
 		}

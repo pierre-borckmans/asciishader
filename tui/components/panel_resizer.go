@@ -1,7 +1,7 @@
 package components
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // PanelResizeAxis indicates which axis a panel resizes along.
@@ -61,24 +61,25 @@ func (pr *PanelResizer) IsHovering() bool {
 func (pr *PanelResizer) HandleMouse(msg tea.MouseMsg, currentSize int, screenSize int) (int, bool) {
 	maxSize := screenSize / 2
 
+	mouse := msg.Mouse()
 	// Use X for horizontal, Y for vertical
-	mousePos := msg.X
+	mousePos := mouse.X
 	if pr.axis == ResizeVertical {
-		mousePos = msg.Y
+		mousePos = mouse.Y
 	}
 
 	onEdge := mousePos == pr.edgePos
 
-	switch msg.Action {
-	case tea.MouseActionPress:
-		if msg.Button == tea.MouseButtonLeft && onEdge {
+	switch msg.(type) {
+	case tea.MouseClickMsg:
+		if mouse.Button == tea.MouseLeft && onEdge {
 			pr.dragging = true
 			pr.dragStartAt = mousePos
 			pr.sizeAtStart = currentSize
 			return currentSize, true
 		}
 
-	case tea.MouseActionMotion:
+	case tea.MouseMotionMsg:
 		oldHover := pr.hovering
 		pr.hovering = onEdge || pr.dragging
 
@@ -95,7 +96,7 @@ func (pr *PanelResizer) HandleMouse(msg tea.MouseMsg, currentSize int, screenSiz
 			return currentSize, true
 		}
 
-	case tea.MouseActionRelease:
+	case tea.MouseReleaseMsg:
 		if pr.dragging {
 			delta := mousePos - pr.dragStartAt
 			newSize := pr.sizeAtStart - delta

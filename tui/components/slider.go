@@ -5,8 +5,8 @@ import (
 	"math"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 const SliderLabelWidth = 12
@@ -73,31 +73,33 @@ func (s *Slider) barStartX() int {
 // HandleMouse processes a mouse event for this slider.
 // The slider must be in bounds (caller checks zone). Returns true if handled.
 func (s *Slider) HandleMouse(msg tea.MouseMsg) bool {
+	mouse := msg.Mouse()
+
 	if s.dragging {
-		switch msg.Action {
-		case tea.MouseActionMotion:
-			s.setValueFromX(msg.X)
+		switch msg.(type) {
+		case tea.MouseMotionMsg:
+			s.setValueFromX(mouse.X)
 			return true
-		case tea.MouseActionRelease:
-			s.setValueFromX(msg.X)
+		case tea.MouseReleaseMsg:
+			s.setValueFromX(mouse.X)
 			s.dragging = false
 			return true
 		}
 	}
 
-	switch msg.Action {
-	case tea.MouseActionMotion:
+	switch msg.(type) {
+	case tea.MouseMotionMsg:
 		oldHover := s.thumbHover
-		s.thumbHover = msg.X == s.thumbScreenX()
+		s.thumbHover = mouse.X == s.thumbScreenX()
 		return s.thumbHover != oldHover
 
-	case tea.MouseActionPress:
-		if msg.Button == tea.MouseButtonLeft {
+	case tea.MouseClickMsg:
+		if mouse.Button == tea.MouseLeft {
 			bStart := s.barStartX()
 			bEnd := bStart + s.barW
-			if msg.X >= bStart && msg.X < bEnd {
+			if mouse.X >= bStart && mouse.X < bEnd {
 				s.dragging = true
-				s.setValueFromX(msg.X)
+				s.setValueFromX(mouse.X)
 				return true
 			}
 		}

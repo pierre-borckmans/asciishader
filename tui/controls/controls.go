@@ -7,9 +7,9 @@ import (
 	"asciishader/pkg/core"
 	"asciishader/tui/components"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	zone "github.com/lrstanley/bubblezone"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	zone "github.com/lrstanley/bubblezone/v2"
 )
 
 // ControlsTab manages the 7 parameter sliders + scene selector + render mode toggle.
@@ -150,6 +150,10 @@ func (ct *ControlsTab) zoneIDs() []string {
 // HandleMouse processes a mouse event for the controls panel.
 // Returns true if handled.
 func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m AppState) bool {
+	mouse := msg.Mouse()
+	_, isClick := msg.(tea.MouseClickMsg)
+	_, isMotion := msg.(tea.MouseMotionMsg)
+
 	// Delegate to sliders first (they own drag/hover state)
 	for i, s := range ct.sliders {
 		zi := zone.Get(ct.zoned.ZoneID("slider-" + strconv.Itoa(i)))
@@ -165,13 +169,13 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m AppState) bool {
 		// Check zone bounds for non-drag events
 		if !zi.IsZero() && zi.InBounds(msg) {
 			if s.HandleMouse(msg) {
-				if msg.Action == tea.MouseActionPress {
+				if isClick {
 					ct.focus = i
 				}
 				ct.SyncToRenderConfig(m.GetRenderConfig())
 				return true
 			}
-		} else if msg.Action == tea.MouseActionMotion {
+		} else if isMotion {
 			s.ClearHover()
 		}
 	}
@@ -197,7 +201,7 @@ func (ct *ControlsTab) HandleMouse(msg tea.MouseMsg, m AppState) bool {
 		zi := zone.Get(ct.zoned.ZoneID("scene"))
 		if !zi.IsZero() {
 			mid := (zi.StartX + zi.EndX) / 2
-			if msg.X < mid {
+			if mouse.X < mid {
 				m.SetScene((m.GetScene() - 1 + m.NumScenes()) % m.NumScenes())
 			} else {
 				m.SetScene((m.GetScene() + 1) % m.NumScenes())

@@ -9,7 +9,7 @@ import (
 	"asciishader/pkg/clip"
 	"asciishader/tui/components"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // PlayerView is an embedded clip player with file picker.
@@ -59,7 +59,7 @@ func (pv *PlayerView) ScanFiles() {
 func (pv *PlayerView) HandleKey(key string) bool {
 	if pv.Loaded && pv.Player != nil {
 		switch key {
-		case " ":
+		case "space":
 			pv.Player.Paused = !pv.Player.Paused
 			return true
 		case "l":

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	zone "github.com/lrstanley/bubblezone"
+	tea "charm.land/bubbletea/v2"
+	zone "github.com/lrstanley/bubblezone/v2"
 )
 
 // DoubleClickThreshold is the maximum time between clicks to count as double-click
@@ -45,9 +45,10 @@ type MouseResult struct {
 // zoneIDs should be the list of item IDs that are currently visible/clickable.
 func (z *ZonedInteraction) HandleMouse(msg tea.MouseMsg, zoneIDs []string) MouseResult {
 	var result MouseResult
+	mouse := msg.Mouse()
 
 	// Handle hover (mouse motion)
-	if msg.Action == tea.MouseActionMotion {
+	if _, ok := msg.(tea.MouseMotionMsg); ok {
 		newHovered := ""
 		for _, id := range zoneIDs {
 			if zone.Get(z.ZoneID(id)).InBounds(msg) {
@@ -63,7 +64,7 @@ func (z *ZonedInteraction) HandleMouse(msg tea.MouseMsg, zoneIDs []string) Mouse
 	}
 
 	// Handle click
-	if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft {
+	if _, ok := msg.(tea.MouseReleaseMsg); ok && mouse.Button == tea.MouseLeft {
 		for _, id := range zoneIDs {
 			if zone.Get(z.ZoneID(id)).InBounds(msg) {
 				now := time.Now()
@@ -110,9 +111,10 @@ func (z *ZonedInteraction) ClearHover() {
 // hitTest should return the zone ID at the given screen coordinates, or "" if none.
 func (z *ZonedInteraction) HandleMouseCoords(msg tea.MouseMsg, hitTest func(x, y int) string) MouseResult {
 	var result MouseResult
+	mouse := msg.Mouse()
 
-	if msg.Action == tea.MouseActionMotion {
-		newHovered := hitTest(msg.X, msg.Y)
+	if _, ok := msg.(tea.MouseMotionMsg); ok {
+		newHovered := hitTest(mouse.X, mouse.Y)
 		if newHovered != z.hoveredID {
 			z.hoveredID = newHovered
 			result.HoverChanged = true
@@ -120,8 +122,8 @@ func (z *ZonedInteraction) HandleMouseCoords(msg tea.MouseMsg, hitTest func(x, y
 		return result
 	}
 
-	if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft {
-		id := hitTest(msg.X, msg.Y)
+	if _, ok := msg.(tea.MouseReleaseMsg); ok && mouse.Button == tea.MouseLeft {
+		id := hitTest(mouse.X, mouse.Y)
 		if id != "" {
 			now := time.Now()
 			isDoubleClick := z.lastClickID == id && now.Sub(z.lastClickTime) < DoubleClickThreshold

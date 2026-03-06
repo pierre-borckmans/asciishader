@@ -21,9 +21,9 @@ import (
 	"asciishader/tui/layout"
 	"asciishader/tui/views"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	zone "github.com/lrstanley/bubblezone"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	zone "github.com/lrstanley/bubblezone/v2"
 )
 
 type tickMsg time.Time
@@ -152,10 +152,7 @@ func initialModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(
-		tick(),
-		tea.EnterAltScreen,
-	)
+	return tick()
 }
 
 func tick() tea.Cmd {
@@ -337,7 +334,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 	}
 
@@ -346,6 +343,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	hh := headerHeight()
+	mouse := msg.Mouse()
 
 	// Sidebar mouse interaction (all views)
 	sidebarWidth := m.sidebar.Width()
@@ -442,22 +440,22 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// Region selection mouse handling — only consume if interacting with the region
 	if m.recState == recorder.RecordSelecting && m.regionSelector != nil {
 		viewportLeft := sidebarWidth + 2
-		vpX := msg.X - viewportLeft
-		vpY := msg.Y - hh
+		vpX := mouse.X - viewportLeft
+		vpY := mouse.Y - hh
 
-		switch msg.Action {
-		case tea.MouseActionPress:
-			if msg.Button == tea.MouseButtonLeft {
+		switch msg.(type) {
+		case tea.MouseClickMsg:
+			if mouse.Button == tea.MouseLeft {
 				if m.regionSelector.HandleMousePress(vpX, vpY) {
 					return m, nil
 				}
 			}
-		case tea.MouseActionMotion:
+		case tea.MouseMotionMsg:
 			if m.regionSelector.IsDragging() {
 				m.regionSelector.HandleMouseDrag(vpX, vpY)
 				return m, nil
 			}
-		case tea.MouseActionRelease:
+		case tea.MouseReleaseMsg:
 			if m.regionSelector.IsDragging() {
 				m.regionSelector.HandleMouseRelease()
 				return m, nil
@@ -479,16 +477,16 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		vpHeight -= m.bottomPanel.Height()
 	}
 
-	inViewport := msg.X >= viewportLeft && msg.X < viewportRight &&
-		msg.Y >= hh && msg.Y < hh+vpHeight
+	inViewport := mouse.X >= viewportLeft && mouse.X < viewportRight &&
+		mouse.Y >= hh && mouse.Y < hh+vpHeight
 
-	switch msg.Action {
-	case tea.MouseActionPress:
+	switch msg.(type) {
+	case tea.MouseClickMsg:
 		if inViewport {
-			if msg.Button == tea.MouseButtonLeft {
+			if mouse.Button == tea.MouseLeft {
 				// Double-click detection: reset camera
 				now := time.Now()
-				dx, dy := msg.X-m.lastClickX, msg.Y-m.lastClickY
+				dx, dy := mouse.X-m.lastClickX, mouse.Y-m.lastClickY
 				if dx < 0 { dx = -dx }
 				if dy < 0 { dy = -dy }
 				if now.Sub(m.lastClickTime) < 300*time.Millisecond && dx < 3 && dy < 3 {
@@ -501,57 +499,57 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				m.lastClickTime = now
-				m.lastClickX = msg.X
-				m.lastClickY = msg.Y
+				m.lastClickX = mouse.X
+				m.lastClickY = mouse.Y
 
 				m.mouseDrag = true
-				m.mouseLastX = msg.X
-				m.mouseLastY = msg.Y
+				m.mouseLastX = mouse.X
+				m.mouseLastY = mouse.Y
 				m.autoRotate = false
-			} else if msg.Button == tea.MouseButtonRight {
+			} else if mouse.Button == tea.MouseRight {
 				m.mousePan = true
-				m.mouseLastX = msg.X
-				m.mouseLastY = msg.Y
+				m.mouseLastX = mouse.X
+				m.mouseLastY = mouse.Y
 			}
 		}
-	case tea.MouseActionRelease:
+	case tea.MouseReleaseMsg:
 		m.mouseDrag = false
 		m.mousePan = false
-	case tea.MouseActionMotion:
+	case tea.MouseMotionMsg:
 		if m.mouseDrag {
-			dx := msg.X - m.mouseLastX
-			dy := msg.Y - m.mouseLastY
+			dx := mouse.X - m.mouseLastX
+			dy := mouse.Y - m.mouseLastY
 			m.camAngleY += float64(dx) * 0.02
 			m.camAngleX = core.Clamp(m.camAngleX+float64(dy)*0.05, -math.Pi/2+0.1, math.Pi/2-0.1)
-			m.mouseLastX = msg.X
-			m.mouseLastY = msg.Y
+			m.mouseLastX = mouse.X
+			m.mouseLastY = mouse.Y
 		}
 		if m.mousePan {
-			dx := msg.X - m.mouseLastX
-			dy := msg.Y - m.mouseLastY
+			dx := mouse.X - m.mouseLastX
+			dy := mouse.Y - m.mouseLastY
 			// Pan in camera's right/up plane
 			right := core.Vec3{X: math.Cos(m.camAngleY), Y: 0, Z: math.Sin(m.camAngleY)}
 			up := core.V(0, 1, 0)
 			panSpeed := m.camDist * 0.01
 			m.camTarget = m.camTarget.Add(right.Mul(float64(dx) * panSpeed))
 			m.camTarget = m.camTarget.Add(up.Mul(float64(dy) * panSpeed * 2.2))
-			m.mouseLastX = msg.X
-			m.mouseLastY = msg.Y
+			m.mouseLastX = mouse.X
+			m.mouseLastY = mouse.Y
 		}
-	}
-
-	if inViewport {
-		if msg.Button == tea.MouseButtonWheelUp {
-			m.camDist = core.Clamp(m.camDist*0.92, 0.5, 30)
-		} else if msg.Button == tea.MouseButtonWheelDown {
-			m.camDist = core.Clamp(m.camDist/0.92, 0.5, 30)
+	case tea.MouseWheelMsg:
+		if inViewport {
+			if mouse.Button == tea.MouseWheelUp {
+				m.camDist = core.Clamp(m.camDist*0.92, 0.5, 30)
+			} else if mouse.Button == tea.MouseWheelDown {
+				m.camDist = core.Clamp(m.camDist/0.92, 0.5, 30)
+			}
 		}
 	}
 
 	return m, nil
 }
 
-func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	// Global keys (all views)
@@ -749,7 +747,7 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		m.scene = (m.scene - 1 + len(scene.Scenes)) % len(scene.Scenes)
 		m.time = 0
 		m.syncSceneGLSL()
-	case " ":
+	case "space":
 		m.paused = !m.paused
 	case "a":
 		m.autoRotate = !m.autoRotate
@@ -849,7 +847,7 @@ func (m model) handleControlsKey(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) handleEditorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m model) handleEditorKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	switch key {
 	case "esc":
@@ -1010,9 +1008,12 @@ func (m *model) resizeViewport() {
 	m.config.Resize(cw, vh)
 }
 
-func (m model) View() string {
+func (m model) View() tea.View {
 	if m.width == 0 || m.height == 0 {
-		return "Initializing..."
+		v := tea.NewView("Initializing...")
+		v.AltScreen = true
+		v.MouseMode = tea.MouseModeAllMotion
+		return v
 	}
 
 	// --- Header ---
@@ -1257,7 +1258,10 @@ func (m model) View() string {
 		middle = lipgloss.JoinHorizontal(lipgloss.Top, sidebarStr, leftGap, viewContentBlock)
 	}
 
-	return zone.Scan(header + "\n" + middle + "\n" + footer)
+	v := tea.NewView(zone.Scan(header + "\n" + middle + "\n" + footer))
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeAllMotion
+	return v
 }
 
 func main() {
@@ -1285,11 +1289,7 @@ func main() {
 	m.syncSceneGLSL()
 	defer gpuRenderer.Destroy()
 
-	p := tea.NewProgram(
-		m,
-		tea.WithAltScreen(),
-		tea.WithMouseAllMotion(),
-	)
+	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -1313,10 +1313,7 @@ func runPlayer(path string) {
 		lastFrame: time.Now(),
 	}
 
-	p := tea.NewProgram(
-		pm,
-		tea.WithAltScreen(),
-	)
+	p := tea.NewProgram(pm)
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -1333,10 +1330,7 @@ type playerModel struct {
 }
 
 func (pm playerModel) Init() tea.Cmd {
-	return tea.Batch(
-		tick(),
-		tea.EnterAltScreen,
-	)
+	return tick()
 }
 
 func (pm playerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -1357,11 +1351,11 @@ func (pm playerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		pm.player.Tick(dt)
 		return pm, tick()
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "q", "esc", "ctrl+c":
 			return pm, tea.Quit
-		case " ":
+		case "space":
 			pm.player.Paused = !pm.player.Paused
 		case "l":
 			pm.player.SetLoop(!pm.player.Loop)
@@ -1371,9 +1365,11 @@ func (pm playerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return pm, nil
 }
 
-func (pm playerModel) View() string {
+func (pm playerModel) View() tea.View {
 	if pm.width == 0 || pm.height == 0 {
-		return "Loading..."
+		v := tea.NewView("Loading...")
+		v.AltScreen = true
+		return v
 	}
 
 	frame := pm.player.Render()
@@ -1387,5 +1383,7 @@ func (pm playerModel) View() string {
 		Foreground(lipgloss.Color("#CCCCCC")).
 		Width(pm.width)
 
-	return frame + "\n" + statusStyle.Render(status)
+	v := tea.NewView(frame + "\n" + statusStyle.Render(status))
+	v.AltScreen = true
+	return v
 }
