@@ -514,9 +514,10 @@ void main() {
     }
 
     if (uSliceMode == 1) {
-        // SDF slice heatmap: evaluate SDF at a 2D plane
+        // SDF slice heatmap: plane through camera target, perpendicular to view
+        // Uses the same camera basis (right, up) so rotation/pan/zoom work naturally
         float scale = uOrthoScale;
-        vec3 sliceP = vec3(ndc.x * scale * aspect, uSliceY, ndc.y * scale);
+        vec3 sliceP = uCameraTarget + right * ndc.x * scale * aspect + up * ndc.y * scale;
         float d = sceneSDF(sliceP);
 
         // Map distance to color: viridis-like palette
