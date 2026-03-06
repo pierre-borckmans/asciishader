@@ -1045,10 +1045,18 @@ func (m model) View() string {
 		if recStr == "" && m.recMessage != "" && time.Since(m.recMessageTime) < 3*time.Second {
 			recStr = " | " + recStyle.Render(m.recMessage)
 		}
-		// Show persistent compile error
+		// Show persistent compile error (truncated to fit)
 		if recStr == "" && m.compileErr != "" {
 			errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF3333")).Bold(true)
-			recStr = " | " + errStyle.Render("✗ "+m.compileErr)
+			errMsg := m.compileErr
+			maxLen := m.width/3
+			if maxLen < 20 {
+				maxLen = 20
+			}
+			if len(errMsg) > maxLen {
+				errMsg = errMsg[:maxLen-3] + "..."
+			}
+			recStr = " | " + errStyle.Render("✗ "+errMsg)
 		}
 		s := scene.Scenes[m.scene]
 		fileType := ""
