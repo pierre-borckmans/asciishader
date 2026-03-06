@@ -2,8 +2,9 @@ package shader
 
 import "strings"
 
-// ShaderPrefix contains version, uniforms, constants, and the full SDF primitive library.
-const ShaderPrefix = `#version 150
+// ShaderPrefixUniforms contains just version, uniforms, and constants (no SDF library).
+// Used for standalone GLSL files that define their own SDF primitives.
+const ShaderPrefixUniforms = `#version 150
 uniform vec2 uResolution;
 uniform float uTime;
 uniform vec3 uCameraPos;
@@ -23,7 +24,11 @@ const float MAX_DIST = 50.0;
 const float SURF_DIST = 0.005;
 const float NORMAL_EPS = 0.001;
 const float PI = 3.14159265;
+`
 
+// ShaderPrefix contains version, uniforms, constants, and the full SDF primitive library.
+// Used for Chisel-compiled code that relies on built-in SDF functions.
+const ShaderPrefix = ShaderPrefixUniforms + `
 // ---- SDF Primitives ----
 
 float sdSphere(vec3 p, float r) {
@@ -396,4 +401,14 @@ func Assemble(userCode string) string {
 		return ShaderRawPrefix + userCode + "\n" + ShaderRawSuffix + "\x00"
 	}
 	return ShaderPrefix + userCode + "\n" + ShaderSuffix + "\x00"
+}
+
+// AssembleGLSL assembles a standalone GLSL file that defines its own SDF
+// primitives. Uses minimal prefix (uniforms only, no SDF library) to avoid
+// redefinition conflicts.
+func AssembleGLSL(userCode string) string {
+	if IsRawShader(userCode) {
+		return ShaderRawPrefix + userCode + "\n" + ShaderRawSuffix + "\x00"
+	}
+	return ShaderPrefixUniforms + userCode + "\n" + ShaderSuffix + "\x00"
 }

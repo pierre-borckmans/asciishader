@@ -890,7 +890,7 @@ func (m *model) syncSceneGLSL() {
 		m.editor.ChiselMode = false
 		m.editor.SetCode(s.GLSL)
 		if m.gpu != nil {
-			err := m.gpu.CompileUserCode(s.GLSL)
+			err := m.gpu.CompileGLSLCode(s.GLSL)
 			if err != nil {
 				m.editor.Status = fmt.Sprintf("Error: %s", err.Error())
 				m.editor.StatusErr = true

@@ -157,11 +157,10 @@ func (et *EditorTab) compileChisel(gpu *gpupkg.GPURenderer, code string) {
 }
 
 func (et *EditorTab) compileGLSL(gpu *gpupkg.GPURenderer, code string) {
-	err := gpu.CompileUserCode(code)
+	// Standalone GLSL files use minimal prefix (no SDF library)
+	err := gpu.CompileGLSLCode(code)
 	if err != nil {
 		errMsg := err.Error()
-		prefixLines := shader.PrefixLineCount(code)
-		errMsg = adjustErrorLineNumbers(errMsg, prefixLines)
 		et.Status = fmt.Sprintf("Error: %s", errMsg)
 		et.StatusErr = true
 	} else {

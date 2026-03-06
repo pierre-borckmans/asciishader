@@ -3,6 +3,7 @@ package scene
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -31,43 +32,49 @@ func LoadShaderFiles() {
 	}
 	dir := filepath.Dir(exePath)
 
-	// Load .glsl and .chisel files from shaders/ and shaders/glsl-legacy/
+	// Collect all .glsl and .chisel files from shaders/ and shaders/glsl-legacy/
 	dirs := []string{"shaders", filepath.Join("shaders", "glsl-legacy")}
+	seen := make(map[string]bool) // deduplicate by absolute path
+	var allPaths []string
 	for _, ext := range []string{"*.glsl", "*.chisel"} {
-		var matches []string
 		for _, d := range dirs {
-			pattern := filepath.Join(dir, d, ext)
-			m, _ := filepath.Glob(pattern)
-			matches = append(matches, m...)
-			cwdPattern := filepath.Join(d, ext)
-			m, _ = filepath.Glob(cwdPattern)
-			matches = append(matches, m...)
+			for _, pattern := range []string{filepath.Join(dir, d, ext), filepath.Join(d, ext)} {
+				m, _ := filepath.Glob(pattern)
+				for _, p := range m {
+					abs, _ := filepath.Abs(p)
+					if !seen[abs] {
+						seen[abs] = true
+						allPaths = append(allPaths, p)
+					}
+				}
+			}
 		}
-		if len(matches) == 0 {
+	}
+
+	// Sort alphabetically by filename (base name, case-insensitive)
+	sort.Slice(allPaths, func(i, j int) bool {
+		return strings.ToLower(filepath.Base(allPaths[i])) < strings.ToLower(filepath.Base(allPaths[j]))
+	})
+
+	for _, path := range allPaths {
+		data, err := os.ReadFile(path)
+		if err != nil {
 			continue
 		}
+		content := string(data)
+		name := ShaderFileName(path, content)
+		isChisel := strings.HasSuffix(path, ".chisel")
 
-		for _, path := range matches {
-			data, err := os.ReadFile(path)
-			if err != nil {
-				continue
-			}
-			content := string(data)
-			name := ShaderFileName(path, content)
-			isChisel := strings.HasSuffix(path, ".chisel")
-
-			// Each file is a separate scene entry.
-			s := Scene{
-				Name:     name,
-				FilePath: path,
-			}
-			if isChisel {
-				s.Chisel = content
-			} else {
-				s.GLSL = content
-			}
-			Scenes = append(Scenes, s)
+		s := Scene{
+			Name:     name,
+			FilePath: path,
 		}
+		if isChisel {
+			s.Chisel = content
+		} else {
+			s.GLSL = content
+		}
+		Scenes = append(Scenes, s)
 	}
 }
 

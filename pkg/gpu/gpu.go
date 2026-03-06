@@ -791,7 +791,16 @@ func (g *GPURenderer) cacheUniforms() {
 // On success, swaps in the new program. On failure, keeps the old program
 // and returns the error.
 func (g *GPURenderer) CompileUserCode(code string) error {
-	fragSrc := shader.Assemble(code)
+	return g.compileWithAssembler(code, shader.Assemble)
+}
+
+// CompileGLSLCode compiles standalone GLSL code using minimal prefix (no SDF library).
+func (g *GPURenderer) CompileGLSLCode(code string) error {
+	return g.compileWithAssembler(code, shader.AssembleGLSL)
+}
+
+func (g *GPURenderer) compileWithAssembler(code string, assemble func(string) string) error {
+	fragSrc := assemble(code)
 	newProg, err := createProgram(vertexShaderSource, fragSrc)
 	if err != nil {
 		g.compileErr = err.Error()
