@@ -232,7 +232,7 @@ func TestBoolean_ImplicitUnion(t *testing.T) {
 
 func TestVariable_ScalarAssignment(t *testing.T) {
 	glsl := compile(t, "r = 2\nsphere(r)")
-	assertContains(t, glsl, "sdSphere(p, r)", "variable used in shape call")
+	assertContains(t, glsl, "sdSphere(p, 2.0)", "scalar variable inlined in shape call")
 }
 
 func TestVariable_SDFAssignment(t *testing.T) {

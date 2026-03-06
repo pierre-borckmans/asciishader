@@ -297,10 +297,13 @@ func (g *generator) emitScalarExpr(expr ast.Expr) string {
 				return formatFloat(v)
 			}
 		}
-		// Check scope for float variables.
+		// Check scope for variables.
 		if entry, ok := g.scope[e.Name]; ok {
 			if entry.kind == entryFloat {
 				return entry.varName
+			}
+			if entry.kind == entryAST {
+				return g.emitScalarExpr(entry.node)
 			}
 		}
 		// Axis constants.
