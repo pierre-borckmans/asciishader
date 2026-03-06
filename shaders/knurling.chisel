@@ -2,10 +2,10 @@
 // Textured cylindrical grip with knurled pattern
 // Port of fogleman/sdf/examples/knurling.py
 
-// Knurling pattern: 24 rotated boxes arranged around the cylinder
-// box(1, 4, 1) = thin slab tall along Y (cylinder axis), rotated 45° around Y
+// Knurling pattern: 24 thin boxes arranged around the cylinder
+// Smaller cross-section (0.4) for shallower cuts
 pattern = for i in 0..24 {
-  box(1, 4, 1).rot(45, y)
+  box(0.4, 8, 0.4).rot(45, y)
     .at(cos(i * TAU / 24) * 1.6, 0, sin(i * TAU / 24) * 1.6)
 }
 
