@@ -59,11 +59,14 @@ type model struct {
 	camAngleX  float64
 	camDist    float64
 	camTarget  core.Vec3
-	autoRotate bool
-	mouseLastX int
-	mouseLastY int
-	mouseDrag  bool
-	mousePan   bool
+	autoRotate     bool
+	mouseLastX     int
+	mouseLastY     int
+	mouseDrag      bool
+	mousePan       bool
+	lastClickTime  time.Time
+	lastClickX     int
+	lastClickY     int
 	fps        float64
 	lastFrame  time.Time
 	frame      string
@@ -483,6 +486,24 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case tea.MouseActionPress:
 		if inViewport {
 			if msg.Button == tea.MouseButtonLeft {
+				// Double-click detection: reset camera
+				now := time.Now()
+				dx, dy := msg.X-m.lastClickX, msg.Y-m.lastClickY
+				if dx < 0 { dx = -dx }
+				if dy < 0 { dy = -dy }
+				if now.Sub(m.lastClickTime) < 300*time.Millisecond && dx < 3 && dy < 3 {
+					m.camAngleX = 0
+					m.camAngleY = 0
+					m.camDist = 4.0
+					m.camTarget = core.V(0, 0, 0)
+					m.autoRotate = false
+					m.lastClickTime = time.Time{}
+					return m, nil
+				}
+				m.lastClickTime = now
+				m.lastClickX = msg.X
+				m.lastClickY = msg.Y
+
 				m.mouseDrag = true
 				m.mouseLastX = msg.X
 				m.mouseLastY = msg.Y
@@ -974,6 +995,7 @@ func (m *model) GetCamAngleX() float64               { return m.camAngleX }
 func (m *model) GetCamAngleY() float64               { return m.camAngleY }
 func (m *model) GetCamDist() float64                 { return m.camDist }
 func (m *model) GetCamTarget() core.Vec3             { return m.camTarget }
+func (m *model) IsAutoRotate() bool                  { return m.autoRotate }
 
 // resizeViewport updates the renderer dimensions based on current layout.
 func (m *model) resizeViewport() {

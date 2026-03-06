@@ -301,6 +301,25 @@ func (ct *ControlsTab) Render(width int, m AppState) string {
 	}
 	lines += ct.zoned.Mark("blocks", blocksLine) + "\n"
 
+	// Camera info (read-only)
+	lines += "\n"
+	lines += headerStyle.Render(pad(" Camera", width)) + "\n"
+	lines += dimStyle.Render(pad(" ───────────────────────────", width)) + "\n"
+
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	rotX := m.GetCamAngleX() * 180 / 3.14159265
+	rotY := m.GetCamAngleY() * 180 / 3.14159265
+	lines += infoStyle.Render(pad(fmt.Sprintf(" Rot X  %6.1f°", rotX), width)) + "\n"
+	lines += infoStyle.Render(pad(fmt.Sprintf(" Rot Y  %6.1f°", rotY), width)) + "\n"
+	lines += infoStyle.Render(pad(fmt.Sprintf(" Zoom   %6.2f", m.GetCamDist()), width)) + "\n"
+	target := m.GetCamTarget()
+	lines += infoStyle.Render(pad(fmt.Sprintf(" Pan    %5.1f %5.1f %5.1f", target.X, target.Y, target.Z), width)) + "\n"
+	autoStr := "off"
+	if m.IsAutoRotate() {
+		autoStr = "on"
+	}
+	lines += infoStyle.Render(pad(fmt.Sprintf(" Auto   %s", autoStr), width)) + "\n"
+
 	return lines
 }
 

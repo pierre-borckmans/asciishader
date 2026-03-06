@@ -13,4 +13,4 @@ blobby=sphere(1.5)
 |~1 s.rot(90, x)
 |~1 s.rot(90, y)
 
-blobby.cyan
+blobby.cyan.rot(30*t,x).rot(50*t,y)
