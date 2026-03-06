@@ -1050,7 +1050,14 @@ func (m model) View() string {
 			errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF3333")).Bold(true)
 			recStr = " | " + errStyle.Render("✗ "+m.compileErr)
 		}
-		headerTitle = fmt.Sprintf("ASCII Shader  ·  %s", scene.Scenes[m.scene].Name)
+		s := scene.Scenes[m.scene]
+		fileType := ""
+		if s.Chisel != "" {
+			fileType = " [chisel]"
+		} else if s.GLSL != "" {
+			fileType = " [glsl]"
+		}
+		headerTitle = fmt.Sprintf("ASCII Shader  ·  %s%s", s.Name, fileType)
 		rightInfo = fmt.Sprintf("%s | %.0f fps%s%s", modeStr, m.fps, pauseStr, recStr)
 		rpWidth = m.rightPanel.Width()
 	case ViewPlayer:

@@ -56,32 +56,17 @@ func LoadShaderFiles() {
 			name := ShaderFileName(path, content)
 			isChisel := strings.HasSuffix(path, ".chisel")
 
-			// Try to match an existing scene by name
-			found := false
-			for i := range Scenes {
-				if Scenes[i].Name == name {
-					if isChisel {
-						Scenes[i].Chisel = content
-					} else {
-						Scenes[i].GLSL = content
-					}
-					Scenes[i].FilePath = path
-					found = true
-					break
-				}
+			// Each file is a separate scene entry.
+			s := Scene{
+				Name:     name,
+				FilePath: path,
 			}
-			if !found {
-				s := Scene{
-					Name:     name,
-					FilePath: path,
-				}
-				if isChisel {
-					s.Chisel = content
-				} else {
-					s.GLSL = content
-				}
-				Scenes = append(Scenes, s)
+			if isChisel {
+				s.Chisel = content
+			} else {
+				s.GLSL = content
 			}
+			Scenes = append(Scenes, s)
 		}
 	}
 }
