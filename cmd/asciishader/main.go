@@ -550,8 +550,8 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 	case tea.MouseWheelMsg:
 		if inViewport {
-			if mouse.Mod.Contains(tea.ModMeta) && m.config.RenderMode == core.RenderSlice {
-				// Cmd+scroll moves slice depth along view direction
+			if mouse.Mod.Contains(tea.ModShift) && m.config.RenderMode == core.RenderSlice {
+				// Shift+scroll moves slice depth along view direction
 				fwd := m.config.Camera.Target.Sub(m.config.Camera.Pos).Normalize()
 				step := m.camDist * 0.05
 				if mouse.Button == tea.MouseWheelUp {
