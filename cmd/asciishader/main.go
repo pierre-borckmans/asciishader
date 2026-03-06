@@ -88,6 +88,7 @@ type model struct {
 	regionSelector *recorder.RegionSelector
 	recMessage     string    // transient status message (e.g. "Saved clip.asciirec")
 	recMessageTime time.Time // when message was set (clears after 3s)
+	compileErr     string    // persists until shader compiles successfully
 
 	// Playback
 	player   *clip.Player
@@ -836,6 +837,7 @@ func (m model) handleEditorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "ctrl+r":
 		m.editor.Compile(m.gpu)
+		m.syncCompileErr()
 		return m, nil
 	}
 
@@ -880,6 +882,7 @@ func (m *model) syncSceneGLSL() {
 		if m.gpu != nil {
 			m.editor.Compile(m.gpu)
 		}
+		m.syncCompileErr()
 		return
 	}
 
@@ -896,6 +899,16 @@ func (m *model) syncSceneGLSL() {
 				m.editor.StatusErr = false
 			}
 		}
+		m.syncCompileErr()
+	}
+}
+
+// syncCompileErr updates the persistent compile error from the editor status.
+func (m *model) syncCompileErr() {
+	if m.editor.StatusErr {
+		m.compileErr = m.editor.Status
+	} else {
+		m.compileErr = ""
 	}
 }
 
@@ -941,6 +954,7 @@ func (m *model) checkFileChanged() {
 	if m.gpu != nil {
 		m.editor.Compile(m.gpu)
 	}
+	m.syncCompileErr()
 
 	m.recMessage = fmt.Sprintf("Reloaded %s", filepath.Base(m.watchFile))
 	m.recMessageTime = time.Now()
@@ -1030,6 +1044,11 @@ func (m model) View() string {
 		// Show transient messages (e.g. profiling) when no recording status is displayed
 		if recStr == "" && m.recMessage != "" && time.Since(m.recMessageTime) < 3*time.Second {
 			recStr = " | " + recStyle.Render(m.recMessage)
+		}
+		// Show persistent compile error
+		if recStr == "" && m.compileErr != "" {
+			errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF3333")).Bold(true)
+			recStr = " | " + errStyle.Render("✗ "+m.compileErr)
 		}
 		headerTitle = fmt.Sprintf("ASCII Shader  ·  %s", scene.Scenes[m.scene].Name)
 		rightInfo = fmt.Sprintf("%s | %.0f fps%s%s", modeStr, m.fps, pauseStr, recStr)
