@@ -954,37 +954,68 @@ func (g *generator) emitRep(e *ast.MethodCall) string {
 		}
 	}
 
-	// padding is accepted but not yet fully supported
-	if paddingArg != nil {
-		_ = paddingArg
-		g.addDiag(diagnostic.Warning, "padding parameter is accepted but not yet fully supported", e.NodeSpan())
-	}
-
-	pNew := g.freshVar("p")
-
+	// Compute spacing vector
+	var sVar string
 	if countArg != nil {
-		// Clamped repetition: p - s * clamp(round(p/s), -N, N)
 		s := g.emitScalarExpr(positionalArgs[0].Value)
 		n := g.emitScalarExpr(countArg)
+		pNew := g.freshVar("p")
 		g.emit("vec3 %s = %s - vec3(%s) * clamp(round(%s / vec3(%s)), vec3(-%s), vec3(%s));",
 			pNew, g.pointVar, s, g.pointVar, s, n, n)
+		oldPoint := g.pointVar
+		g.pointVar = pNew
+		result := g.emitSDF(e.Receiver)
+		g.pointVar = oldPoint
+		return result
 	} else if len(positionalArgs) == 1 {
-		// Infinite repeat, uniform spacing
 		s := g.emitScalarExpr(positionalArgs[0].Value)
-		g.emit("vec3 %s = mod(%s + 0.5 * %s, vec3(%s)) - 0.5 * %s;",
-			pNew, g.pointVar, s, s, s)
+		sVar = fmt.Sprintf("vec3(%s)", s)
 	} else if len(positionalArgs) >= 3 {
-		// Per-axis spacing
 		sx := g.emitScalarExpr(positionalArgs[0].Value)
 		sy := g.emitScalarExpr(positionalArgs[1].Value)
 		sz := g.emitScalarExpr(positionalArgs[2].Value)
-		sVar := fmt.Sprintf("vec3(%s, %s, %s)", sx, sy, sz)
-		g.emit("vec3 %s = mod(%s + 0.5 * %s, %s) - 0.5 * %s;",
-			pNew, g.pointVar, sVar, sVar, sVar)
+		sVar = fmt.Sprintf("vec3(%s, %s, %s)", sx, sy, sz)
 	} else {
 		g.addDiag(diagnostic.Error, ".rep() requires 1, 3 positional args, or spacing + count:", e.NodeSpan())
 		return g.emitSDF(e.Receiver)
 	}
+
+	if paddingArg != nil {
+		// Padding: evaluate 3x3 neighboring cells for correct SDF at boundaries
+		pad := g.emitScalarExpr(paddingArg)
+		_ = pad
+		sVarName := g.freshVar("rs")
+		g.emit("vec3 %s = %s;", sVarName, sVar)
+		cellVar := g.freshVar("cell")
+		g.emit("vec3 %s = floor((%s + %s * 0.5) / %s);", cellVar, g.pointVar, sVarName, sVarName)
+		d := g.freshVar("d")
+		g.emit("float %s = 1e10;", d)
+
+		// Determine which axes to iterate (skip axes with very large spacing)
+		g.emit("for (int _dx = -1; _dx <= 1; _dx++) {")
+		g.emit("for (int _dz = -1; _dz <= 1; _dz++) {")
+		g.indent += 2
+
+		pNew := g.freshVar("p")
+		g.emit("vec3 %s = %s - vec3((%s.x + float(_dx)) * %s.x, 0.0, (%s.z + float(_dz)) * %s.z);",
+			pNew, g.pointVar, cellVar, sVarName, cellVar, sVarName)
+
+		oldPoint := g.pointVar
+		g.pointVar = pNew
+		inner := g.emitSDF(e.Receiver)
+		g.pointVar = oldPoint
+
+		g.emit("%s = min(%s, %s);", d, d, inner)
+		g.indent -= 2
+		g.emit("}}")
+
+		return d
+	}
+
+	// Simple mod-based repeat (no padding)
+	pNew := g.freshVar("p")
+	g.emit("vec3 %s = mod(%s + 0.5 * %s, %s) - 0.5 * %s;",
+		pNew, g.pointVar, sVar, sVar, sVar)
 
 	oldPoint := g.pointVar
 	g.pointVar = pNew
