@@ -2134,9 +2134,9 @@ func shapeDefault(name, pv string) string {
 	case "sphere":
 		return fmt.Sprintf("sdSphere(%s, 1.0)", pv)
 	case "box":
-		return fmt.Sprintf("sdBox(%s, vec3(1.0))", pv)
+		return fmt.Sprintf("sdBox(%s, vec3(0.5))", pv)
 	case "cylinder":
-		return fmt.Sprintf("sdCylinder(%s, 0.5, 2.0)", pv)
+		return fmt.Sprintf("sdCylinder(%s, 0.5, 1.0)", pv)
 	case "torus":
 		return fmt.Sprintf("sdTorus(%s, 1.0, 0.3)", pv)
 	case "plane":
@@ -2152,21 +2152,21 @@ func shapeDefault(name, pv string) string {
 	case "cone":
 		return fmt.Sprintf("sdCone(%s, vec2(0.6, 0.8), 0.45)", pv)
 	case "rounded_box":
-		return fmt.Sprintf("sdRoundBox(%s, vec3(1.0), 0.1)", pv)
+		return fmt.Sprintf("sdRoundBox(%s, vec3(0.5), 0.1)", pv)
 	case "box_frame":
-		return fmt.Sprintf("sdBoxFrame(%s, vec3(1.0), 0.05)", pv)
+		return fmt.Sprintf("sdBoxFrame(%s, vec3(0.5), 0.05)", pv)
 	case "capped_torus":
 		return fmt.Sprintf("sdCappedTorus(%s, vec2(0.866025, -0.5), 0.25, 0.05)", pv)
 	case "hex_prism":
-		return fmt.Sprintf("sdHexPrism(%s, vec2(1.0, 0.5))", pv)
+		return fmt.Sprintf("sdHexPrism(%s, vec2(1.0, 0.25))", pv)
 	case "octagon_prism":
-		return fmt.Sprintf("sdOctogonPrism(%s, 1.0, 0.5)", pv)
+		return fmt.Sprintf("sdOctogonPrism(%s, 1.0, 0.25)", pv)
 	case "round_cone":
 		return fmt.Sprintf("sdRoundCone(%s, 0.2, 0.1, 0.3)", pv)
 	case "tri_prism":
-		return fmt.Sprintf("sdTriPrism(%s, vec2(0.3, 0.5))", pv)
+		return fmt.Sprintf("sdTriPrism(%s, vec2(0.3, 0.25))", pv)
 	case "capped_cone":
-		return fmt.Sprintf("sdCappedCone(%s, 0.5, 0.5, 0.2)", pv)
+		return fmt.Sprintf("sdCappedCone(%s, 0.25, 0.5, 0.2)", pv)
 	case "solid_angle":
 		return fmt.Sprintf("sdSolidAngle(%s, vec2(0.6, 0.8), 0.4)", pv)
 	case "rhombus":
@@ -2189,11 +2189,11 @@ func (g *generator) shapeCall(name, pv string, args []ast.Arg) string {
 
 	case "box":
 		if len(args) == 0 {
-			return fmt.Sprintf("sdBox(%s, vec3(1.0))", pv)
+			return fmt.Sprintf("sdBox(%s, vec3(0.5))", pv)
 		}
 		if len(args) == 1 {
 			s := g.emitScalarExpr(args[0].Value)
-			return fmt.Sprintf("sdBox(%s, vec3(%s))", pv, s)
+			return fmt.Sprintf("sdBox(%s, vec3((%s)*0.5))", pv, s)
 		}
 		w := g.emitScalarExpr(args[0].Value)
 		h := g.emitScalarExpr(args[1].Value)
@@ -2201,11 +2201,11 @@ func (g *generator) shapeCall(name, pv string, args []ast.Arg) string {
 		if len(args) >= 3 {
 			d = g.emitScalarExpr(args[2].Value)
 		}
-		return fmt.Sprintf("sdBox(%s, vec3(%s, %s, %s))", pv, w, h, d)
+		return fmt.Sprintf("sdBox(%s, vec3((%s)*0.5, (%s)*0.5, (%s)*0.5))", pv, w, h, d)
 
 	case "cylinder":
 		if len(args) == 0 {
-			return fmt.Sprintf("sdCylinder(%s, 0.5, 2.0)", pv)
+			return fmt.Sprintf("sdCylinder(%s, 0.5, 1.0)", pv)
 		}
 		if len(args) == 3 {
 			// cylinder(a, b, r) — endpoint variant
@@ -2215,9 +2215,9 @@ func (g *generator) shapeCall(name, pv string, args []ast.Arg) string {
 			return fmt.Sprintf("sdCylinderAB(%s, %s, %s, %s)", pv, a, b, r)
 		}
 		r := g.emitScalarExpr(args[0].Value)
-		h := "2.0"
+		h := "1.0"
 		if len(args) >= 2 {
-			h = g.emitScalarExpr(args[1].Value)
+			h = fmt.Sprintf("(%s)*0.5", g.emitScalarExpr(args[1].Value))
 		}
 		return fmt.Sprintf("sdCylinder(%s, %s, %s)", pv, r, h)
 
@@ -2300,37 +2300,37 @@ func (g *generator) shapeCall(name, pv string, args []ast.Arg) string {
 
 	case "rounded_box":
 		if len(args) == 0 {
-			return fmt.Sprintf("sdRoundBox(%s, vec3(1.0), 0.1)", pv)
+			return fmt.Sprintf("sdRoundBox(%s, vec3(0.5), 0.1)", pv)
 		}
 		if len(args) == 1 {
 			s := g.emitScalarExpr(args[0].Value)
-			return fmt.Sprintf("sdRoundBox(%s, vec3(%s), 0.1)", pv, s)
+			return fmt.Sprintf("sdRoundBox(%s, vec3((%s)*0.5), 0.1)", pv, s)
 		}
 		if len(args) == 2 {
 			s := g.emitScalarExpr(args[0].Value)
 			r := g.emitScalarExpr(args[1].Value)
-			return fmt.Sprintf("sdRoundBox(%s, vec3(%s), %s)", pv, s, r)
+			return fmt.Sprintf("sdRoundBox(%s, vec3((%s)*0.5), %s)", pv, s, r)
 		}
 		w := g.emitScalarExpr(args[0].Value)
 		h := g.emitScalarExpr(args[1].Value)
 		d := g.emitScalarExpr(args[2].Value)
 		r := g.scalarArgOr(args, 3, "0.1")
-		return fmt.Sprintf("sdRoundBox(%s, vec3(%s, %s, %s), %s)", pv, w, h, d, r)
+		return fmt.Sprintf("sdRoundBox(%s, vec3((%s)*0.5, (%s)*0.5, (%s)*0.5), %s)", pv, w, h, d, r)
 
 	case "box_frame":
 		if len(args) == 0 {
-			return fmt.Sprintf("sdBoxFrame(%s, vec3(1.0), 0.05)", pv)
+			return fmt.Sprintf("sdBoxFrame(%s, vec3(0.5), 0.05)", pv)
 		}
 		if len(args) == 2 {
 			s := g.emitScalarExpr(args[0].Value)
 			e := g.emitScalarExpr(args[1].Value)
-			return fmt.Sprintf("sdBoxFrame(%s, vec3(%s), %s)", pv, s, e)
+			return fmt.Sprintf("sdBoxFrame(%s, vec3((%s)*0.5), %s)", pv, s, e)
 		}
 		w := g.emitScalarExpr(args[0].Value)
 		h := g.emitScalarExpr(args[1].Value)
 		d := g.emitScalarExpr(args[2].Value)
 		e := g.scalarArgOr(args, 3, "0.05")
-		return fmt.Sprintf("sdBoxFrame(%s, vec3(%s, %s, %s), %s)", pv, w, h, d, e)
+		return fmt.Sprintf("sdBoxFrame(%s, vec3((%s)*0.5, (%s)*0.5, (%s)*0.5), %s)", pv, w, h, d, e)
 
 	case "capped_torus":
 		if len(args) == 0 {
@@ -2342,13 +2342,25 @@ func (g *generator) shapeCall(name, pv string, args []ast.Arg) string {
 		return fmt.Sprintf("sdCappedTorus(%s, %s, %s, %s)", pv, sc, ra, rb)
 
 	case "hex_prism":
-		r := g.scalarArgOr(args, 0, "1.0")
-		h := g.scalarArgOr(args, 1, "0.5")
+		if len(args) == 0 {
+			return fmt.Sprintf("sdHexPrism(%s, vec2(1.0, 0.25))", pv)
+		}
+		r := g.emitScalarExpr(args[0].Value)
+		h := "0.25"
+		if len(args) >= 2 {
+			h = fmt.Sprintf("(%s)*0.5", g.emitScalarExpr(args[1].Value))
+		}
 		return fmt.Sprintf("sdHexPrism(%s, vec2(%s, %s))", pv, r, h)
 
 	case "octagon_prism":
-		r := g.scalarArgOr(args, 0, "1.0")
-		h := g.scalarArgOr(args, 1, "0.5")
+		if len(args) == 0 {
+			return fmt.Sprintf("sdOctogonPrism(%s, 1.0, 0.25)", pv)
+		}
+		r := g.emitScalarExpr(args[0].Value)
+		h := "0.25"
+		if len(args) >= 2 {
+			h = fmt.Sprintf("(%s)*0.5", g.emitScalarExpr(args[1].Value))
+		}
 		return fmt.Sprintf("sdOctogonPrism(%s, %s, %s)", pv, r, h)
 
 	case "round_cone":
@@ -2366,8 +2378,14 @@ func (g *generator) shapeCall(name, pv string, args []ast.Arg) string {
 		return fmt.Sprintf("sdRoundCone(%s, %s, %s, %s)", pv, r1, r2, h)
 
 	case "tri_prism":
-		s := g.scalarArgOr(args, 0, "0.3")
-		h := g.scalarArgOr(args, 1, "0.5")
+		if len(args) == 0 {
+			return fmt.Sprintf("sdTriPrism(%s, vec2(0.3, 0.25))", pv)
+		}
+		s := g.emitScalarExpr(args[0].Value)
+		h := "0.25"
+		if len(args) >= 2 {
+			h = fmt.Sprintf("(%s)*0.5", g.emitScalarExpr(args[1].Value))
+		}
 		return fmt.Sprintf("sdTriPrism(%s, vec2(%s, %s))", pv, s, h)
 
 	case "capped_cone":
@@ -2379,7 +2397,10 @@ func (g *generator) shapeCall(name, pv string, args []ast.Arg) string {
 			rb := g.emitScalarExpr(args[3].Value)
 			return fmt.Sprintf("sdCappedConeAB(%s, %s, %s, %s, %s)", pv, a, b, ra, rb)
 		}
-		h := g.scalarArgOr(args, 0, "0.5")
+		if len(args) == 0 {
+			return fmt.Sprintf("sdCappedCone(%s, 0.25, 0.5, 0.2)", pv)
+		}
+		h := fmt.Sprintf("(%s)*0.5", g.emitScalarExpr(args[0].Value))
 		r1 := g.scalarArgOr(args, 1, "0.5")
 		r2 := g.scalarArgOr(args, 2, "0.2")
 		return fmt.Sprintf("sdCappedCone(%s, %s, %s, %s)", pv, h, r1, r2)

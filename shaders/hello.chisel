@@ -1,6 +1,6 @@
 // Scene: Hello Chisel
 // Constructive geometry — sphere intersected with box, minus 3 cylinders
-(sphere & box(1.5))
-- cylinder(0.5, 4).orient(x)
-- cylinder(0.5, 4).orient(y)
-- cylinder(0.5, 4).orient(z)
+(sphere(1.0) & box(1.5)).color(#51A0EB)
+- cylinder(0.5, 8).orient(x)
+- cylinder(0.5, 8).orient(y)
+- cylinder(0.5, 8).orient(z)

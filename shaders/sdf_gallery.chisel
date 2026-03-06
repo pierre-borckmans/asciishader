@@ -20,33 +20,33 @@ row1 = {
 // Note: .flip(y).at() = flip after translate, matching GLSL (pos-offset)*vec3(1,-1,1)
 row2 = {
   capped_torus([0.866025, -0.5], 0.25, 0.05).flip(y).at(0, 0.3, 1).color(c(25))
-  | box_frame(0.3, 0.25, 0.2, 0.025).at(0, 0.25, 0).color(c(16.9))
+  | box_frame(0.6, 0.5, 0.4, 0.025).at(0, 0.25, 0).color(c(16.9))
   | cone([0.6, 0.8], 0.45).at(0, 0.45, -1).color(c(55))
-  | capped_cone(0.25, 0.25, 0.1).at(0, 0.25, -2).color(c(13.67))
+  | capped_cone(0.5, 0.25, 0.1).at(0, 0.25, -2).color(c(13.67))
   | solid_angle([0.6, 0.8], 0.4).at(0, 0, -3).color(c(49.13))
 }.bounds([0, 0.3, -1], [0.35, 0.3, 2.5])
 
 // --- Row 3: x = 1 ---
 row3 = {
   torus(0.25, 0.05).swizzle(x, z, y).at(1, 0.3, 1).color(c(7.1))
-  | box(0.3, 0.25, 0.1).at(1, 0.25, 0).color(c(3))
+  | box(0.6, 0.5, 0.2).at(1, 0.25, 0).color(c(3))
   | capsule([-0.1, 0.1, -0.1], [0.2, 0.4, 0.2], 0.1).at(1, 0, -1).color(c(31.9))
-  | cylinder(0.15, 0.25).at(1, 0.25, -2).color(c(8))
-  | hex_prism(0.2, 0.05).at(1, 0.2, -3).color(c(18.4))
+  | cylinder(0.15, 0.5).at(1, 0.25, -2).color(c(8))
+  | hex_prism(0.2, 0.1).at(1, 0.2, -3).color(c(18.4))
 }.bounds([1, 0.3, -1], [0.35, 0.3, 2.5])
 
 // --- Row 4: x = -1 ---
 row4 = {
   pyramid(1).at(-1, -0.6, -3).color(c(13.56))
   | octahedron(0.35).at(-1, 0.15, -2).color(c(23.56))
-  | tri_prism(0.3, 0.05).at(-1, 0.15, -1).color(c(43.5))
+  | tri_prism(0.3, 0.1).at(-1, 0.15, -1).color(c(43.5))
   | ellipsoid(0.2, 0.25, 0.05).at(-1, 0.25, 0).color(c(43.17))
   | horseshoe([cos(1.3), sin(1.3)], 0.2, 0.3, [0.03, 0.08]).at(-1, 0.25, 1).color(c(11.5))
 }.bounds([-1, 0.35, -1], [0.35, 0.35, 2.5])
 
 // --- Row 5: x = 2 ---
 row5 = {
-  octagon_prism(0.2, 0.05).at(2, 0.2, -3).color(c(51.8))
+  octagon_prism(0.2, 0.1).at(2, 0.2, -3).color(c(51.8))
   | round_cone(0.2, 0.1, 0.3).at(2, 0.2, 1).color(c(37))
   | cylinder([0.1, -0.1, 0], [-0.2, 0.35, 0.1], 0.08).at(2, 0.14, -2).color(c(31.2))
   | capped_cone([0.1, 0, 0], [-0.2, 0.4, 0.1], 0.15, 0.05).at(2, 0.09, -1).color(c(46.1))

@@ -82,27 +82,27 @@ func TestShape_SphereWithRadius(t *testing.T) {
 
 func TestShape_BoxBare(t *testing.T) {
 	glsl := compile(t, "box")
-	assertContains(t, glsl, "sdBox(p, vec3(1.0))", "bare box")
+	assertContains(t, glsl, "sdBox(p, vec3(0.5))", "bare box")
 }
 
 func TestShape_BoxDimensions(t *testing.T) {
 	glsl := compile(t, "box(2, 1, 3)")
-	assertContains(t, glsl, "sdBox(p, vec3(2.0, 1.0, 3.0))", "box(2,1,3)")
+	assertContains(t, glsl, "sdBox(p, vec3((2.0)*0.5, (1.0)*0.5, (3.0)*0.5))", "box(2,1,3)")
 }
 
 func TestShape_BoxUniform(t *testing.T) {
 	glsl := compile(t, "box(2)")
-	assertContains(t, glsl, "sdBox(p, vec3(2.0))", "box(2)")
+	assertContains(t, glsl, "sdBox(p, vec3((2.0)*0.5))", "box(2)")
 }
 
 func TestShape_CylinderBare(t *testing.T) {
 	glsl := compile(t, "cylinder")
-	assertContains(t, glsl, "sdCylinder(p, 0.5, 2.0)", "bare cylinder")
+	assertContains(t, glsl, "sdCylinder(p, 0.5, 1.0)", "bare cylinder")
 }
 
 func TestShape_CylinderArgs(t *testing.T) {
 	glsl := compile(t, "cylinder(1, 3)")
-	assertContains(t, glsl, "sdCylinder(p, 1.0, 3.0)", "cylinder(1,3)")
+	assertContains(t, glsl, "sdCylinder(p, 1.0, (3.0)*0.5)", "cylinder(1,3)")
 }
 
 func TestShape_TorusBare(t *testing.T) {
@@ -333,7 +333,7 @@ pillar(h) = cylinder(0.3, h)
 pillar(3)
 `)
 	assertContains(t, glsl, "fn_pillar", "function definition")
-	assertContains(t, glsl, "sdCylinder(p, 0.3, h)", "cylinder in function body")
+	assertContains(t, glsl, "sdCylinder(p, 0.3, (h)*0.5)", "cylinder in function body")
 	assertContains(t, glsl, "fn_pillar(p, 3.0)", "function call")
 }
 
