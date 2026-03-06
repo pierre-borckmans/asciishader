@@ -37,11 +37,9 @@ pistons = piston.at(0.6, -0.3, 0.7)
   | piston.at(-0.7, 0.1, 0.6).rot(20, z)
 
 // Arteries
-artery(a, b, r) = capsule(a, b, r)
-
-arteries = artery([0.5, -0.4, 0.2], [1.2, -0.8, 0.5], 0.06)
-  | artery([-0.6, -0.3, -0.1], [-1.1, -0.9, -0.4], 0.05)
-  | artery([0.2, -0.5, -0.3], [0.5, -1.1, -0.6], 0.04)
+arteries = capsule([0.5, -0.4, 0.2], [1.2, -0.8, 0.5], 0.06)
+  | capsule([-0.6, -0.3, -0.1], [-1.1, -0.9, -0.4], 0.05)
+  | capsule([0.2, -0.5, -0.3], [0.5, -1.1, -0.6], 0.04)
 
 // Combine
 mech_heart = heart_shell | gears | pistons
