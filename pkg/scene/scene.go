@@ -32,20 +32,17 @@ func LoadShaderFiles() {
 	}
 	dir := filepath.Dir(exePath)
 
-	// Collect all .glsl and .chisel files from shaders/ and shaders/glsl-legacy/
-	dirs := []string{"shaders", filepath.Join("shaders", "glsl-legacy")}
-	seen := make(map[string]bool) // deduplicate by absolute path
+	// Collect all .glsl and .chisel files from shaders/ (top level only)
+	seen := make(map[string]bool)
 	var allPaths []string
 	for _, ext := range []string{"*.glsl", "*.chisel"} {
-		for _, d := range dirs {
-			for _, pattern := range []string{filepath.Join(dir, d, ext), filepath.Join(d, ext)} {
-				m, _ := filepath.Glob(pattern)
-				for _, p := range m {
-					abs, _ := filepath.Abs(p)
-					if !seen[abs] {
-						seen[abs] = true
-						allPaths = append(allPaths, p)
-					}
+		for _, pattern := range []string{filepath.Join(dir, "shaders", ext), filepath.Join("shaders", ext)} {
+			m, _ := filepath.Glob(pattern)
+			for _, p := range m {
+				abs, _ := filepath.Abs(p)
+				if !seen[abs] {
+					seen[abs] = true
+					allPaths = append(allPaths, p)
 				}
 			}
 		}
