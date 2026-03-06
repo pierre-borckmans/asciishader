@@ -361,6 +361,15 @@ func (g *generator) emitScalarExpr(expr ast.Expr) string {
 			elseExpr = g.emitScalarExpr(e.Else)
 		}
 		return fmt.Sprintf("(%s ? %s : %s)", cond, thenExpr, elseExpr)
+	case *ast.GlslEscape:
+		// In scalar/color context, emit as vec3-returning inline code.
+		code := strings.ReplaceAll(e.Code, e.Param, g.pointVar)
+		code = strings.TrimSpace(code)
+		if strings.HasPrefix(code, "return ") {
+			code = strings.TrimPrefix(code, "return ")
+			code = strings.TrimSuffix(code, ";")
+		}
+		return code
 	case *ast.Block:
 		// Block in scalar context: return the result expression
 		if e.Result != nil {
@@ -377,7 +386,7 @@ func scalarBinaryOp(op ast.BinaryOp) string {
 	switch op {
 	case ast.Add:
 		return "+"
-	case ast.Sub:
+	case ast.Sub, ast.Subtract:
 		return "-"
 	case ast.Mul:
 		return "*"

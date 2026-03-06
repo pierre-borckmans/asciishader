@@ -1,0 +1,2 @@
+// Arithmetic minus in scalar context
+sphere.scale(2 - 0.5)

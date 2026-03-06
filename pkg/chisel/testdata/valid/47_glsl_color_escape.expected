@@ -1,0 +1,4 @@
+# GLSL escape in color should emit vec3 expression
+sceneColor
+vec3(sin(p.x
+0.5 + 0.5

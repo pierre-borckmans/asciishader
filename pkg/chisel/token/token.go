@@ -28,6 +28,7 @@ const (
 	TokMat      // mat
 	TokDebug    // debug
 	TokGlsl     // glsl
+	TokGlslBody // raw GLSL body { ... }
 	TokTrue     // true
 	TokFalse    // false
 
@@ -107,6 +108,7 @@ var tokenKindNames = [...]string{
 	TokMat:      "mat",
 	TokDebug:    "debug",
 	TokGlsl:     "glsl",
+	TokGlslBody: "GlslBody",
 	TokTrue:     "true",
 	TokFalse:    "false",
 

@@ -404,8 +404,103 @@ func (l *lexer) scanIdentifier(pos token.Position) {
 	value := l.source[start:l.pos]
 	if kind, ok := keywords[value]; ok {
 		l.emit(kind, value, pos, len(value))
+		// After 'glsl' keyword, scan for (ident){ raw body }
+		if kind == token.TokGlsl {
+			l.scanGlslBody()
+		}
 	} else {
 		l.emit(token.TokIdent, value, pos, len(value))
+	}
+}
+
+// scanGlslBody scans the (param) { raw_code } after the glsl keyword.
+// It emits the ( ) ident tokens normally, then captures everything between
+// { and } as a single TokGlslBody token (tracking brace nesting).
+func (l *lexer) scanGlslBody() {
+	// Skip whitespace to (
+	l.skipSpaces()
+	if l.pos >= len(l.source) || l.peek() != '(' {
+		return
+	}
+	l.emit(token.TokLParen, "(", l.currentPos(), 1)
+	l.advance()
+
+	// Scan param name
+	l.skipSpaces()
+	paramStart := l.pos
+	for l.pos < len(l.source) && (l.peek() == '_' || (l.peek() >= 'a' && l.peek() <= 'z') || (l.peek() >= 'A' && l.peek() <= 'Z') || (l.peek() >= '0' && l.peek() <= '9')) {
+		l.advance()
+	}
+	if l.pos > paramStart {
+		l.emit(token.TokIdent, l.source[paramStart:l.pos], l.posAt(paramStart), l.pos-paramStart)
+	}
+
+	l.skipSpaces()
+	if l.pos < len(l.source) && l.peek() == ')' {
+		l.emit(token.TokRParen, ")", l.currentPos(), 1)
+		l.advance()
+	}
+
+	// Skip whitespace/newlines to {
+	for l.pos < len(l.source) && (l.peek() == ' ' || l.peek() == '\t' || l.peek() == '\n' || l.peek() == '\r') {
+		if l.peek() == '\n' {
+			l.line++
+			l.col = 1
+			l.pos++
+		} else {
+			l.advance()
+		}
+	}
+
+	if l.pos >= len(l.source) || l.peek() != '{' {
+		return
+	}
+	l.advance() // skip opening {
+
+	// Capture raw body with brace nesting
+	bodyStart := l.pos
+	bodyPos := l.currentPos()
+	depth := 1
+	for l.pos < len(l.source) && depth > 0 {
+		ch := l.peek()
+		if ch == '{' {
+			depth++
+		} else if ch == '}' {
+			depth--
+			if depth == 0 {
+				break
+			}
+		}
+		if ch == '\n' {
+			l.line++
+			l.col = 1
+			l.pos++
+		} else {
+			l.advance()
+		}
+	}
+
+	body := l.source[bodyStart:l.pos]
+	l.emit(token.TokGlslBody, body, bodyPos, len(body))
+
+	if l.pos < len(l.source) && l.peek() == '}' {
+		l.advance() // skip closing }
+	}
+}
+
+func (l *lexer) skipSpaces() {
+	for l.pos < len(l.source) && (l.peek() == ' ' || l.peek() == '\t') {
+		l.advance()
+	}
+}
+
+func (l *lexer) posAt(offset int) token.Position {
+	// Approximate — compute from current position
+	return token.Position{
+		File:   l.filename,
+		Line:   l.line,
+		Col:    l.col - (l.pos - offset),
+		Offset: offset,
 	}
 }
 

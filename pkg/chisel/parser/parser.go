@@ -1177,32 +1177,11 @@ func (p *parser) parseGlslEscape() ast.Expr {
 	paramTok := p.expect(token.TokIdent)
 	p.expect(token.TokRParen)
 
-	// Now consume the body with brace tracking.
-	// The lexer has already tokenized everything inside, so we need to
-	// consume tokens and rebuild raw GLSL text by tracking brace nesting.
-	lbrace := p.expect(token.TokLBrace)
-	_ = lbrace
+	// The lexer captured the raw GLSL body as a single TokGlslBody token.
+	bodyTok := p.expect(token.TokGlslBody)
+	end := bodyTok
 
-	depth := 1
-	var codeTokens []string
-	for depth > 0 && p.peekKind() != token.TokEOF {
-		tok := p.peek()
-		if tok.Kind == token.TokLBrace {
-			depth++
-		} else if tok.Kind == token.TokRBrace {
-			depth--
-			if depth == 0 {
-				break
-			}
-		}
-		codeTokens = append(codeTokens, tok.Value)
-		p.advance()
-	}
-
-	end := p.expect(token.TokRBrace)
-
-	// Join and trim the code.
-	code := strings.TrimSpace(strings.Join(codeTokens, " "))
+	code := strings.TrimSpace(bodyTok.Value)
 
 	return &ast.GlslEscape{
 		BaseNode: ast.BaseNode{Span: token.Span{

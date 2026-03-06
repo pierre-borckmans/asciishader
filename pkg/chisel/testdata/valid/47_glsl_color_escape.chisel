@@ -1,0 +1,4 @@
+// GLSL escape in color context
+sphere.color(glsl(p) {
+  return vec3(sin(p.x * 5.0) * 0.5 + 0.5, 0.3, 0.7);
+})
