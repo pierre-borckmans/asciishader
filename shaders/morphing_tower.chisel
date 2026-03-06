@@ -26,8 +26,8 @@ tower = floor1 |~0.15 floor2 |~0.15 floor3 |~0.15 floor4
 
 // Gentle twist and rotation
 tower
-  .twist(sin(t * 0.3) * 0.15)
-  .rot(t * 6, y)
+  .twist(sin(t) * 0.5)
+  .rot(t * 15, y)
   .color(
     0.85 - 0.4 * smoothstep(0, 8, p.y),
     0.45 + 0.35 * smoothstep(0, 8, p.y),
