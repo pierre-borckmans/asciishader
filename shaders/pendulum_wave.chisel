@@ -1,0 +1,34 @@
+// Scene: Pendulum Wave
+// 15 pendulums with slightly different periods creating wave patterns
+// A real physics toy — mesmerizing when they sync and de-sync
+
+// Frame
+top_bar = box(8, 0.15, 0.3).at(0, 3, 0).color(0.3, 0.25, 0.2)
+left_post = box(0.15, 3.2, 0.15).at(-4, 1.5, 0).color(0.3, 0.25, 0.2)
+right_post = box(0.15, 3.2, 0.15).at(4, 1.5, 0).color(0.3, 0.25, 0.2)
+frame = top_bar | left_post | right_post
+
+// Each pendulum: slightly different frequency
+// freq = 1.0 + i * 0.04, angle = sin(t * freq) * 0.6
+// ball at (x + sin(angle)*2.5, 3 - cos(angle)*2.5)
+pendulums = for i in 0..15 {
+  sphere(0.15)
+    .at(
+      -3.5 + i * 0.5 + sin(sin(t * (1.0 + i * 0.04)) * 0.6) * 2.5,
+      3 - cos(sin(t * (1.0 + i * 0.04)) * 0.6) * 2.5,
+      0
+    )
+  | capsule(
+    [-3.5 + i * 0.5, 3, 0],
+    [-3.5 + i * 0.5 + sin(sin(t * (1.0 + i * 0.04)) * 0.6) * 2.5, 3 - cos(sin(t * (1.0 + i * 0.04)) * 0.6) * 2.5, 0],
+    0.01
+  )
+}
+
+pendulums.color(
+  0.7 + 0.2 * sin(p.x * 0.8),
+  0.5 + 0.3 * sin(p.x * 0.8 + 2),
+  0.3 + 0.3 * sin(p.x * 0.8 + 4)
+)
+| frame
+| plane.at(y: -0.5).color(0.15, 0.13, 0.1)

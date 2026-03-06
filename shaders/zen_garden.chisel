@@ -1,0 +1,40 @@
+// Scene: Zen Garden
+// Smooth stones on raked sand with ripple patterns
+
+raymarch { steps: 150, precision: 0.001 }
+
+// Raked sand — plane with sinusoidal ripples
+sand = plane
+  .displace(sin(p.x * 4 + p.z * 0.5) * 0.03 + sin(p.z * 4 + p.x * 0.5) * 0.02)
+  .at(y: -0.5)
+  .color(0.76, 0.72, 0.62)
+
+// Smooth river stones — various sizes, slightly flattened
+stone(sx, sy, sz) = ellipsoid(sx, sy, sz)
+
+stones = stone(0.5, 0.25, 0.4).at(-1.5, -0.25, -0.8).color(0.35, 0.33, 0.30)
+  | stone(0.35, 0.2, 0.3).at(0.8, -0.3, 0.5).color(0.4, 0.38, 0.35)
+  | stone(0.6, 0.3, 0.45).at(1.2, -0.2, -1.5).color(0.32, 0.30, 0.28)
+  | stone(0.25, 0.15, 0.2).at(-0.5, -0.35, 1.2).color(0.45, 0.42, 0.38)
+  | stone(0.4, 0.22, 0.35).at(0, -0.28, -0.3).color(0.38, 0.36, 0.32)
+
+// Bamboo fountain
+pipe = cylinder(0.06, 1.5).at(2.5, 0.25, -2)
+  .rot(15, z)
+  .color(0.45, 0.55, 0.25)
+
+spout = cylinder(0.04, 0.6).orient(z).at(2.2, 0.9, -2)
+  .color(0.45, 0.55, 0.25)
+
+basin = cylinder(0.4, 0.15)
+  .at(2, -0.35, -2)
+  .color(0.3, 0.28, 0.25)
+  - cylinder(0.32, 0.2).at(2, -0.3, -2)
+
+// Water drop falling from spout
+drop_y = 0.8 - fract(t * 0.5) * 1.2
+drop = sphere(0.03)
+  .at(2, drop_y, -2)
+  .color(0.5, 0.7, 0.9)
+
+sand | stones | pipe | spout | basin | drop

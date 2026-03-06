@@ -1,0 +1,39 @@
+// Scene: Solar System
+// Orbiting planets around a glowing sun with rings
+
+raymarch { steps: 128 }
+
+// Sun — pulsing sphere with displacement
+sun = sphere(0.8)
+  .displace(sin(p.x * 6 + t * 2) * sin(p.y * 5 + t * 1.5) * sin(p.z * 7 + t * 1.8) * 0.05)
+  .color(1, 0.8, 0.3)
+
+// Planet with orbit
+planet(r, dist, speed, phase) =
+  sphere(r).at(cos(t * speed + phase) * dist, sin(t * speed * 0.3 + phase) * 0.3, sin(t * speed + phase) * dist)
+
+// Mercury — small, fast, close
+mercury = planet(0.1, 1.5, 1.5, 0).color(0.6, 0.5, 0.4)
+
+// Earth — blue with slight wobble
+earth = planet(0.18, 2.5, 0.8, 2).color(0.2, 0.4, 0.8)
+
+// Earth's moon
+moon = sphere(0.05)
+  .at(cos(t * 3 + 2) * 2.5 + cos(t * 5) * 0.35, sin(t * 0.24 + 2) * 0.3 + sin(t * 5) * 0.1, sin(t * 3 + 2) * 2.5 + sin(t * 5) * 0.35)
+  .color(0.7, 0.7, 0.65)
+
+// Saturn — with ring
+saturn_body = planet(0.25, 4, 0.4, 4.5).color(0.8, 0.7, 0.5)
+saturn_ring = torus(0.5, 0.03)
+  .scale(1, 0.1, 1)
+  .at(cos(t * 0.4 + 4.5) * 4, sin(t * 0.12 + 4.5) * 0.3, sin(t * 0.4 + 4.5) * 4)
+  .color(0.75, 0.65, 0.45)
+
+// Orbit rings (visual guides)
+orbit1 = torus(1.5, 0.005).scale(1, 0.01, 1).color(0.2, 0.2, 0.25)
+orbit2 = torus(2.5, 0.005).scale(1, 0.01, 1).color(0.2, 0.2, 0.25)
+orbit3 = torus(4.0, 0.005).scale(1, 0.01, 1).color(0.2, 0.2, 0.25)
+
+sun | mercury | earth | moon | saturn_body | saturn_ring
+| orbit1 | orbit2 | orbit3
