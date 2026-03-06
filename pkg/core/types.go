@@ -44,7 +44,17 @@ type RenderConfig struct {
 	SpecPower     float64
 	ShadowSteps   int
 	AOSteps       int
+	Projection    int     // 0=perspective, 1=orthographic, 2=isometric
+	OrthoScale    float64 // orthographic view scale
 }
+
+// Projection mode constants
+const (
+	ProjectionPerspective  = 0
+	ProjectionOrthographic = 1
+	ProjectionIsometric    = 2
+	ProjectionCount        = 3
+)
 
 // NewRenderConfig creates a RenderConfig with default values.
 func NewRenderConfig(w, h int) *RenderConfig {
@@ -57,7 +67,8 @@ func NewRenderConfig(w, h int) *RenderConfig {
 			Up:     V(0, 1, 0),
 			FOV:    60,
 		},
-		LightDir: V(-0.5, 0.8, -0.6).Normalize(),
+		LightDir:   V(-0.5, 0.8, -0.6).Normalize(),
+		OrthoScale: 3.0,
 	}
 }
 

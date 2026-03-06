@@ -16,6 +16,8 @@ uniform float uSpecPower;
 uniform int uShadowSteps;
 uniform int uAOSteps;
 uniform vec2 uTermSize;
+uniform int uProjection;  // 0=perspective, 1=orthographic, 2=isometric
+uniform float uOrthoScale; // orthographic view scale
 
 out vec4 fragColor;
 
@@ -475,13 +477,27 @@ void main() {
     vec3 right = normalize(cross(fwd, vec3(0, 1, 0)));
     vec3 up = cross(right, fwd);
 
-    float fovRad = uFOV * 3.14159265 / 180.0;
-    float halfH = tan(fovRad / 2.0);
     float aspect = uTermSize.x / uTermSize.y * 0.45;
-    float halfW = halfH * aspect;
+    vec3 ro, rd;
 
-    vec3 rd = normalize(fwd + right * ndc.x * halfW + up * ndc.y * halfH);
-    vec3 ro = uCameraPos;
+    if (uProjection == 1) {
+        // Orthographic: parallel rays, offset origin
+        float scale = uOrthoScale;
+        ro = uCameraPos + right * ndc.x * scale * aspect + up * ndc.y * scale;
+        rd = fwd;
+    } else if (uProjection == 2) {
+        // Isometric: orthographic at fixed angle
+        float scale = uOrthoScale;
+        ro = uCameraPos + right * ndc.x * scale * aspect + up * ndc.y * scale;
+        rd = fwd;
+    } else {
+        // Perspective (default)
+        float fovRad = uFOV * 3.14159265 / 180.0;
+        float halfH = tan(fovRad / 2.0);
+        float halfW = halfH * aspect;
+        rd = normalize(fwd + right * ndc.x * halfW + up * ndc.y * halfH);
+        ro = uCameraPos;
+    }
 
     float t = raymarch(ro, rd);
 

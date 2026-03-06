@@ -265,6 +265,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.config.Camera.Target = m.camTarget
 		m.config.Time = m.time
+		m.config.OrthoScale = m.camDist * 0.75 // ortho scale tracks zoom
 
 		// Animated light
 		m.config.LightDir = core.V(
@@ -755,6 +756,13 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		m.config.RenderMode = (m.config.RenderMode + 1) % core.RenderModeCount
 	case "M":
 		m.config.RenderMode = (m.config.RenderMode + core.RenderModeCount - 1) % core.RenderModeCount
+	case "v":
+		m.config.Projection = (m.config.Projection + 1) % core.ProjectionCount
+		// For isometric, set camera to fixed angle
+		if m.config.Projection == core.ProjectionIsometric {
+			m.camAngleY = 0.785  // 45°
+			m.camAngleX = 0.615  // ~35.26° (arctan(1/√2))
+		}
 	case "p":
 		if !m.profiling {
 			fname := fmt.Sprintf("cpu_%d.prof", time.Now().Unix())
@@ -1034,6 +1042,13 @@ func (m model) View() tea.View {
 			modeStr = "BRAILLE"
 		case core.RenderDensity:
 			modeStr = "DENSITY"
+		}
+		// Projection mode
+		switch m.config.Projection {
+		case core.ProjectionOrthographic:
+			modeStr += " ORTHO"
+		case core.ProjectionIsometric:
+			modeStr += " ISO"
 		}
 		pauseStr := ""
 		if m.paused {

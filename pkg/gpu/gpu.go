@@ -88,6 +88,8 @@ type GPURenderer struct {
 	uShadowSteps  int32
 	uAOSteps      int32
 	uTermSize     int32
+	uProjection   int32
+	uOrthoScale   int32
 }
 
 func NewGPURenderer() (*GPURenderer, error) {
@@ -184,6 +186,8 @@ func (g *GPURenderer) Render(r *core.RenderConfig) string {
 	gl.Uniform1f(g.uSpecPower, float32(r.SpecPower))
 	gl.Uniform1i(g.uShadowSteps, int32(r.ShadowSteps))
 	gl.Uniform1i(g.uAOSteps, int32(r.AOSteps))
+	gl.Uniform1i(g.uProjection, int32(r.Projection))
+	gl.Uniform1f(g.uOrthoScale, float32(r.OrthoScale))
 
 	// Draw fullscreen quad
 	gl.BindVertexArray(g.vao)
@@ -225,6 +229,8 @@ func (g *GPURenderer) RenderToCells(r *core.RenderConfig) [][]core.Cell {
 	gl.Uniform1f(g.uSpecPower, float32(r.SpecPower))
 	gl.Uniform1i(g.uShadowSteps, int32(r.ShadowSteps))
 	gl.Uniform1i(g.uAOSteps, int32(r.AOSteps))
+	gl.Uniform1i(g.uProjection, int32(r.Projection))
+	gl.Uniform1f(g.uOrthoScale, float32(r.OrthoScale))
 
 	gl.BindVertexArray(g.vao)
 	gl.DrawArrays(gl.TRIANGLES, 0, 6)
@@ -785,6 +791,8 @@ func (g *GPURenderer) cacheUniforms() {
 	g.uShadowSteps = gl.GetUniformLocation(g.program, gl.Str("uShadowSteps\x00"))
 	g.uAOSteps = gl.GetUniformLocation(g.program, gl.Str("uAOSteps\x00"))
 	g.uTermSize = gl.GetUniformLocation(g.program, gl.Str("uTermSize\x00"))
+	g.uProjection = gl.GetUniformLocation(g.program, gl.Str("uProjection\x00"))
+	g.uOrthoScale = gl.GetUniformLocation(g.program, gl.Str("uOrthoScale\x00"))
 }
 
 // CompileUserCode compiles new user GLSL code into the shader program.
