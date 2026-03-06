@@ -823,13 +823,20 @@ func LoadShaderFiles() {
 	}
 	dir := filepath.Dir(exePath)
 
-	// Load .glsl and .chisel files from shaders/ directory
+	// Load .glsl and .chisel files from shaders/ and shaders/glsl-legacy/
+	dirs := []string{"shaders", filepath.Join("shaders", "glsl-legacy")}
 	for _, ext := range []string{"*.glsl", "*.chisel"} {
-		pattern := filepath.Join(dir, "shaders", ext)
-		matches, err := filepath.Glob(pattern)
-		if err != nil || len(matches) == 0 {
-			cwdPattern := filepath.Join("shaders", ext)
-			matches, _ = filepath.Glob(cwdPattern)
+		var matches []string
+		for _, d := range dirs {
+			pattern := filepath.Join(dir, d, ext)
+			m, _ := filepath.Glob(pattern)
+			matches = append(matches, m...)
+			cwdPattern := filepath.Join(d, ext)
+			m, _ = filepath.Glob(cwdPattern)
+			matches = append(matches, m...)
+		}
+		if len(matches) == 0 {
+			continue
 		}
 
 		for _, path := range matches {
