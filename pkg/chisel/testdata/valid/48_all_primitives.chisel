@@ -1,0 +1,9 @@
+// All 3D primitives
+sphere | box.at(2, 0, 0) | cylinder.at(4, 0, 0)
+| torus.at(6, 0, 0) | capsule.at(8, 0, 0) | octahedron.at(10, 0, 0)
+| pyramid.at(0, 0, 2) | ellipsoid(0.5, 1, 0.3).at(2, 0, 2)
+| cone.at(4, 0, 2) | rounded_box(1, 0.1).at(6, 0, 2)
+| box_frame(1, 0.05).at(8, 0, 2) | capped_torus.at(10, 0, 2)
+| hex_prism(0.5, 0.3).at(0, 0, 4) | octagon_prism(0.5, 0.3).at(2, 0, 4)
+| round_cone(0.3, 0.1, 0.5).at(4, 0, 4) | tri_prism(0.3, 0.3).at(6, 0, 4)
+| capped_cone(0.5, 0.4, 0.1).at(8, 0, 4) | rhombus(0.3, 0.3, 0.1, 0.05).at(10, 0, 4)

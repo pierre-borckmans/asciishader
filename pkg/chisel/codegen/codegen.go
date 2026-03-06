@@ -1923,13 +1923,26 @@ func (g *generator) writeSettingComments(out *strings.Builder) {
 
 // builtinShapeNames lists all recognized built-in shape identifiers.
 var builtinShapeNames = map[string]bool{
-	"sphere":     true,
-	"box":        true,
-	"cylinder":   true,
-	"torus":      true,
-	"plane":      true,
-	"octahedron": true,
-	"capsule":    true,
+	"sphere":        true,
+	"box":           true,
+	"cylinder":      true,
+	"torus":         true,
+	"plane":         true,
+	"octahedron":    true,
+	"capsule":       true,
+	"pyramid":       true,
+	"ellipsoid":     true,
+	"cone":          true,
+	"rounded_box":   true,
+	"box_frame":     true,
+	"capped_torus":  true,
+	"hex_prism":     true,
+	"octagon_prism": true,
+	"round_cone":    true,
+	"tri_prism":     true,
+	"capped_cone":   true,
+	"solid_angle":   true,
+	"rhombus":       true,
 }
 
 // isBuiltinShape reports whether name is a built-in shape.
@@ -1954,6 +1967,32 @@ func shapeDefault(name, pv string) string {
 		return fmt.Sprintf("sdOctahedron(%s, 1.0)", pv)
 	case "capsule":
 		return fmt.Sprintf("sdCapsule(%s, vec3(0.0, -1.0, 0.0), vec3(0.0, 1.0, 0.0), 0.25)", pv)
+	case "pyramid":
+		return fmt.Sprintf("sdPyramid(%s, 1.0)", pv)
+	case "ellipsoid":
+		return fmt.Sprintf("sdEllipsoid(%s, vec3(1.0))", pv)
+	case "cone":
+		return fmt.Sprintf("sdCone(%s, vec2(0.6, 0.8), 0.45)", pv)
+	case "rounded_box":
+		return fmt.Sprintf("sdRoundBox(%s, vec3(1.0), 0.1)", pv)
+	case "box_frame":
+		return fmt.Sprintf("sdBoxFrame(%s, vec3(1.0), 0.05)", pv)
+	case "capped_torus":
+		return fmt.Sprintf("sdCappedTorus(%s, vec2(0.866025, -0.5), 0.25, 0.05)", pv)
+	case "hex_prism":
+		return fmt.Sprintf("sdHexPrism(%s, vec2(1.0, 0.5))", pv)
+	case "octagon_prism":
+		return fmt.Sprintf("sdOctogonPrism(%s, 1.0, 0.5)", pv)
+	case "round_cone":
+		return fmt.Sprintf("sdRoundCone(%s, 0.2, 0.1, 0.3)", pv)
+	case "tri_prism":
+		return fmt.Sprintf("sdTriPrism(%s, vec2(0.3, 0.5))", pv)
+	case "capped_cone":
+		return fmt.Sprintf("sdCappedCone(%s, 0.5, 0.5, 0.2)", pv)
+	case "solid_angle":
+		return fmt.Sprintf("sdSolidAngle(%s, vec2(0.6, 0.8), 0.4)", pv)
+	case "rhombus":
+		return fmt.Sprintf("sdRhombus(%s, 0.5, 0.5, 0.1, 0.05)", pv)
 	}
 	return fmt.Sprintf("sdSphere(%s, 1.0)", pv) // fallback
 }
@@ -2039,7 +2078,129 @@ func (g *generator) shapeCall(name, pv string, args []ast.Arg) string {
 			argStrs = append(argStrs, g.emitScalarExpr(a.Value))
 		}
 		return fmt.Sprintf("sdCapsule(%s, %s)", pv, strings.Join(argStrs, ", "))
+
+	case "pyramid":
+		h := g.scalarArgOr(args, 0, "1.0")
+		return fmt.Sprintf("sdPyramid(%s, %s)", pv, h)
+
+	case "ellipsoid":
+		if len(args) == 0 {
+			return fmt.Sprintf("sdEllipsoid(%s, vec3(1.0))", pv)
+		}
+		if len(args) == 1 {
+			s := g.emitScalarExpr(args[0].Value)
+			return fmt.Sprintf("sdEllipsoid(%s, vec3(%s))", pv, s)
+		}
+		rx := g.emitScalarExpr(args[0].Value)
+		ry := g.emitScalarExpr(args[1].Value)
+		rz := g.scalarArgOr(args, 2, "1.0")
+		return fmt.Sprintf("sdEllipsoid(%s, vec3(%s, %s, %s))", pv, rx, ry, rz)
+
+	case "cone":
+		if len(args) == 0 {
+			return fmt.Sprintf("sdCone(%s, vec2(0.6, 0.8), 0.45)", pv)
+		}
+		// cone(angle_vec2, height) or cone(cx, cy, h)
+		if len(args) == 2 {
+			c := g.emitScalarExpr(args[0].Value)
+			h := g.emitScalarExpr(args[1].Value)
+			return fmt.Sprintf("sdCone(%s, %s, %s)", pv, c, h)
+		}
+		cx := g.emitScalarExpr(args[0].Value)
+		cy := g.emitScalarExpr(args[1].Value)
+		h := g.scalarArgOr(args, 2, "0.45")
+		return fmt.Sprintf("sdCone(%s, vec2(%s, %s), %s)", pv, cx, cy, h)
+
+	case "rounded_box":
+		if len(args) == 0 {
+			return fmt.Sprintf("sdRoundBox(%s, vec3(1.0), 0.1)", pv)
+		}
+		if len(args) == 1 {
+			s := g.emitScalarExpr(args[0].Value)
+			return fmt.Sprintf("sdRoundBox(%s, vec3(%s), 0.1)", pv, s)
+		}
+		if len(args) == 2 {
+			s := g.emitScalarExpr(args[0].Value)
+			r := g.emitScalarExpr(args[1].Value)
+			return fmt.Sprintf("sdRoundBox(%s, vec3(%s), %s)", pv, s, r)
+		}
+		w := g.emitScalarExpr(args[0].Value)
+		h := g.emitScalarExpr(args[1].Value)
+		d := g.emitScalarExpr(args[2].Value)
+		r := g.scalarArgOr(args, 3, "0.1")
+		return fmt.Sprintf("sdRoundBox(%s, vec3(%s, %s, %s), %s)", pv, w, h, d, r)
+
+	case "box_frame":
+		if len(args) == 0 {
+			return fmt.Sprintf("sdBoxFrame(%s, vec3(1.0), 0.05)", pv)
+		}
+		if len(args) == 2 {
+			s := g.emitScalarExpr(args[0].Value)
+			e := g.emitScalarExpr(args[1].Value)
+			return fmt.Sprintf("sdBoxFrame(%s, vec3(%s), %s)", pv, s, e)
+		}
+		w := g.emitScalarExpr(args[0].Value)
+		h := g.emitScalarExpr(args[1].Value)
+		d := g.emitScalarExpr(args[2].Value)
+		e := g.scalarArgOr(args, 3, "0.05")
+		return fmt.Sprintf("sdBoxFrame(%s, vec3(%s, %s, %s), %s)", pv, w, h, d, e)
+
+	case "capped_torus":
+		if len(args) == 0 {
+			return fmt.Sprintf("sdCappedTorus(%s, vec2(0.866025, -0.5), 0.25, 0.05)", pv)
+		}
+		sc := g.emitScalarExpr(args[0].Value)
+		ra := g.scalarArgOr(args, 1, "0.25")
+		rb := g.scalarArgOr(args, 2, "0.05")
+		return fmt.Sprintf("sdCappedTorus(%s, %s, %s, %s)", pv, sc, ra, rb)
+
+	case "hex_prism":
+		r := g.scalarArgOr(args, 0, "1.0")
+		h := g.scalarArgOr(args, 1, "0.5")
+		return fmt.Sprintf("sdHexPrism(%s, vec2(%s, %s))", pv, r, h)
+
+	case "octagon_prism":
+		r := g.scalarArgOr(args, 0, "1.0")
+		h := g.scalarArgOr(args, 1, "0.5")
+		return fmt.Sprintf("sdOctogonPrism(%s, %s, %s)", pv, r, h)
+
+	case "round_cone":
+		r1 := g.scalarArgOr(args, 0, "0.2")
+		r2 := g.scalarArgOr(args, 1, "0.1")
+		h := g.scalarArgOr(args, 2, "0.3")
+		return fmt.Sprintf("sdRoundCone(%s, %s, %s, %s)", pv, r1, r2, h)
+
+	case "tri_prism":
+		s := g.scalarArgOr(args, 0, "0.3")
+		h := g.scalarArgOr(args, 1, "0.5")
+		return fmt.Sprintf("sdTriPrism(%s, vec2(%s, %s))", pv, s, h)
+
+	case "capped_cone":
+		h := g.scalarArgOr(args, 0, "0.5")
+		r1 := g.scalarArgOr(args, 1, "0.5")
+		r2 := g.scalarArgOr(args, 2, "0.2")
+		return fmt.Sprintf("sdCappedCone(%s, %s, %s, %s)", pv, h, r1, r2)
+
+	case "solid_angle":
+		c := g.emitScalarExpr(args[0].Value)
+		ra := g.scalarArgOr(args, 1, "0.4")
+		return fmt.Sprintf("sdSolidAngle(%s, %s, %s)", pv, c, ra)
+
+	case "rhombus":
+		la := g.scalarArgOr(args, 0, "0.5")
+		lb := g.scalarArgOr(args, 1, "0.5")
+		h := g.scalarArgOr(args, 2, "0.1")
+		ra := g.scalarArgOr(args, 3, "0.05")
+		return fmt.Sprintf("sdRhombus(%s, %s, %s, %s, %s)", pv, la, lb, h, ra)
 	}
 
 	return fmt.Sprintf("sdSphere(%s, 1.0)", pv) // fallback
+}
+
+// scalarArgOr returns the scalar expression for args[idx], or defaultVal if idx is out of range.
+func (g *generator) scalarArgOr(args []ast.Arg, idx int, defaultVal string) string {
+	if idx < len(args) {
+		return g.emitScalarExpr(args[idx].Value)
+	}
+	return defaultVal
 }

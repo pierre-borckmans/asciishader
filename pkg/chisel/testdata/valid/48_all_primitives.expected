@@ -1,0 +1,19 @@
+# All primitives must produce their SDF function calls
+sdSphere
+sdBox
+sdCylinder
+sdTorus
+sdCapsule
+sdOctahedron
+sdPyramid
+sdEllipsoid
+sdCone
+sdRoundBox
+sdBoxFrame
+sdCappedTorus
+sdHexPrism
+sdOctogonPrism
+sdRoundCone
+sdTriPrism
+sdCappedCone
+sdRhombus
