@@ -17,7 +17,7 @@ shard(s) = hexagon(0.15 * s).extrude(0.8 * s)
 
 shards = for i in 0..6 {
   shard(1 - i * 0.1)
-    .at(cos(i * 60 + t * 20) * (1.5 + sin(t * 0.7 + i) * 0.3), 1.5 + sin(t * 0.5 + i * 1.047) * 0.8, sin(i * 60 + t * 20) * (1.5 + sin(t * 0.7 + i) * 0.3))
+    .at(cos(i * 60 + t * 3) * (1.5 + sin(t * 0.2 + i) * 0.3), 1.5 + sin(t * 0.15 + i * 1.047) * 0.8, sin(i * 60 + t * 3) * (1.5 + sin(t * 0.2 + i) * 0.3))
 }
 
 // Base platform — revolved profile with steps
