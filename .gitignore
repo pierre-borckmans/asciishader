@@ -4,3 +4,6 @@ cpu.prof
 .idea/
 /chisel
 /chisel-lsp
+
+# tree-sitter generated parser (rebuild with: tree-sitter generate)
+pkg/chisel/editors/tree-sitter-chisel/src/

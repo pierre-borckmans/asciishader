@@ -242,7 +242,134 @@ var Colors = []Color{
 // --- Keywords ---
 
 var Keywords = []string{"for", "in", "if", "else", "step", "glsl"}
-var Settings = []string{"light", "camera", "bg", "raymarch", "post", "debug", "mat"}
+
+// SettingForm describes how a setting keyword is parsed.
+type SettingForm int
+
+const (
+	SettingExprOrBlock SettingForm = iota // light expr  OR  light { ... }
+	SettingBlockOnly                      // raymarch { ... }
+	SettingCamera                         // camera expr -> expr  OR  camera { ... }
+	SettingDebug                          // debug <ident>
+	SettingMat                            // mat <name> = { ... }
+)
+
+// SettingDef describes a settings keyword and its syntactic form.
+type SettingDef struct {
+	Name string
+	Form SettingForm
+}
+
+// Settings lists all settings keywords with their syntactic form.
+var Settings = []SettingDef{
+	{"light", SettingExprOrBlock},
+	{"camera", SettingCamera},
+	{"bg", SettingExprOrBlock},
+	{"raymarch", SettingBlockOnly},
+	{"post", SettingBlockOnly},
+	{"debug", SettingDebug},
+	{"mat", SettingMat},
+}
+
+// SettingNames returns just the keyword strings (for highlights, etc.).
+func SettingNames() []string {
+	out := make([]string, len(Settings))
+	for i, s := range Settings {
+		out[i] = s.Name
+	}
+	return out
+}
+
+// --- Grammar: Operator Precedence ---
+
+// Assoc represents operator associativity for Pratt parsing.
+type Assoc int
+
+const (
+	Left Assoc = iota
+	Right
+)
+
+// Operator represents a binary operator with its precedence level.
+type Operator struct {
+	Token string // operator string, e.g. "|", "|~"
+	Prec  int    // precedence level (higher = tighter binding)
+	Assoc Assoc  // associativity
+	Blend bool   // true for smooth/chamfer ops that take an optional blend radius
+}
+
+// Precedence levels used by the Pratt parser and tree-sitter grammar.
+// Higher number = tighter binding.
+const (
+	PrecRange     = 0 // ..
+	PrecUnion     = 1 // | |~ |/
+	PrecSubtract  = 2 // - -~ -/
+	PrecIntersect = 3 // & &~ &/
+	PrecCompare   = 4 // == != < > <= >=
+	PrecAddSub    = 5 // +
+	PrecMulDiv    = 6 // * / %
+	PrecUnary     = 7 // unary - !
+	PrecPostfix   = 8 // .method()
+)
+
+// Operators lists all binary operators with their precedence.
+// The parser's infixPrecedence() and the tree-sitter grammar are
+// both derived from this table.
+var Operators = []Operator{
+	// Range (used in for loops: 0..10)
+	{"..", PrecRange, Left, false},
+	// Union (CSG)
+	{"|", PrecUnion, Left, false},
+	{"|~", PrecUnion, Left, true},
+	{"|/", PrecUnion, Left, true},
+	// Subtract (CSG) — TokMinus is also arithmetic; the analyzer resolves.
+	{"-", PrecSubtract, Left, false},
+	{"-~", PrecSubtract, Left, true},
+	{"-/", PrecSubtract, Left, true},
+	// Intersect (CSG)
+	{"&", PrecIntersect, Left, false},
+	{"&~", PrecIntersect, Left, true},
+	{"&/", PrecIntersect, Left, true},
+	// Comparison
+	{"==", PrecCompare, Left, false},
+	{"!=", PrecCompare, Left, false},
+	{"<", PrecCompare, Left, false},
+	{">", PrecCompare, Left, false},
+	{"<=", PrecCompare, Left, false},
+	{">=", PrecCompare, Left, false},
+	// Additive arithmetic (- is shared with subtract above)
+	{"+", PrecAddSub, Left, false},
+	// Multiplicative arithmetic
+	{"*", PrecMulDiv, Left, false},
+	{"/", PrecMulDiv, Left, false},
+	{"%", PrecMulDiv, Left, false},
+}
+
+// UnaryOperator represents a unary prefix operator.
+type UnaryOperator struct {
+	Token string
+	Prec  int
+}
+
+// UnaryOperators lists unary prefix operators.
+var UnaryOperators = []UnaryOperator{
+	{"-", PrecUnary},
+	{"!", PrecUnary},
+}
+
+// --- Grammar: Terminal Patterns ---
+
+// Terminals defines regex patterns for lexical tokens, shared between
+// the Go lexer, tree-sitter grammar, and TextMate grammar.
+var Terminals = struct {
+	Number   string // numeric literal
+	HexColor string // hex color literal
+	Ident    string // identifier
+}{
+	Number:   `\d+(\.\d+)?([eE][+-]?\d+)?`,
+	HexColor: `#[0-9a-fA-F]{3,8}`,
+	Ident:    `[a-zA-Z_][a-zA-Z0-9_]*`,
+}
 
 // --- Method Aliases (for error suggestions) ---
 

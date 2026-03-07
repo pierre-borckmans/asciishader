@@ -1,0 +1,83 @@
+// Generated from pkg/chisel/lang/lang.go
+// Do not edit — run: go generate ./pkg/chisel/lang/
+{
+  "comments": {
+    "lineComment": "//",
+    "blockComment": [
+      "/*",
+      "*/"
+    ]
+  },
+  "brackets": [
+    [
+      "{",
+      "}"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "(",
+      ")"
+    ]
+  ],
+  "autoClosingPairs": [
+    {
+      "open": "{",
+      "close": "}"
+    },
+    {
+      "open": "[",
+      "close": "]"
+    },
+    {
+      "open": "(",
+      "close": ")"
+    },
+    {
+      "open": "\"",
+      "close": "\""
+    },
+    {
+      "open": "'",
+      "close": "'"
+    },
+    {
+      "open": "/*",
+      "close": "*/"
+    }
+  ],
+  "surroundingPairs": [
+    {
+      "open": "{",
+      "close": "}"
+    },
+    {
+      "open": "[",
+      "close": "]"
+    },
+    {
+      "open": "(",
+      "close": ")"
+    },
+    {
+      "open": "\"",
+      "close": "\""
+    },
+    {
+      "open": "'",
+      "close": "'"
+    }
+  ],
+  "folding": {
+    "markers": {
+      "start": "\\{|\\(/\\*",
+      "end": "\\}|\\*/)"
+    }
+  },
+  "indentationRules": {
+    "increaseIndentPattern": "\\{[^}]*$",
+    "decreaseIndentPattern": "^\\s*\\}"
+  }
+}

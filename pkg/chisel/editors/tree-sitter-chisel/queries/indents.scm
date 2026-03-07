@@ -1,3 +1,6 @@
+; Generated from pkg/chisel/lang/lang.go
+; Do not edit — run: go generate ./pkg/chisel/lang/
+
 (block "{" @indent)
 (block "}" @outdent)
 

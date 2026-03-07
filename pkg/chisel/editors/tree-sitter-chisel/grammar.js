@@ -1,5 +1,8 @@
 /// <reference types="tree-sitter-cli/dsl" />
 // @ts-check
+//
+// Generated from pkg/chisel/lang/lang.go
+// Do not edit — run: go generate ./pkg/chisel/lang/
 
 module.exports = grammar({
   name: 'chisel',
@@ -9,8 +12,9 @@ module.exports = grammar({
   word: $ => $.identifier,
 
   conflicts: $ => [
-    [$.primary_expression, $.method_chain],
-    [$.function_call, $.primary_expression],
+    [$.settings_block, $.block],
+    [$.settings_entry, $.primary_expression],
+    [$.param, $.primary_expression],
   ],
 
   rules: {
@@ -39,7 +43,7 @@ module.exports = grammar({
 
     camera_shorthand: $ => seq($.expression, '->', $.expression),
 
-    settings_block: $ => seq('{', repeat($.settings_entry), '}'),
+    settings_block: $ => seq('{', commaSep($.settings_entry), '}'),
 
     settings_entry: $ => choice(
       seq($.identifier, ':', $.expression),
@@ -67,34 +71,26 @@ module.exports = grammar({
     ),
 
     binary_expression: $ => choice(
-      // Boolean / CSG operations (from spec: & tightest, then -, then | loosest)
-      // Union (lowest CSG precedence)
+      prec.left(0, seq($.expression, '..', $.expression)),
       prec.left(1, seq($.expression, '|', $.expression)),
       prec.left(1, seq($.expression, '|~', optional($.expression), $.expression)),
       prec.left(1, seq($.expression, '|/', optional($.expression), $.expression)),
-      // Subtract
       prec.left(2, seq($.expression, '-', $.expression)),
       prec.left(2, seq($.expression, '-~', optional($.expression), $.expression)),
       prec.left(2, seq($.expression, '-/', optional($.expression), $.expression)),
-      // Intersect (tightest CSG)
       prec.left(3, seq($.expression, '&', $.expression)),
       prec.left(3, seq($.expression, '&~', optional($.expression), $.expression)),
       prec.left(3, seq($.expression, '&/', optional($.expression), $.expression)),
-      // Comparison
       prec.left(4, seq($.expression, '==', $.expression)),
       prec.left(4, seq($.expression, '!=', $.expression)),
       prec.left(4, seq($.expression, '<', $.expression)),
       prec.left(4, seq($.expression, '>', $.expression)),
       prec.left(4, seq($.expression, '<=', $.expression)),
       prec.left(4, seq($.expression, '>=', $.expression)),
-      // Additive arithmetic
       prec.left(5, seq($.expression, '+', $.expression)),
-      // Multiplicative arithmetic
       prec.left(6, seq($.expression, '*', $.expression)),
       prec.left(6, seq($.expression, '/', $.expression)),
       prec.left(6, seq($.expression, '%', $.expression)),
-      // Range (for loops use ..)
-      prec.left(0, seq($.expression, '..', $.expression)),
     ),
 
     unary_expression: $ => choice(
@@ -107,9 +103,9 @@ module.exports = grammar({
       repeat1(seq('.', choice($.method_call, $.swizzle))),
     )),
 
-    method_call: $ => seq(
+    method_call: $ => choice(
+      prec(1, seq($.identifier, '(', commaSep($.argument), ')')),
       $.identifier,
-      optional(seq('(', commaSep($.argument), ')')),
     ),
 
     swizzle: $ => /[xyzrgb]{1,4}/,
@@ -178,7 +174,7 @@ module.exports = grammar({
       $.glsl_body,
     ),
 
-    glsl_body: $ => seq('{', /[^}]*/, '}'),
+    glsl_body: $ => seq('{', /([^{}]|\{([^{}]|\{[^{}]*\})*\})*/, '}'),
 
     // ── Terminals ────────────────────────────────────────────
     number: $ => {
@@ -218,3 +214,4 @@ function commaSep(rule) {
 function commaSep1(rule) {
   return seq(rule, repeat(seq(',', rule)));
 }
+

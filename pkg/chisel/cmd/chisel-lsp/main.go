@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -219,13 +220,105 @@ type server struct {
 	writer   *bufio.Writer
 	writeMu  sync.Mutex
 	shutdown bool
+
+	// Virtual builtins document for go-to-definition on built-in names.
+	builtinsURI  string         // file:// URI to the builtins file
+	builtinsLine map[string]int // name -> 0-based line number
 }
 
 func newServer() *server {
-	return &server{
+	s := &server{
 		docs:   make(map[string]string),
 		writer: bufio.NewWriter(os.Stdout),
 	}
+	s.initBuiltinsDoc()
+	return s
+}
+
+// ---------------------------------------------------------------------------
+// Virtual builtins document
+// ---------------------------------------------------------------------------
+
+// initBuiltinsDoc generates a virtual .chisel file containing all built-in
+// definitions with doc comments. This lets go-to-definition navigate to
+// built-in shapes, functions, methods, and constants.
+func (s *server) initBuiltinsDoc() {
+	var b strings.Builder
+	s.builtinsLine = make(map[string]int)
+	line := 0
+
+	w := func(text string) {
+		b.WriteString(text)
+		b.WriteByte('\n')
+		line++
+	}
+
+	writeDoc := func(name, doc string) {
+		// Write doc lines as comments.
+		for _, dl := range strings.Split(doc, "\n") {
+			w("// " + dl)
+		}
+		s.builtinsLine[name] = line // line where the definition goes
+	}
+
+	w("// Chisel Built-in Reference")
+	w("// This file is auto-generated for go-to-definition support.")
+	w("")
+
+	// 3D Shapes
+	w("// ── 3D Shapes ──────────────────────────────────────────")
+	w("")
+	for _, shape := range lang.Shapes3D {
+		writeDoc(shape.Name, shape.Doc)
+		w(shape.Name + " = /* builtin 3D shape */")
+		w("")
+	}
+
+	// 2D Shapes
+	w("// ── 2D Shapes ──────────────────────────────────────────")
+	w("")
+	for _, shape := range lang.Shapes2D {
+		writeDoc(shape.Name, shape.Doc)
+		w(shape.Name + " = /* builtin 2D shape */")
+		w("")
+	}
+
+	// Functions
+	w("// ── Functions ──────────────────────────────────────────")
+	w("")
+	for _, fn := range lang.Functions {
+		writeDoc(fn.Name, fn.Doc)
+		w(fn.Name + " = /* builtin function */")
+		w("")
+	}
+
+	// Constants
+	w("// ── Constants ──────────────────────────────────────────")
+	w("")
+	for _, c := range lang.Constants {
+		writeDoc(c.Name, c.Doc)
+		w(c.Name + " = /* builtin constant */")
+		w("")
+	}
+
+	// Named colors
+	w("// ── Named Colors ───────────────────────────────────────")
+	w("")
+	for _, c := range lang.Colors {
+		s.builtinsLine[c.Name] = line
+		w(c.Name + " = /* builtin color */")
+		w("")
+	}
+
+	// Write to temp file.
+	tmpDir := os.TempDir()
+	path := filepath.Join(tmpDir, "chisel-builtins.chisel")
+	if err := os.WriteFile(path, []byte(b.String()), 0644); err != nil {
+		log.Printf("failed to write builtins doc: %v", err)
+		return
+	}
+	s.builtinsURI = "file://" + path
+	log.Printf("builtins doc: %s", path)
 }
 
 // ---------------------------------------------------------------------------
@@ -343,6 +436,10 @@ func (s *server) handle(req Request) {
 		s.handleHover(id, req.Params)
 	case "textDocument/formatting":
 		s.handleFormatting(id, req.Params)
+	case "textDocument/foldingRange":
+		s.handleFoldingRange(id, req.Params)
+	case "textDocument/definition":
+		s.handleDefinition(id, req.Params)
 	default:
 		if req.ID != nil {
 			// Unknown request with an id -- respond with MethodNotFound.
@@ -365,6 +462,8 @@ func (s *server) handleInitialize(id interface{}) {
 			},
 			"hoverProvider":              true,
 			"documentFormattingProvider": true,
+			"foldingRangeProvider":       true,
+			"definitionProvider":         true,
 			"diagnosticProvider": map[string]interface{}{
 				"interFileDependencies": false,
 				"workspaceDiagnostics":  false,
@@ -601,7 +700,7 @@ func shapeCompletions() []CompletionItem {
 }
 
 func keywordCompletions() []CompletionItem {
-	all := append(lang.Keywords, lang.Settings...)
+	all := append(lang.Keywords, lang.SettingNames()...)
 	items := make([]CompletionItem, 0, len(all))
 	for _, kw := range all {
 		item := CompletionItem{
@@ -768,6 +867,85 @@ func lookupDoc(word string) string {
 }
 
 // ---------------------------------------------------------------------------
+// textDocument/definition
+// ---------------------------------------------------------------------------
+
+func (s *server) handleDefinition(id interface{}, params json.RawMessage) {
+	var p TextDocumentPositionParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		s.sendResponse(id, nil)
+		return
+	}
+
+	s.mu.Lock()
+	text := s.docs[p.TextDocument.URI]
+	s.mu.Unlock()
+
+	if text == "" {
+		s.sendResponse(id, nil)
+		return
+	}
+
+	word := wordAtPosition(text, p.Position)
+	if word == "" {
+		s.sendResponse(id, nil)
+		return
+	}
+
+	// Parse and find the definition.
+	tokens, _ := lexer.Lex(p.TextDocument.URI, text)
+	prog, _ := parser.Parse(tokens)
+	if prog == nil {
+		s.sendResponse(id, nil)
+		return
+	}
+
+	// Walk the AST to find an AssignStmt with this name.
+	var defSpan *token.Span
+	ast.Walk(prog, func(n ast.Node) bool {
+		if assign, ok := n.(*ast.AssignStmt); ok {
+			if assign.Name == word {
+				span := assign.NodeSpan()
+				defSpan = &span
+				return false
+			}
+		}
+		return true
+	})
+
+	if defSpan != nil {
+		s.sendResponse(id, map[string]interface{}{
+			"uri": p.TextDocument.URI,
+			"range": LSPRange{
+				Start: LSPPosition{
+					Line:      max(0, defSpan.Start.Line-1),
+					Character: max(0, defSpan.Start.Col-1),
+				},
+				End: LSPPosition{
+					Line:      max(0, defSpan.Start.Line-1),
+					Character: max(0, defSpan.Start.Col-1+len(word)),
+				},
+			},
+		})
+		return
+	}
+
+	// Fall back to built-in definitions.
+	if line, ok := s.builtinsLine[word]; ok && s.builtinsURI != "" {
+		s.sendResponse(id, map[string]interface{}{
+			"uri": s.builtinsURI,
+			"range": LSPRange{
+				Start: LSPPosition{Line: line, Character: 0},
+				End:   LSPPosition{Line: line, Character: len(word)},
+			},
+		})
+		return
+	}
+
+	s.sendResponse(id, nil)
+}
+
+// ---------------------------------------------------------------------------
 // textDocument/formatting
 // ---------------------------------------------------------------------------
 
@@ -816,6 +994,73 @@ func (s *server) handleFormatting(id interface{}, params json.RawMessage) {
 		},
 	}
 	s.sendResponse(id, edits)
+}
+
+// ---------------------------------------------------------------------------
+// textDocument/foldingRange
+// ---------------------------------------------------------------------------
+
+func (s *server) handleFoldingRange(id interface{}, params json.RawMessage) {
+	var p struct {
+		TextDocument TextDocumentIdentifier `json:"textDocument"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		s.sendResponse(id, nil)
+		return
+	}
+
+	s.mu.Lock()
+	text := s.docs[p.TextDocument.URI]
+	s.mu.Unlock()
+
+	if text == "" {
+		s.sendResponse(id, []interface{}{})
+		return
+	}
+
+	tokens, _ := lexer.Lex(p.TextDocument.URI, text)
+	prog, _ := parser.Parse(tokens)
+	if prog == nil {
+		s.sendResponse(id, []interface{}{})
+		return
+	}
+
+	var ranges []map[string]interface{}
+	ast.Walk(prog, func(n ast.Node) bool {
+		if n == nil {
+			return false
+		}
+		span := n.NodeSpan()
+		// Only fold multi-line nodes.
+		if span.Start.Line >= span.End.Line {
+			return true
+		}
+		kind := ""
+		switch n.(type) {
+		case *ast.Block:
+			kind = "region"
+		case *ast.ForExpr:
+			kind = "region"
+		case *ast.IfExpr:
+			kind = "region"
+		case *ast.GlslEscape:
+			kind = "region"
+		case *ast.SettingStmt:
+			kind = "region"
+		default:
+			return true
+		}
+		ranges = append(ranges, map[string]interface{}{
+			"startLine":      span.Start.Line - 1, // LSP is 0-based
+			"startCharacter": span.Start.Col - 1,
+			"endLine":        span.End.Line - 1,
+			"endCharacter":   span.End.Col - 1,
+			"kind":           kind,
+		})
+		return true
+	})
+
+	s.sendResponse(id, ranges)
 }
 
 // ---------------------------------------------------------------------------
