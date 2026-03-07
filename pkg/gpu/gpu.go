@@ -350,23 +350,19 @@ func (g *GPURenderer) renderCellsShaped(r *core.RenderConfig, tw, th int) [][]co
 			sv = core.EnhanceContrast(sv, contrast)
 			ch := st.Match(sv)
 
-			// Average color from lit interior pixels
-			offs := [6]int{off00, off10, off01, off11, off02, off12}
-			var colR, colG, colB, litCount float64
-			for _, o := range offs {
-				if pixels[o+3] > 2 {
-					colR += float64(pixels[o])
-					colG += float64(pixels[o+1])
-					colB += float64(pixels[o+2])
-					litCount++
-				}
-			}
+			// Average color from the 6 interior pixels (already bounds-safe)
+			colR := float64(pixels[off00]) + float64(pixels[off10]) +
+				float64(pixels[off01]) + float64(pixels[off11]) +
+				float64(pixels[off02]) + float64(pixels[off12])
+			colG := float64(pixels[off00+1]) + float64(pixels[off10+1]) +
+				float64(pixels[off01+1]) + float64(pixels[off11+1]) +
+				float64(pixels[off02+1]) + float64(pixels[off12+1])
+			colB := float64(pixels[off00+2]) + float64(pixels[off10+2]) +
+				float64(pixels[off01+2]) + float64(pixels[off11+2]) +
+				float64(pixels[off02+2]) + float64(pixels[off12+2])
 
-			if litCount < 1 {
-				litCount = 1
-			}
-			inv := 1.0 / (litCount * 255)
-			line[cx] = core.Cell{Ch: rune(ch), Col: core.Vec3{X: colR * inv, Y: colG * inv, Z: colB * inv}}
+			const inv6x255 = 1.0 / (6 * 255)
+			line[cx] = core.Cell{Ch: rune(ch), Col: core.Vec3{X: colR * inv6x255, Y: colG * inv6x255, Z: colB * inv6x255}}
 		}
 	}
 	return lines
