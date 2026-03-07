@@ -93,7 +93,7 @@ func WriteClip(path string, header ClipHeader, keyframes []Keyframe, trackData [
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	header.Magic = clipMagic
 	if err := binary.Write(f, binary.LittleEndian, &header); err != nil {
@@ -172,7 +172,7 @@ func CompressTrack(rawData []byte) ([]byte, error) {
 		return nil, err
 	}
 	result := enc.EncodeAll(rawData, make([]byte, 0, len(rawData)/2))
-	enc.Close()
+	_ = enc.Close()
 	return result, nil
 }
 

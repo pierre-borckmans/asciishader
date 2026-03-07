@@ -94,7 +94,7 @@ func (p *Player) Render() string {
 	h := p.clip.Height
 
 	out := make([]byte, 0, w*h*20+h*10)
-	prevR, prevG, prevB := -1, -1, -1
+	var prevR, prevG, prevB int
 
 	for y := 0; y < h; y++ {
 		if y > 0 {

@@ -792,7 +792,7 @@ func generateTMPreferences(path string) error {
 
 func generateLanguageConfiguration(path string) error {
 	type commentRule struct {
-		LineComment  string   `json:"lineComment"`
+		LineComment  string    `json:"lineComment"`
 		BlockComment [2]string `json:"blockComment"`
 	}
 	type bracketPair = [2]string
@@ -813,13 +813,13 @@ func generateLanguageConfiguration(path string) error {
 		Markers foldingMarkers `json:"markers"`
 	}
 	type langConfig struct {
-		Comments          commentRule     `json:"comments"`
-		Brackets          []bracketPair   `json:"brackets"`
-		AutoClosingPairs  []autoClosePair `json:"autoClosingPairs"`
-		SurroundingPairs  []autoClosePair `json:"surroundingPairs"`
-		Folding           foldingRules    `json:"folding"`
-		IndentationRules  indentRules     `json:"indentationRules"`
-		WordPattern       string          `json:"wordPattern,omitempty"`
+		Comments         commentRule     `json:"comments"`
+		Brackets         []bracketPair   `json:"brackets"`
+		AutoClosingPairs []autoClosePair `json:"autoClosingPairs"`
+		SurroundingPairs []autoClosePair `json:"surroundingPairs"`
+		Folding          foldingRules    `json:"folding"`
+		IndentationRules indentRules     `json:"indentationRules"`
+		WordPattern      string          `json:"wordPattern,omitempty"`
 	}
 
 	cfg := langConfig{

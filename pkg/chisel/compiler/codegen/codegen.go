@@ -177,9 +177,9 @@ type generator struct {
 	scope      map[string]scopeEntry
 	funcs      map[string]*ast.AssignStmt // user-defined functions
 	helpers    map[string]bool            // which GLSL helper functions are needed
-	emittedFn  map[string]map[string]bool  // which user functions have been emitted, keyed by name then return type
-	fnDefs     *strings.Builder            // buffer for emitted function definitions
-	skipBounds bool                        // when true, .bounds() passes through without if-wrapper (for sceneColor)
+	emittedFn  map[string]map[string]bool // which user functions have been emitted, keyed by name then return type
+	fnDefs     *strings.Builder           // buffer for emitted function definitions
+	skipBounds bool                       // when true, .bounds() passes through without if-wrapper (for sceneColor)
 	indent     int                        // current indent level (for nested code)
 
 	// loopVars tracks current loop variable substitution values during unrolling.
@@ -2329,27 +2329,27 @@ func (g *generator) writeSettingComments(out *strings.Builder) {
 
 // builtinShapeNames lists all recognized built-in shape identifiers.
 var builtinShapeNames = map[string]bool{
-	"sphere":        true,
-	"box":           true,
-	"cylinder":      true,
-	"torus":         true,
-	"plane":         true,
-	"octahedron":    true,
-	"capsule":       true,
-	"pyramid":       true,
-	"ellipsoid":     true,
-	"cone":          true,
-	"rounded_box":   true,
-	"box_frame":     true,
-	"capped_torus":  true,
-	"hex_prism":     true,
-	"octagon_prism": true,
-	"round_cone":    true,
-	"tri_prism":     true,
-	"capped_cone":   true,
-	"solid_angle":   true,
-	"rhombus":       true,
-	"horseshoe":         true,
+	"sphere":           true,
+	"box":              true,
+	"cylinder":         true,
+	"torus":            true,
+	"plane":            true,
+	"octahedron":       true,
+	"capsule":          true,
+	"pyramid":          true,
+	"ellipsoid":        true,
+	"cone":             true,
+	"rounded_box":      true,
+	"box_frame":        true,
+	"capped_torus":     true,
+	"hex_prism":        true,
+	"octagon_prism":    true,
+	"round_cone":       true,
+	"tri_prism":        true,
+	"capped_cone":      true,
+	"solid_angle":      true,
+	"rhombus":          true,
+	"horseshoe":        true,
 	"rounded_cylinder": true,
 	"tetrahedron":      true,
 	"dodecahedron":     true,

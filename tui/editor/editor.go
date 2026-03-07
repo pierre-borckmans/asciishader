@@ -283,39 +283,3 @@ func truncateLineAt(s string, n int) string {
 	}
 	return result.String()
 }
-
-// adjustErrorLineNumbers subtracts prefixLines from line numbers in GLSL error messages.
-func adjustErrorLineNumbers(errMsg string, prefixLines int) string {
-	lines := strings.Split(errMsg, "\n")
-	for i, line := range lines {
-		lines[i] = adjustLineInError(line, prefixLines)
-	}
-	return strings.Join(lines, "\n")
-}
-
-func adjustLineInError(line string, prefixLines int) string {
-	for _, prefix := range []string{"0:", "ERROR: 0:"} {
-		idx := strings.Index(line, prefix)
-		if idx < 0 {
-			continue
-		}
-		rest := line[idx+len(prefix):]
-		numEnd := 0
-		for numEnd < len(rest) && rest[numEnd] >= '0' && rest[numEnd] <= '9' {
-			numEnd++
-		}
-		if numEnd == 0 {
-			continue
-		}
-		num := 0
-		for _, c := range rest[:numEnd] {
-			num = num*10 + int(c-'0')
-		}
-		adjusted := num - prefixLines
-		if adjusted < 1 {
-			adjusted = 1
-		}
-		return line[:idx+len(prefix)] + fmt.Sprintf("%d", adjusted) + rest[numEnd:]
-	}
-	return line
-}

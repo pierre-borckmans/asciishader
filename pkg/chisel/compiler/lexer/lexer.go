@@ -42,25 +42,6 @@ func canEndExpr(k token.TokenKind) bool {
 	return false
 }
 
-// isContinuation returns true if the given token kind is a continuation
-// operator, meaning a newline after it should be suppressed.
-func isContinuation(k token.TokenKind) bool {
-	switch k {
-	case token.TokPipe, token.TokPipeSmooth, token.TokPipeChamfer,
-		token.TokAmp, token.TokAmpSmooth, token.TokAmpChamfer,
-		token.TokMinus, token.TokMinusSmooth, token.TokMinusChamfer,
-		token.TokPlus, token.TokStar, token.TokSlash, token.TokPercent,
-		token.TokComma, token.TokAssign,
-		token.TokLParen, token.TokLBrack, token.TokLBrace,
-		token.TokDot, token.TokColon, token.TokArrow, token.TokDotDot,
-		token.TokEq, token.TokNeq, token.TokLt, token.TokGt,
-		token.TokLte, token.TokGte,
-		token.TokBang:
-		return true
-	}
-	return false
-}
-
 // isContinuationStart returns true if the given token kind at the START of a
 // new line should suppress the preceding newline. This allows multi-line
 // expressions like:
@@ -708,9 +689,7 @@ func (l *lexer) insertNewlines() {
 
 		if !hasNewline {
 			// No newline encountered; emit comments and continue.
-			for _, c := range commentsBefore {
-				l.tokens = append(l.tokens, c)
-			}
+			l.tokens = append(l.tokens, commentsBefore...)
 			i = j - 1
 			continue
 		}
@@ -742,9 +721,7 @@ func (l *lexer) insertNewlines() {
 		}
 
 		// Emit comments that appeared before the newline.
-		for _, c := range commentsBefore {
-			l.tokens = append(l.tokens, c)
-		}
+		l.tokens = append(l.tokens, commentsBefore...)
 
 		if shouldEmit {
 			l.tokens = append(l.tokens, token.Token{
@@ -756,9 +733,7 @@ func (l *lexer) insertNewlines() {
 		}
 
 		// Emit comments that appeared after the newline.
-		for _, c := range commentsAfter {
-			l.tokens = append(l.tokens, c)
-		}
+		l.tokens = append(l.tokens, commentsAfter...)
 		i = j - 1
 	}
 

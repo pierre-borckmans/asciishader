@@ -290,7 +290,6 @@ func (f *formatter) formatSettingsBlock(m map[string]interface{}) {
 		case map[string]interface{}:
 			// Nested block — force multi-line.
 			parts = nil
-			break
 		default:
 			parts = append(parts, fmt.Sprintf("%s: %v", e.key, v))
 		}
@@ -872,7 +871,7 @@ func writeExprSingleWithPrec(b *strings.Builder, child ast.Expr, parentOp ast.Bi
 func writeExprSingle(b *strings.Builder, expr ast.Expr) {
 	switch e := expr.(type) {
 	case *ast.NumberLit:
-		b.WriteString(fmt.Sprintf("%g", e.Value))
+		fmt.Fprintf(b, "%g", e.Value)
 	case *ast.BoolLit:
 		if e.Value {
 			b.WriteString("true")
@@ -887,9 +886,9 @@ func writeExprSingle(b *strings.Builder, expr ast.Expr) {
 		bl := int(math.Round(e.B * 255))
 		if e.A < 1.0 {
 			a := int(math.Round(e.A * 255))
-			b.WriteString(fmt.Sprintf("#%02x%02x%02x%02x", r, g, bl, a))
+			fmt.Fprintf(b, "#%02x%02x%02x%02x", r, g, bl, a)
 		} else {
-			b.WriteString(fmt.Sprintf("#%02x%02x%02x", r, g, bl))
+			fmt.Fprintf(b, "#%02x%02x%02x", r, g, bl)
 		}
 	case *ast.Ident:
 		b.WriteString(e.Name)

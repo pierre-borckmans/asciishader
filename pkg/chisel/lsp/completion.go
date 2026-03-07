@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"asciishader/pkg/chisel/compiler/ast"
-	"asciishader/pkg/chisel/lang"
 	"asciishader/pkg/chisel/compiler/lexer"
 	"asciishader/pkg/chisel/compiler/parser"
+	"asciishader/pkg/chisel/lang"
 )
 
 func (s *Server) handleCompletion(id interface{}, params json.RawMessage) {
@@ -62,7 +62,7 @@ func isDotContext(prefix string) bool {
 
 func isStartOfExpression(trimmed string) bool {
 	for _, ch := range trimmed {
-		if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_') {
+		if (ch < 'a' || ch > 'z') && (ch < 'A' || ch > 'Z') && (ch < '0' || ch > '9') && ch != '_' {
 			return false
 		}
 	}
@@ -99,7 +99,9 @@ func shapeCompletions() []CompletionItem {
 }
 
 func keywordCompletions() []CompletionItem {
-	all := append(lang.Keywords, lang.SettingNames()...)
+	all := make([]string, len(lang.Keywords))
+	copy(all, lang.Keywords)
+	all = append(all, lang.SettingNames()...)
 	items := make([]CompletionItem, 0, len(all))
 	for _, kw := range all {
 		item := CompletionItem{

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -48,28 +49,28 @@ const (
 )
 
 type model struct {
-	config     *core.RenderConfig
-	gpu        *gpupkg.GPURenderer
-	width      int
-	height     int
-	time       float64
-	scene      int
-	paused     bool
-	camAngleY  float64
-	camAngleX  float64
-	camDist    float64
-	camTarget  core.Vec3
-	autoRotate     bool
-	mouseLastX     int
-	mouseLastY     int
-	mouseDrag      bool
-	mousePan       bool
-	lastClickTime  time.Time
-	lastClickX     int
-	lastClickY     int
-	fps        float64
-	lastFrame  time.Time
-	frame      string
+	config        *core.RenderConfig
+	gpu           *gpupkg.GPURenderer
+	width         int
+	height        int
+	time          float64
+	scene         int
+	paused        bool
+	camAngleY     float64
+	camAngleX     float64
+	camDist       float64
+	camTarget     core.Vec3
+	autoRotate    bool
+	mouseLastX    int
+	mouseLastY    int
+	mouseDrag     bool
+	mousePan      bool
+	lastClickTime time.Time
+	lastClickX    int
+	lastClickY    int
+	fps           float64
+	lastFrame     time.Time
+	frame         string
 
 	// Layout components
 	sidebar     *layout.Sidebar
@@ -92,10 +93,6 @@ type model struct {
 	recMessage     string    // transient status message (e.g. "Saved clip.asciirec")
 	recMessageTime time.Time // when message was set (clears after 3s)
 	compileErr     string    // persists until shader compiles successfully
-
-	// Playback
-	player   *clip.Player
-	playMode bool // --play mode
 
 	// File watching
 	watchFile    string    // path to current scene's source file
@@ -259,9 +256,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Update camera (orbit around camTarget)
 		m.config.Camera.Pos = core.Vec3{
-		X: m.camTarget.X + math.Sin(m.camAngleY)*math.Cos(m.camAngleX)*m.camDist,
-		Y: m.camTarget.Y + math.Sin(m.camAngleX)*m.camDist,
-		Z: m.camTarget.Z - math.Cos(m.camAngleY)*math.Cos(m.camAngleX)*m.camDist,
+			X: m.camTarget.X + math.Sin(m.camAngleY)*math.Cos(m.camAngleX)*m.camDist,
+			Y: m.camTarget.Y + math.Sin(m.camAngleX)*m.camDist,
+			Z: m.camTarget.Z - math.Cos(m.camAngleY)*math.Cos(m.camAngleX)*m.camDist,
 		}
 		m.config.Camera.Target = m.camTarget
 		m.config.Time = m.time
@@ -496,15 +493,19 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				// Double-click detection: reset camera
 				now := time.Now()
 				dx, dy := mouse.X-m.lastClickX, mouse.Y-m.lastClickY
-				if dx < 0 { dx = -dx }
-				if dy < 0 { dy = -dy }
+				if dx < 0 {
+					dx = -dx
+				}
+				if dy < 0 {
+					dy = -dy
+				}
 				if now.Sub(m.lastClickTime) < 300*time.Millisecond && dx < 3 && dy < 3 {
 					m.camDist = 4.0
 					m.camTarget = core.V(0, 0, 0)
 					m.autoRotate = false
 					if m.config.Projection == core.ProjectionIsometric {
-						m.camAngleY = 0.785  // 45°
-						m.camAngleX = 0.615  // ~35.26°
+						m.camAngleY = 0.785 // 45°
+						m.camAngleX = 0.615 // ~35.26°
 					} else {
 						m.camAngleX = 0
 						m.camAngleY = 0
@@ -583,7 +584,7 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c":
 		if m.profiling {
 			pprof.StopCPUProfile()
-			m.profFile.Close()
+			_ = m.profFile.Close()
 		}
 		return m, tea.Quit
 	case "f1":
@@ -735,7 +736,7 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 	case "q", "esc":
 		if m.profiling {
 			pprof.StopCPUProfile()
-			m.profFile.Close()
+			_ = m.profFile.Close()
 		}
 		return m, tea.Quit
 	case "left", "h":
@@ -784,8 +785,8 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		m.config.Projection = (m.config.Projection + 1) % core.ProjectionCount
 		// For isometric, set camera to fixed angle
 		if m.config.Projection == core.ProjectionIsometric {
-			m.camAngleY = 0.785  // 45°
-			m.camAngleX = 0.615  // ~35.26° (arctan(1/√2))
+			m.camAngleY = 0.785 // 45°
+			m.camAngleX = 0.615 // ~35.26° (arctan(1/√2))
 		}
 	case "p":
 		if !m.profiling {
@@ -796,7 +797,9 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 				m.recMessageTime = time.Now()
 				break
 			}
-			pprof.StartCPUProfile(f)
+			if err := pprof.StartCPUProfile(f); err != nil {
+				log.Printf("pprof.StartCPUProfile: %v", err)
+			}
 			m.profiling = true
 			m.profFile = f
 			m.recMessage = fmt.Sprintf("Profiling started → %s", fname)
@@ -804,7 +807,7 @@ func (m model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		} else {
 			pprof.StopCPUProfile()
 			fname := m.profFile.Name()
-			m.profFile.Close()
+			_ = m.profFile.Close()
 			m.profiling = false
 			m.profFile = nil
 			m.recMessage = fmt.Sprintf("Saved %s", fname)
@@ -1120,7 +1123,7 @@ func (m model) View() tea.View {
 		if recStr == "" && m.compileErr != "" {
 			errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF3333")).Bold(true)
 			errMsg := m.compileErr
-			maxLen := m.width/3
+			maxLen := m.width / 3
 			if maxLen < 20 {
 				maxLen = 20
 			}

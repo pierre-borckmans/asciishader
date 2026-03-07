@@ -1,0 +1,45 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gocritic
+    - misspell
+    - unconvert
+    - usestdlibvars
+
+  settings:
+    errcheck:
+      exclude-functions:
+        # CLI output — errors writing to stdout/stderr are not actionable.
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        # Buffered writer in LSP transport — errors caught by Flush.
+        - (*bufio.Writer).WriteString
+        - (*bufio.Writer).Write
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+        - exitAfterDefer
+        - elseif
+    staticcheck:
+      checks:
+        - "all"
+        - "-QF1003"   # "could use tagged switch" — noisy for single-condition ifs
+        - "-QF1001"   # "could apply De Morgan's law" — less readable
+        - "-ST1000"   # package comment — not enforced for internal packages
+        - "-ST1003"   # naming convention — existing public API
+        - "-ST1005"   # capitalized error strings — acceptable for user-facing messages
+
+formatters:
+  enable:
+    - gofmt
+
+issues:
+  exclude-dirs:
+    - pkg/chisel/editors/tree-sitter-chisel/src

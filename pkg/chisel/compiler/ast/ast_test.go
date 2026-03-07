@@ -1,7 +1,6 @@
 package ast
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
 
@@ -342,7 +341,7 @@ func TestWalkAssignStmt(t *testing.T) {
 
 	var visited []string
 	Walk(assign, func(n Node) bool {
-		visited = append(visited, fmt.Sprintf("%s", typeName(n)))
+		visited = append(visited, typeName(n))
 		return true
 	})
 

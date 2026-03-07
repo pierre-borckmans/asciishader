@@ -114,7 +114,9 @@ func (s *Server) sendJSON(v interface{}) {
 	header := fmt.Sprintf("Content-Length: %d\r\n\r\n", len(data))
 	s.writer.WriteString(header)
 	s.writer.Write(data)
-	s.writer.Flush()
+	if err := s.writer.Flush(); err != nil {
+		log.Printf("flush error: %v", err)
+	}
 }
 
 func (s *Server) sendResponse(id interface{}, result interface{}) {
@@ -206,7 +208,7 @@ func (s *Server) handleInitialize(id interface{}) {
 			"definitionProvider":         true,
 			"semanticTokensProvider": map[string]interface{}{
 				"legend": map[string]interface{}{
-					"tokenTypes":    semanticTokenTypes,
+					"tokenTypes":     semanticTokenTypes,
 					"tokenModifiers": semanticTokenModifiers,
 				},
 				"full": true,

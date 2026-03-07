@@ -51,13 +51,8 @@ test-race:
 
 # ─── Lint & Format ──────────────────────────────────────────────────
 
-lint: vet staticcheck
-
-vet:
-	$(GO) vet ./...
-
-staticcheck:
-	@which staticcheck > /dev/null 2>&1 && staticcheck ./... || echo "staticcheck not installed — skipping (go install honnef.co/go/tools/cmd/staticcheck@latest)"
+lint:
+	golangci-lint run ./...
 
 fmt:
 	gofmt -w -s .

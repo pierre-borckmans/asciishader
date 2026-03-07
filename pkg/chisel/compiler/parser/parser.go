@@ -83,25 +83,6 @@ func (p *parser) expect(kind token.TokenKind) token.Token {
 	return tok
 }
 
-// match checks whether the current token is one of the given kinds.
-// If so it advances and returns the consumed token and true.
-func (p *parser) match(kinds ...token.TokenKind) (token.Token, bool) {
-	k := p.peekKind()
-	for _, want := range kinds {
-		if k == want {
-			return p.advance(), true
-		}
-	}
-	return token.Token{}, false
-}
-
-// skipNewlines consumes and discards any TokNewline tokens.
-func (p *parser) skipNewlines() {
-	for p.peekKind() == token.TokNewline {
-		p.advance()
-	}
-}
-
 // skipComments consumes and discards any TokComment tokens.
 func (p *parser) skipComments() {
 	for p.peekKind() == token.TokComment {
@@ -162,11 +143,6 @@ func (p *parser) spanFrom(start token.Position) token.Span {
 		end.Col += prev.Len
 	}
 	return token.Span{Start: start, End: end}
-}
-
-// spanFromToken creates a span from the given token.
-func spanFromToken(tok token.Token) token.Span {
-	return tok.TokenSpan()
 }
 
 // ---------------------------------------------------------------------------

@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 
 	"asciishader/pkg/chisel/compiler/ast"
-	"asciishader/pkg/chisel/lang"
 	"asciishader/pkg/chisel/compiler/lexer"
 	"asciishader/pkg/chisel/compiler/parser"
 	"asciishader/pkg/chisel/compiler/token"
+	"asciishader/pkg/chisel/lang"
 )
 
 // Semantic token types — indices into this slice are used in the encoded data.

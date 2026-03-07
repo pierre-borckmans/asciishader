@@ -8,10 +8,10 @@ import (
 	"strings"
 
 	"asciishader/pkg/chisel/compiler/ast"
-	"asciishader/pkg/chisel/lang"
 	"asciishader/pkg/chisel/compiler/lexer"
 	"asciishader/pkg/chisel/compiler/parser"
 	"asciishader/pkg/chisel/compiler/token"
+	"asciishader/pkg/chisel/lang"
 )
 
 func (s *Server) handleDefinition(id interface{}, params json.RawMessage) {

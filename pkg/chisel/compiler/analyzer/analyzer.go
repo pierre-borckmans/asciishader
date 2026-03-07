@@ -6,8 +6,8 @@ import (
 
 	"asciishader/pkg/chisel/compiler/ast"
 	"asciishader/pkg/chisel/compiler/diagnostic"
-	"asciishader/pkg/chisel/lang"
 	"asciishader/pkg/chisel/compiler/token"
+	"asciishader/pkg/chisel/lang"
 )
 
 // knownMethods is derived from the lang registry.

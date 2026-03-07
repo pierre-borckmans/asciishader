@@ -31,8 +31,8 @@ func AppendANSI(buf []byte, lines [][]core.Cell) []byte {
 		buf = make([]byte, 0, need)
 	}
 	out := buf
-	prevFR, prevFG, prevFB := -1, -1, -1
-	prevBR, prevBG, prevBB := -1, -1, -1
+	var prevFR, prevFG, prevFB int
+	var prevBR, prevBG, prevBB int
 	var runeBuf [utf8.UTFMax]byte
 	for y := 0; y < h; y++ {
 		if y > 0 {

@@ -52,37 +52,6 @@ func checkTokens(t *testing.T, source string, expected []tokInfo) {
 	}
 }
 
-// checkTokensWithDiags is like checkTokens but also checks for expected diagnostics.
-func checkTokensWithDiags(t *testing.T, source string, expected []tokInfo, diagCount int) {
-	t.Helper()
-	tokens, diags := Lex("test.chisel", source)
-
-	if len(diags) != diagCount {
-		t.Errorf("Lex(%q): got %d diagnostics, want %d", source, len(diags), diagCount)
-		for _, d := range diags {
-			t.Logf("  diag: %s", d.Error())
-		}
-	}
-
-	if len(tokens) != len(expected) {
-		t.Errorf("Lex(%q): got %d tokens, want %d", source, len(tokens), len(expected))
-		for i, tok := range tokens {
-			t.Logf("  token[%d]: %s", i, tok.String())
-		}
-		return
-	}
-
-	for i, exp := range expected {
-		got := tokens[i]
-		if got.Kind != exp.Kind {
-			t.Errorf("Lex(%q): token[%d].Kind = %s, want %s", source, i, got.Kind, exp.Kind)
-		}
-		if exp.Value != "" && got.Value != exp.Value {
-			t.Errorf("Lex(%q): token[%d].Value = %q, want %q", source, i, got.Value, exp.Value)
-		}
-	}
-}
-
 // --- Basic token tests ---
 
 func TestEmptySource(t *testing.T) {
