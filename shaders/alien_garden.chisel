@@ -20,16 +20,8 @@ mushroom(h, cap_r, stem_r, phase) = {
 
 // Garden of mushrooms with varying sizes
 garden = for i in 0..7 {
-  mushroom(
-    0.8 + sin(i * 1.7) * 0.4,
-    0.4 + sin(i * 2.3) * 0.15,
-    0.06 + sin(i * 3.1) * 0.02,
-    i * 1.5
-  ).at(
-    sin(i * 2.2) * 2.5,
-    0,
-    cos(i * 2.2) * 2.5
-  )
+  mushroom(0.8 + sin(i * 1.7) * 0.4, 0.4 + sin(i * 2.3) * 0.15, 0.06 + sin(i * 3.1) * 0.02, i * 1.5)
+    .at(sin(i * 2.2) * 2.5, 0, cos(i * 2.2) * 2.5)
 }
 
 // Tendril vines — twisted capsules
@@ -42,12 +34,9 @@ tendrils = for i in 0..12 {
 }
 
 // Central flower — extruded star shape
-petal = circle(0.5).extrude(0.08)
-  .rot(90, x)
-  .at(0.6, 0, 0)
+petal = circle(0.5).extrude(0.08).rot(90, x).at(0.6, 0, 0)
 
-flower = petal.array(5, 0)
-  .at(0, 2 + sin(t * 0.8) * 0.15, 0)
+flower = petal.array(5, 0).at(0, 2 + sin(t * 0.8) * 0.15, 0)
 
 // Spore pods — small spheres floating up
 pods = for i in 0..8 {
@@ -63,15 +52,13 @@ pods = for i in 0..8 {
 ground = plane.displace(sin(p.x * 2) * cos(p.z * 2) * 0.1)
 
 // Combine
-scene = garden
-|~0.05 tendrils
-|~0.1 flower
-| pods
+scene = garden |~0.05 tendrils |~0.1 flower | pods
 
 // Bioluminescent colors — position-dependent glow
-scene.color(
-  0.1 + 0.4 * (sin(p.y * 3 + t * 0.5) * 0.5 + 0.5),
-  0.5 + 0.3 * (sin(p.y * 2 + p.x + t * 0.3) * 0.5 + 0.5),
-  0.3 + 0.5 * (sin(p.y * 4 + t * 0.7) * 0.5 + 0.5)
-)
+scene
+  .color(
+    0.1 + 0.4 * (sin(p.y * 3 + t * 0.5) * 0.5 + 0.5),
+    0.5 + 0.3 * (sin(p.y * 2 + p.x + t * 0.3) * 0.5 + 0.5),
+    0.3 + 0.5 * (sin(p.y * 4 + t * 0.7) * 0.5 + 0.5)
+  )
 | ground.color(0.08, 0.12, 0.06)

@@ -3,12 +3,14 @@
 // Port of fogleman/sdf/examples/gearlike.py
 
 // Sphere sliced by slab with smooth intersection
-gear=(sphere(2) &~0.1 slab(1))
-// Central hole (radius 1)
+gear = sphere(2)
+&~0.1 slab(1)
 -~0.1 cylinder(1, 100)
-// Ring of 16 holes (radius 0.25) at distance 2 from center
 -~0.1 for i in 0..16 {
+  // Central hole (radius 1)
+
+  // Ring of 16 holes (radius 0.25) at distance 2 from center
   cylinder(0.25, 100).at(cos(i * TAU / 16) * 2, 0, sin(i * TAU / 16) * 2)
 }
 
-gear.rot(50*t, y).cyan
+gear.rot(50 * t, y).cyan

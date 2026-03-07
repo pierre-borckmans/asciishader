@@ -1,4 +1,2 @@
 // Scene: Carved Sphere
-sphere(2)
-- cylinder(0.5, 12).orient(x)
-- cylinder(0.5, 12).orient(z)
+sphere(2) - cylinder(0.5, 12).orient(x) - cylinder(0.5, 12).orient(z)

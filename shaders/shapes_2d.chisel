@@ -6,11 +6,10 @@ circle(0.8).extrude(0.5).at(-2, 0.25, 0).red
 | rect(1, 0.6).extrude(0.5).at(0, 0.25, 0).blue
 | hexagon(0.6).extrude(0.5).at(2, 0.25, 0).green
 | triangle(0.7).extrude(0.5).at(4, 0.25, 0).yellow
-
-// Revolved shapes
 | circle(0.3).revolve(1.5).at(-2, 0.25, 3).cyan
 | hexagon(0.3).revolve(1.5).at(1, 0.25, 3).orange
 | rect(0.3, 0.15).revolve(1.5).at(4, 0.25, 3).magenta
+| plane.at(y: -0.5).color(0.4, 0.4, 0.4)
+// Revolved shapes
 
 // Ground
-| plane.at(y: -0.5).color(0.4, 0.4, 0.4)

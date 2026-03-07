@@ -11,10 +11,9 @@ ribbon = rounded_box(3.2, 0.25, 1, 0.1)
 
 // Repeat in XZ plane with padding for correct cell boundaries
 grid = ribbon.rep(2.7, 10000, 5.4, padding: 1)
-  | ribbon.rep(2.7, 10000, 5.4, padding: 1).at(1.35, 0, 2.7)
+| ribbon.rep(2.7, 10000, 5.4, padding: 1).at(1.35, 0, 2.7)
 
 // Clip to disc and add ring frame
-weave = (grid & cylinder(10))
-| ((cylinder(12) - cylinder(10)) &~0.25 slab(1, y))
+weave = grid & cylinder(10) | (cylinder(12) - cylinder(10)) &~0.25 slab(1, y)
 
 weave.cyan
