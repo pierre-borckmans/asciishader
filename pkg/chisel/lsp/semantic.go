@@ -3,11 +3,11 @@ package lsp
 import (
 	"encoding/json"
 
-	"asciishader/pkg/chisel/ast"
+	"asciishader/pkg/chisel/compiler/ast"
 	"asciishader/pkg/chisel/lang"
-	"asciishader/pkg/chisel/lexer"
-	"asciishader/pkg/chisel/parser"
-	"asciishader/pkg/chisel/token"
+	"asciishader/pkg/chisel/compiler/lexer"
+	"asciishader/pkg/chisel/compiler/parser"
+	"asciishader/pkg/chisel/compiler/token"
 )
 
 // Semantic token types — indices into this slice are used in the encoded data.

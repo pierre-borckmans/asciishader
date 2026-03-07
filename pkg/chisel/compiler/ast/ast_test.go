@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"asciishader/pkg/chisel/token"
+	"asciishader/pkg/chisel/compiler/token"
 )
 
 // span returns a zero-value span (used for test AST construction).

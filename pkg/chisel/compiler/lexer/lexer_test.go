@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"asciishader/pkg/chisel/token"
+	"asciishader/pkg/chisel/compiler/token"
 )
 
 // tokInfo is a compact representation used in test expectations.

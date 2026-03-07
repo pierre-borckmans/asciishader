@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"unicode"
 
-	"asciishader/pkg/chisel/diagnostic"
-	"asciishader/pkg/chisel/token"
+	"asciishader/pkg/chisel/compiler/diagnostic"
+	"asciishader/pkg/chisel/compiler/token"
 )
 
 // keywords maps reserved words to their token kinds.

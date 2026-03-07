@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"asciishader/pkg/chisel/ast"
-	"asciishader/pkg/chisel/diagnostic"
+	"asciishader/pkg/chisel/compiler/ast"
+	"asciishader/pkg/chisel/compiler/diagnostic"
 	"asciishader/pkg/chisel/lang"
-	"asciishader/pkg/chisel/token"
+	"asciishader/pkg/chisel/compiler/token"
 )
 
 // knownMethods is derived from the lang registry.

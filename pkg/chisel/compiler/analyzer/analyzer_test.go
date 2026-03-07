@@ -4,10 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"asciishader/pkg/chisel/ast"
-	"asciishader/pkg/chisel/diagnostic"
-	"asciishader/pkg/chisel/lexer"
-	"asciishader/pkg/chisel/parser"
+	"asciishader/pkg/chisel/compiler/ast"
+	"asciishader/pkg/chisel/compiler/diagnostic"
+	"asciishader/pkg/chisel/compiler/lexer"
+	"asciishader/pkg/chisel/compiler/parser"
 )
 
 // helper: parse and analyze source, return diagnostics.

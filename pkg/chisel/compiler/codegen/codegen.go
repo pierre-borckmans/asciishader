@@ -8,9 +8,9 @@ import (
 	"math"
 	"strings"
 
-	"asciishader/pkg/chisel/ast"
-	"asciishader/pkg/chisel/diagnostic"
-	"asciishader/pkg/chisel/token"
+	"asciishader/pkg/chisel/compiler/ast"
+	"asciishader/pkg/chisel/compiler/diagnostic"
+	"asciishader/pkg/chisel/compiler/token"
 )
 
 // maxUnrollIterations is the compile-time limit for for-loop unrolling.

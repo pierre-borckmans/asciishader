@@ -3,7 +3,7 @@ package diagnostic
 import (
 	"testing"
 
-	"asciishader/pkg/chisel/token"
+	"asciishader/pkg/chisel/compiler/token"
 )
 
 func TestSeverityString(t *testing.T) {

@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"asciishader/pkg/chisel/codegen"
-	"asciishader/pkg/chisel/lexer"
-	"asciishader/pkg/chisel/parser"
+	"asciishader/pkg/chisel/compiler/codegen"
+	"asciishader/pkg/chisel/compiler/lexer"
+	"asciishader/pkg/chisel/compiler/parser"
 )
 
 // compile runs the full pipeline: lex → parse → codegen and returns the GLSL output.

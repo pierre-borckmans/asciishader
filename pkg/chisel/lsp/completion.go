@@ -5,10 +5,10 @@ import (
 	"log"
 	"strings"
 
-	"asciishader/pkg/chisel/ast"
+	"asciishader/pkg/chisel/compiler/ast"
 	"asciishader/pkg/chisel/lang"
-	"asciishader/pkg/chisel/lexer"
-	"asciishader/pkg/chisel/parser"
+	"asciishader/pkg/chisel/compiler/lexer"
+	"asciishader/pkg/chisel/compiler/parser"
 )
 
 func (s *Server) handleCompletion(id interface{}, params json.RawMessage) {

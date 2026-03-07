@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"asciishader/pkg/chisel/token"
+	"asciishader/pkg/chisel/compiler/token"
 )
 
 // helper to build a span quickly.

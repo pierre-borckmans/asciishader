@@ -1,7 +1,7 @@
 // Package ast defines the abstract syntax tree types for the Chisel language.
 package ast
 
-import "asciishader/pkg/chisel/token"
+import "asciishader/pkg/chisel/compiler/token"
 
 // ---------------------------------------------------------------------------
 // Node interface

@@ -3,11 +3,11 @@
 package chisel
 
 import (
-	"asciishader/pkg/chisel/analyzer"
-	"asciishader/pkg/chisel/codegen"
-	"asciishader/pkg/chisel/diagnostic"
-	"asciishader/pkg/chisel/lexer"
-	"asciishader/pkg/chisel/parser"
+	"asciishader/pkg/chisel/compiler/analyzer"
+	"asciishader/pkg/chisel/compiler/codegen"
+	"asciishader/pkg/chisel/compiler/diagnostic"
+	"asciishader/pkg/chisel/compiler/lexer"
+	"asciishader/pkg/chisel/compiler/parser"
 )
 
 // Compile takes Chisel source code and returns GLSL code defining

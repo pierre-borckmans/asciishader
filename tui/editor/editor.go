@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"asciishader/pkg/chisel"
-	"asciishader/pkg/chisel/diagnostic"
+	"asciishader/pkg/chisel/compiler/diagnostic"
 	gpupkg "asciishader/pkg/gpu"
 	"asciishader/pkg/shader"
 	"asciishader/tui/components"

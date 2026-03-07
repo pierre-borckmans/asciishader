@@ -4,10 +4,10 @@ import (
 	"math"
 	"testing"
 
-	"asciishader/pkg/chisel/ast"
-	"asciishader/pkg/chisel/diagnostic"
-	"asciishader/pkg/chisel/lexer"
-	"asciishader/pkg/chisel/token"
+	"asciishader/pkg/chisel/compiler/ast"
+	"asciishader/pkg/chisel/compiler/diagnostic"
+	"asciishader/pkg/chisel/compiler/lexer"
+	"asciishader/pkg/chisel/compiler/token"
 )
 
 // ---------------------------------------------------------------------------

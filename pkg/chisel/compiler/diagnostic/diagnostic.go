@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"asciishader/pkg/chisel/token"
+	"asciishader/pkg/chisel/compiler/token"
 )
 
 // Severity indicates the severity level of a diagnostic.

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"asciishader/pkg/chisel"
-	"asciishader/pkg/chisel/diagnostic"
+	"asciishader/pkg/chisel/compiler/diagnostic"
 )
 
 func TestCompileBasic(t *testing.T) {
