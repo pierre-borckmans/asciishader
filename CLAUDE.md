@@ -73,7 +73,7 @@ Chisel language docs:
 - The **GPU renderer** ray-marches at sub-pixel resolution, then maps cells to ASCII characters by shape matching.
 - The **TUI** is BubbleTea-based with four views: Shader (F1), Player (F2), Gallery (F3), Help (F4).
 - **Language registry** (`lang/lang.go`) is the single source of truth — `go generate` produces all editor grammars.
-- **Render modes**: Shapes, Dual, Blocks, Half-block, Braille, Density, Slice, Cost heatmap.
+- **Render modes**: Shapes, Blocks, Braille, Slice, Cost heatmap.
 
 ## Development Workflow
 

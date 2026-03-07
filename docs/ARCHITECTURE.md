@@ -100,11 +100,8 @@ Renders ray-marched SDF scenes to a grid of ASCII cells:
 | Mode | Description |
 |------|-------------|
 | Shapes | Match sub-pixel brightness to ASCII character shapes |
-| Dual | Two-character cells for higher horizontal resolution |
 | Blocks | Unicode block elements |
-| Half-block | Half-block characters for 2x vertical resolution |
 | Braille | Braille dot patterns for highest effective resolution |
-| Density | Simple brightness-to-character density mapping |
 | Slice | 2D cross-section of the SDF distance field |
 | Cost | Heatmap of ray-march step count (for performance debugging) |
 

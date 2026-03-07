@@ -25,7 +25,7 @@ base | pillars | roof
 
 Chisel source compiles to GLSL. The GPU ray-marches the signed distance field, then the renderer maps the framebuffer to ASCII characters by matching sub-pixel brightness patterns to character shapes. The result is a live, interactive 3D scene in your terminal — with mouse camera control, parameter sliders, and an in-terminal editor.
 
-Render modes include shaped ASCII, unicode block elements, half-blocks, braille dots, and a ray-march cost heatmap for debugging.
+Render modes include shaped ASCII, unicode block elements, braille dots, and a ray-march cost heatmap for debugging.
 
 ## Install
 

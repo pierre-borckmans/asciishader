@@ -3,14 +3,11 @@ package core
 // Render modes
 const (
 	RenderShapes    = 0 // shape matching, fg only (default)
-	RenderDual      = 1 // shape matching, fg+bg
-	RenderBlocks    = 2 // quadrant blocks, fg+bg
-	RenderHalfBlock = 3 // half-block ▀ with fg+bg color
-	RenderBraille   = 4 // braille 2×4 dot grid
-	RenderDensity   = 5 // classic density ramp
-	RenderSlice     = 6 // 2D SDF slice heatmap
-	RenderCost      = 7 // raymarching step count heatmap
-	RenderModeCount = 8
+	RenderBlocks    = 1 // quadrant blocks, fg+bg
+	RenderBraille   = 2 // braille 2×4 dot grid
+	RenderSlice     = 3 // 2D SDF slice heatmap
+	RenderCost      = 4 // raymarching step count heatmap
+	RenderModeCount = 5
 )
 
 // Camera holds the view parameters.
@@ -28,9 +25,6 @@ type Cell struct {
 	Bg    Vec3 // background RGB 0-1
 	HasBg bool // whether to emit background color escape
 }
-
-// AsciiRamp is the density ramp from dark to bright.
-var AsciiRamp = []byte(" .`'^\",:;Il!i><~+_-?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$")
 
 // RenderConfig holds all rendering parameters needed by the GPU renderer.
 type RenderConfig struct {

@@ -274,14 +274,8 @@ func renderSubPixels(mode int) (subW, subH int) {
 	switch mode {
 	case core.RenderBlocks:
 		return 2, 2
-	case core.RenderDual:
-		return 4, 6
-	case core.RenderHalfBlock:
-		return 1, 2
 	case core.RenderBraille:
 		return 2, 4
-	case core.RenderDensity:
-		return 2, 3
 	case core.RenderSlice:
 		return 1, 2 // half-block for color fidelity
 	case core.RenderCost:
@@ -316,14 +310,8 @@ func (g *GPURenderer) RenderCells(r *core.RenderConfig) [][]core.Cell {
 	switch r.RenderMode {
 	case core.RenderBlocks:
 		return g.renderCellsQuadrant(tw, th)
-	case core.RenderDual:
-		return g.renderCellsDual(r, tw, th)
-	case core.RenderHalfBlock:
-		return g.renderCellsHalfBlock(tw, th)
 	case core.RenderBraille:
 		return g.renderCellsBraille(tw, th)
-	case core.RenderDensity:
-		return g.renderCellsDensity(tw, th)
 	case core.RenderSlice:
 		return g.renderCellsHalfBlock(tw, th)
 	case core.RenderCost:
@@ -396,74 +384,6 @@ func (g *GPURenderer) renderCellsShaped(r *core.RenderConfig, tw, th int) [][]co
 
 			const inv6x255 = 1.0 / (6 * 255)
 			line[cx] = core.Cell{Ch: rune(ch), Col: core.Vec3{X: colR * inv6x255, Y: colG * inv6x255, Z: colB * inv6x255}}
-		}
-	}
-	return lines
-}
-
-// renderCellsDual uses 4×6 pixel blocks per core.Cell for broader shape matching.
-// Output grid: tw × th (fills viewport). Pixel buffer is subW=4, subH=6.
-func (g *GPURenderer) renderCellsDual(r *core.RenderConfig, tw, th int) [][]core.Cell {
-	st := g.ShapeTable
-
-	lines := g.getCellBuf(tw, th)
-	for cy := 0; cy < th; cy++ {
-		line := lines[cy]
-		for cx := 0; cx < tw; cx++ {
-			bx := cx * 4
-			by := cy * 6
-
-			// Downsample 4×6 to 2×3 shape vector: each element = average of 2×2 pixel block
-			var sv ShapeVec
-			for si := 0; si < 6; si++ {
-				r0 := si / 2
-				c0 := si % 2
-				px := bx + c0*2
-				py := by + r0*2
-				sv[si] = (g.pixelBrightness(px, py) + g.pixelBrightness(px+1, py) +
-					g.pixelBrightness(px, py+1) + g.pixelBrightness(px+1, py+1)) / 4
-			}
-
-			avgBright := 0.0
-			for i := 0; i < 6; i++ {
-				avgBright += sv[i]
-			}
-			avgBright /= 6
-
-			if avgBright < 0.01 {
-				line[cx] = core.Cell{Ch: ' '}
-				continue
-			}
-
-			// External samples: just outside the 4×6 block
-			var ext ShapeVec
-			ext[0] = g.pixelBrightness(bx-1, by-1)
-			ext[1] = g.pixelBrightness(bx+4, by-1)
-			ext[2] = g.pixelBrightness(bx-1, by+3)
-			ext[3] = g.pixelBrightness(bx+4, by+3)
-			ext[4] = g.pixelBrightness(bx-1, by+6)
-			ext[5] = g.pixelBrightness(bx+4, by+6)
-
-			sv = DirectionalContrast(sv, ext, r.Contrast)
-			sv = EnhanceContrast(sv, r.Contrast)
-			ch := st.Match(sv)
-
-			// Average color from all 24 pixels (4×6)
-			var colR, colG, colB float64
-			for dy := 0; dy < 6; dy++ {
-				for dx := 0; dx < 4; dx++ {
-					px := bx + dx
-					py := by + dy
-					if px >= 0 && px < g.pixW && py >= 0 && py < g.pixH {
-						off := (py*g.pixW + px) * 4
-						colR += float64(g.pixels[off])
-						colG += float64(g.pixels[off+1])
-						colB += float64(g.pixels[off+2])
-					}
-				}
-			}
-
-			line[cx] = core.Cell{Ch: rune(ch), Col: core.Vec3{X: colR / 24 / 255, Y: colG / 24 / 255, Z: colB / 24 / 255}}
 		}
 	}
 	return lines
@@ -712,65 +632,6 @@ func (g *GPURenderer) renderCellsBraille(tw, th int) [][]core.Cell {
 			}
 			inv := 1.0 / (litCount * 255)
 			line[cx] = core.Cell{Ch: 0x2800 + pattern, Col: core.Vec3{X: colR * inv, Y: colG * inv, Z: colB * inv}}
-		}
-	}
-	return lines
-}
-
-// renderCellsDensity uses a classic ASCII density ramp based on average brightness.
-// Uses 2×3 sub-pixels per core.Cell (same as shaped mode) for quality averaging.
-func (g *GPURenderer) renderCellsDensity(tw, th int) [][]core.Cell {
-	pixels := g.pixels
-	stride := g.pixW * 4
-	const inv255 = 1.0 / 255.0
-
-	ramp := core.AsciiRamp
-	rampMax := len(ramp) - 1
-
-	lines := g.getCellBuf(tw, th)
-	for cy := 0; cy < th; cy++ {
-		line := lines[cy]
-		for cx := 0; cx < tw; cx++ {
-			bx := cx * 2
-			by := cy * 3
-
-			off00 := by*stride + bx*4
-			off10 := off00 + 4
-			off01 := off00 + stride
-			off11 := off01 + 4
-			off02 := off01 + stride
-			off12 := off02 + 4
-
-			// Average brightness from alpha channel
-			avgBright := (float64(pixels[off00+3]) + float64(pixels[off10+3]) +
-				float64(pixels[off01+3]) + float64(pixels[off11+3]) +
-				float64(pixels[off02+3]) + float64(pixels[off12+3])) * inv255 / 6
-
-			if avgBright < 0.01 {
-				line[cx] = core.Cell{Ch: ' '}
-				continue
-			}
-
-			// Map brightness to ramp character
-			idx := int(avgBright * float64(rampMax))
-			if idx > rampMax {
-				idx = rampMax
-			}
-			ch := rune(ramp[idx])
-
-			// Average color
-			const inv6x255 = 1.0 / (6 * 255)
-			colR := float64(pixels[off00]) + float64(pixels[off10]) +
-				float64(pixels[off01]) + float64(pixels[off11]) +
-				float64(pixels[off02]) + float64(pixels[off12])
-			colG := float64(pixels[off00+1]) + float64(pixels[off10+1]) +
-				float64(pixels[off01+1]) + float64(pixels[off11+1]) +
-				float64(pixels[off02+1]) + float64(pixels[off12+1])
-			colB := float64(pixels[off00+2]) + float64(pixels[off10+2]) +
-				float64(pixels[off01+2]) + float64(pixels[off11+2]) +
-				float64(pixels[off02+2]) + float64(pixels[off12+2])
-
-			line[cx] = core.Cell{Ch: ch, Col: core.Vec3{X: colR * inv6x255, Y: colG * inv6x255, Z: colB * inv6x255}}
 		}
 	}
 	return lines

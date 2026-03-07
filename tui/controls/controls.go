@@ -281,16 +281,10 @@ func (ct *ControlsTab) Render(width int, m AppState) string {
 	// Render mode — wrapped in zone
 	blocksLabel := " Shapes"
 	switch m.GetRenderConfig().RenderMode {
-	case core.RenderDual:
-		blocksLabel = " Dual"
 	case core.RenderBlocks:
 		blocksLabel = " Blocks"
-	case core.RenderHalfBlock:
-		blocksLabel = " Half"
 	case core.RenderBraille:
 		blocksLabel = " Braille"
-	case core.RenderDensity:
-		blocksLabel = " Density"
 	case core.RenderSlice:
 		blocksLabel = " Slice"
 	case core.RenderCost:

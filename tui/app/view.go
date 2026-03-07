@@ -31,16 +31,10 @@ func (m Model) View() tea.View {
 	case ViewShader:
 		modeStr := "SHAPES"
 		switch m.Config.RenderMode {
-		case core.RenderDual:
-			modeStr = "DUAL"
 		case core.RenderBlocks:
 			modeStr = "BLOCK"
-		case core.RenderHalfBlock:
-			modeStr = "HALF"
 		case core.RenderBraille:
 			modeStr = "BRAILLE"
-		case core.RenderDensity:
-			modeStr = "DENSITY"
 		case core.RenderSlice:
 			modeStr = "SLICE"
 		case core.RenderCost:
