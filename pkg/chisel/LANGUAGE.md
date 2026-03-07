@@ -352,25 +352,6 @@ mix(a, b, v)             // linear interpolation
 step(edge, v)            // hard threshold
 ```
 
-### Springs
-
-```chisel
-spring(target, stiffness: 0.1, damping: 0.8)
-```
-
-### Keyframes
-
-```chisel
-kf = keyframes(t) {
-  0:    0
-  1:    3   ease: ease_out
-  1.2:  0   ease: ease_in
-  2:    0
-}
-
-sphere.at(y: kf)
-```
-
 ---
 
 ## 10. Vectors & Swizzling
@@ -412,8 +393,6 @@ voronoi(p)                   // returns distance to nearest cell
 voronoi(p).cell              // cell ID
 voronoi(p).edge              // distance to cell edge
 
-// Domain warping
-warp(p, noise(p) * 0.5)     // warp space with noise
 ```
 
 ### Using Noise in Shapes

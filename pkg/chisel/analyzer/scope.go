@@ -3,14 +3,14 @@ package analyzer
 import (
 	"fmt"
 
-	"asciishader/pkg/chisel/ast"
+	"asciishader/pkg/chisel/lang"
 )
 
 // Symbol represents a named entity in a scope (variable, function, built-in).
 type Symbol struct {
 	Name string
 	Type Type
-	Node ast.Node // definition site; nil for built-ins
+	Node interface{} // definition site; nil for built-ins
 	Used bool
 }
 
@@ -28,9 +28,8 @@ func NewScope(parent *Scope) *Scope {
 	}
 }
 
-// Define adds a symbol to this scope. Returns an error if a symbol with the
-// same name is already defined in this scope (not parent scopes — shadowing
-// is allowed).
+// Define adds a symbol to this scope. Returns an error if already defined
+// in this scope (shadowing parent scopes is allowed).
 func (s *Scope) Define(name string, sym *Symbol) error {
 	if _, exists := s.Symbols[name]; exists {
 		return fmt.Errorf("'%s' already defined in this scope", name)
@@ -39,7 +38,7 @@ func (s *Scope) Define(name string, sym *Symbol) error {
 	return nil
 }
 
-// Lookup resolves a name by walking up the scope chain. Returns nil if not found.
+// Lookup resolves a name by walking up the scope chain.
 func (s *Scope) Lookup(name string) *Symbol {
 	if sym, ok := s.Symbols[name]; ok {
 		return sym
@@ -50,8 +49,7 @@ func (s *Scope) Lookup(name string) *Symbol {
 	return nil
 }
 
-// AllSymbolNames returns the names of all symbols reachable from this scope
-// (walking up the parent chain). Used for fuzzy matching suggestions.
+// AllSymbolNames returns names of all reachable symbols (for fuzzy matching).
 func (s *Scope) AllSymbolNames() []string {
 	seen := make(map[string]bool)
 	var names []string
@@ -66,69 +64,28 @@ func (s *Scope) AllSymbolNames() []string {
 	return names
 }
 
-// NewBuiltinScope creates a scope populated with all built-in identifiers:
-// shapes, math functions, color functions, constants, and named colors.
+// NewBuiltinScope creates a scope populated from the lang registry.
 func NewBuiltinScope() *Scope {
 	s := NewScope(nil)
 
-	// 3D shape primitives.
-	for _, name := range []string{
-		"sphere", "box", "cylinder", "torus", "capsule", "cone",
-		"plane", "octahedron", "pyramid", "ellipsoid",
-		"rounded_box", "box_frame", "capped_torus", "hex_prism",
-		"octagon_prism", "round_cone", "tri_prism", "capped_cone",
-		"solid_angle", "rhombus", "horseshoe",
-		"rounded_cylinder", "tetrahedron", "dodecahedron", "icosahedron", "slab",
-	} {
-		s.Symbols[name] = &Symbol{Name: name, Type: TypeSDF3D}
+	for _, shape := range lang.Shapes3D {
+		s.Symbols[shape.Name] = &Symbol{Name: shape.Name, Type: TypeSDF3D}
 	}
-
-	// 2D shape primitives.
-	for _, name := range []string{
-		"circle", "rect", "hexagon", "polygon", "triangle",
-	} {
-		s.Symbols[name] = &Symbol{Name: name, Type: TypeSDF2D}
+	for _, shape := range lang.Shapes2D {
+		s.Symbols[shape.Name] = &Symbol{Name: shape.Name, Type: TypeSDF2D}
 	}
-
-	// Math functions.
-	for _, name := range []string{
-		"sin", "cos", "tan", "abs", "min", "max", "sqrt", "pow", "exp", "log",
-		"floor", "ceil", "fract", "sign", "length", "normalize", "dot", "cross",
-		"distance", "reflect", "mix", "smoothstep", "step", "clamp",
-		"atan", "asin", "acos", "atan2", "mod", "noise", "fbm", "voronoi",
-		"ease_in", "ease_out", "ease_in_out",
-		"ease_cubic_in", "ease_cubic_out", "ease_cubic_in_out",
-		"ease_elastic", "ease_bounce", "ease_back", "ease_expo",
-		"pulse", "saw", "tri", "remap", "saturate",
-		"radians", "degrees",
-	} {
-		s.Symbols[name] = &Symbol{Name: name, Type: TypeFloat}
+	for _, fn := range lang.Functions {
+		s.Symbols[fn.Name] = &Symbol{Name: fn.Name, Type: TypeFloat}
 	}
-
-	// Color functions.
-	for _, name := range []string{
-		"rgb", "hsl", "hsla", "rgba",
-	} {
-		s.Symbols[name] = &Symbol{Name: name, Type: TypeColor}
+	for _, c := range lang.Constants {
+		typ := TypeFloat
+		if c.Vec {
+			typ = TypeVec3
+		}
+		s.Symbols[c.Name] = &Symbol{Name: c.Name, Type: typ}
 	}
-
-	// Constants.
-	for _, name := range []string{"PI", "TAU", "E", "t"} {
-		s.Symbols[name] = &Symbol{Name: name, Type: TypeFloat}
-	}
-	s.Symbols["p"] = &Symbol{Name: "p", Type: TypeVec3}
-
-	// Axis constants (usable as vec3 directions).
-	for _, name := range []string{"x", "y", "z"} {
-		s.Symbols[name] = &Symbol{Name: name, Type: TypeVec3}
-	}
-
-	// Named colors (stored as vec3 RGB values).
-	for _, name := range []string{
-		"red", "green", "blue", "white", "black", "yellow",
-		"cyan", "magenta", "gray", "orange", "purple", "pink",
-	} {
-		s.Symbols[name] = &Symbol{Name: name, Type: TypeVec3}
+	for _, c := range lang.Colors {
+		s.Symbols[c.Name] = &Symbol{Name: c.Name, Type: TypeVec3}
 	}
 
 	return s

@@ -18,6 +18,7 @@ import (
 	"asciishader/pkg/chisel/ast"
 	"asciishader/pkg/chisel/diagnostic"
 	"asciishader/pkg/chisel/format"
+	"asciishader/pkg/chisel/lang"
 	"asciishader/pkg/chisel/lexer"
 	"asciishader/pkg/chisel/parser"
 	"asciishader/pkg/chisel/token"
@@ -162,103 +163,33 @@ const (
 // Documentation tables
 // ---------------------------------------------------------------------------
 
-var shapeDocs = map[string]string{
-	"sphere":           "sphere(radius = 1)\nCreates a sphere SDF.",
-	"box":              "box(width = 1, height = 1, depth = 1)\nCreates a box SDF.",
-	"cylinder":         "cylinder(radius = 0.5, height = 2)\nCreates a cylinder SDF.",
-	"torus":            "torus(major = 1, minor = 0.3)\nCreates a torus SDF.",
-	"capsule":          "capsule(a, b, radius = 0.25)\nCreates a capsule SDF between two endpoints.",
-	"cone":             "cone(bottomRadius, topRadius, height)\nCreates a cone SDF.",
-	"plane":            "plane\nInfinite ground plane at y=0.",
-	"octahedron":       "octahedron(size = 1)\nCreates an octahedron SDF.",
-	"pyramid":          "pyramid(height = 1)\nCreates a pyramid SDF.",
-	"ellipsoid":        "ellipsoid(rx, ry, rz)\nCreates an ellipsoid SDF with per-axis radii.",
-	"circle":           "circle(radius = 1)\n2D circle SDF. Must be extruded or revolved to render.",
-	"rect":             "rect(width = 1, height = 1)\n2D rectangle SDF.",
-	"hexagon":          "hexagon(radius = 1)\n2D hexagon SDF.",
-	"polygon":          "polygon(points)\n2D polygon SDF from a list of [x,y] points.",
-	"rounded_box":      "rounded_box(size, edgeRadius)\nBox with rounded edges.",
-	"wireframe_box":    "wireframe_box(size, thickness)\nWireframe box.",
-	"rounded_cylinder": "rounded_cylinder(radius, height, rounding)\nCylinder with rounded edges.",
-}
+// Documentation tables — derived from the lang registry.
+var shapeDocs = buildDocMap(func() map[string]string {
+	m := make(map[string]string)
+	for _, s := range lang.Shapes3D {
+		m[s.Name] = s.Doc
+	}
+	for _, s := range lang.Shapes2D {
+		m[s.Name] = s.Doc
+	}
+	return m
+})
 
-var methodDocs = map[string]string{
-	"at":        ".at(x, y, z)\nTranslate the shape. Named args: at(x: 2) or at(y: -1).",
-	"scale":     ".scale(s) or .scale(x, y, z)\nScale uniformly or non-uniformly.",
-	"rot":       ".rot(degrees, axis)\nRotate around an axis (x, y, or z).",
-	"orient":    ".orient(axis)\nAlign shape along an axis direction.",
-	"mirror":    ".mirror(axes...)\nMirror across axes. O(1) space folding.",
-	"rep":       ".rep(spacing) or .rep(spacing, count: N)\nRepeat in space. O(1) cost.",
-	"array":     ".array(count, radius: r)\nCircular array of copies.",
-	"morph":     ".morph(other, t)\nBlend between two shapes by interpolating SDFs.",
-	"shell":     ".shell(thickness)\nHollow out the shape.",
-	"onion":     ".onion(thickness)\nCreate concentric shells.",
-	"displace":  ".displace(expr)\nDisplace surface using expression with p.",
-	"dilate":    ".dilate(amount)\nExpand outward.",
-	"erode":     ".erode(amount)\nShrink inward.",
-	"round":     ".round(radius)\nRound edges.",
-	"elongate":  ".elongate(x, y, z)\nStretch along axes.",
-	"twist":     ".twist(amount)\nTwist around Y axis.",
-	"bend":      ".bend(amount)\nBend the shape.",
-	"color":     ".color(r, g, b) or .color(#hex)\nSet shape color.",
-	"metallic":  ".metallic(value)\nSet metallic material property (0..1).",
-	"roughness": ".roughness(value)\nSet roughness material property (0..1).",
-	"emission":  ".emission(r, g, b) or .emission(intensity)\nSet emissive color or intensity.",
-	"opacity":   ".opacity(value)\nSet transparency (0..1).",
-	"mat":       ".mat(material)\nApply a named material definition.",
-	"extrude":   ".extrude(depth)\nExtrude a 2D shape into 3D.",
-	"revolve":   ".revolve(radius)\nRevolve a 2D shape around an axis.",
-	"red":       ".red\nShorthand color: red.",
-	"blue":      ".blue\nShorthand color: blue.",
-	"green":     ".green\nShorthand color: green.",
-	"white":     ".white\nShorthand color: white.",
-	"black":     ".black\nShorthand color: black.",
-	"yellow":    ".yellow\nShorthand color: yellow.",
-	"cyan":      ".cyan\nShorthand color: cyan.",
-	"magenta":   ".magenta\nShorthand color: magenta.",
-	"orange":    ".orange\nShorthand color: orange.",
-	"gray":      ".gray\nShorthand color: gray.",
-}
+var methodDocs = buildDocMap(func() map[string]string {
+	m := make(map[string]string)
+	for _, method := range lang.Methods {
+		m[method.Name] = method.Doc
+	}
+	return m
+})
 
-var builtinFuncDocs = map[string]string{
-	"sin":        "sin(x)\nSine function.",
-	"cos":        "cos(x)\nCosine function.",
-	"tan":        "tan(x)\nTangent function.",
-	"asin":       "asin(x)\nArc sine.",
-	"acos":       "acos(x)\nArc cosine.",
-	"atan":       "atan(x)\nArc tangent.",
-	"atan2":      "atan2(y, x)\nTwo-argument arc tangent.",
-	"abs":        "abs(x)\nAbsolute value.",
-	"min":        "min(a, b)\nMinimum of two values.",
-	"max":        "max(a, b)\nMaximum of two values.",
-	"sqrt":       "sqrt(x)\nSquare root.",
-	"pow":        "pow(x, n)\nRaise x to the power n.",
-	"exp":        "exp(x)\nExponential function.",
-	"log":        "log(x)\nNatural logarithm.",
-	"floor":      "floor(x)\nRound down to integer.",
-	"ceil":       "ceil(x)\nRound up to integer.",
-	"fract":      "fract(x)\nFractional part.",
-	"sign":       "sign(x)\nSign of x (-1, 0, or 1).",
-	"length":     "length(v)\nLength of a vector.",
-	"normalize":  "normalize(v)\nNormalize a vector to unit length.",
-	"dot":        "dot(a, b)\nDot product of two vectors.",
-	"cross":      "cross(a, b)\nCross product of two vec3 vectors.",
-	"distance":   "distance(a, b)\nDistance between two points.",
-	"reflect":    "reflect(v, n)\nReflect vector v around normal n.",
-	"mix":        "mix(a, b, t)\nLinear interpolation between a and b.",
-	"smoothstep": "smoothstep(edge0, edge1, x)\nSmooth Hermite interpolation.",
-	"step":       "step(edge, x)\nHard threshold: 0 if x < edge, else 1.",
-	"clamp":      "clamp(x, lo, hi)\nClamp x to [lo, hi].",
-	"saturate":   "saturate(x)\nClamp x to [0, 1].",
-	"remap":      "remap(x, a, b, c, d)\nRemap x from [a,b] to [c,d].",
-	"mod":        "mod(x, y)\nModulo operation.",
-	"noise":      "noise(p)\nPerlin/simplex noise at point p. Returns -1..1.",
-	"fbm":        "fbm(p, octaves: 6)\nFractal Brownian motion noise.",
-	"voronoi":    "voronoi(p)\nVoronoi cell noise. Returns distance to nearest cell.",
-	"rgb":        "rgb(r, g, b)\nColor from 0..255 RGB components.",
-	"hsl":        "hsl(h, s, l)\nColor from HSL components.",
-	"round":      "round(x)\nRound to nearest integer.",
-}
+var builtinFuncDocs = buildDocMap(func() map[string]string {
+	m := make(map[string]string)
+	for _, f := range lang.Functions {
+		m[f.Name] = f.Doc
+	}
+	return m
+})
 
 var keywordDocs = map[string]string{
 	"for":      "for var in start..end { body }\nLoop expression. Returns the union of all iterations.",
@@ -275,6 +206,8 @@ var keywordDocs = map[string]string{
 	"debug":    "debug normals | steps | distance | ao | uv | depth\nVisualize scene internals.",
 	"glsl":     "glsl(p) { ... }\nInline raw GLSL escape hatch.",
 }
+
+func buildDocMap(fn func() map[string]string) map[string]string { return fn() }
 
 // ---------------------------------------------------------------------------
 // Server
@@ -639,56 +572,38 @@ func isStartOfExpression(trimmed string) bool {
 }
 
 func methodCompletions() []CompletionItem {
-	methods := []string{
-		"at", "scale", "rot", "orient", "mirror", "rep", "array",
-		"morph", "shell", "onion", "displace", "dilate", "erode",
-		"round", "elongate", "twist", "bend",
-		"color", "metallic", "roughness", "emission", "opacity", "mat",
-		"extrude", "revolve",
-		"red", "blue", "green", "white", "black", "yellow",
-		"cyan", "magenta", "orange", "gray",
-	}
-	items := make([]CompletionItem, 0, len(methods))
-	for _, m := range methods {
-		item := CompletionItem{
-			Label: m,
-			Kind:  CIKMethod,
+	items := make([]CompletionItem, 0, len(lang.Methods))
+	for _, m := range lang.Methods {
+		kind := CIKMethod
+		if m.IsColor {
+			kind = CIKColor
 		}
-		if doc, ok := methodDocs[m]; ok {
-			item.Documentation = doc
-		}
-		items = append(items, item)
+		items = append(items, CompletionItem{
+			Label:         m.Name,
+			Kind:          kind,
+			Documentation: m.Doc,
+		})
 	}
 	return items
 }
 
 func shapeCompletions() []CompletionItem {
-	shapes := []string{
-		"sphere", "box", "cylinder", "torus", "capsule", "cone",
-		"plane", "octahedron", "pyramid", "ellipsoid",
-		"circle", "rect", "hexagon", "polygon",
-	}
+	shapes := lang.ShapeNames()
 	items := make([]CompletionItem, 0, len(shapes))
 	for _, name := range shapes {
-		item := CompletionItem{
-			Label: name,
-			Kind:  CIKClass,
-		}
-		if doc, ok := shapeDocs[name]; ok {
-			item.Documentation = doc
-		}
-		items = append(items, item)
+		items = append(items, CompletionItem{
+			Label:         name,
+			Kind:          CIKClass,
+			Documentation: lang.ShapeDoc(name),
+		})
 	}
 	return items
 }
 
 func keywordCompletions() []CompletionItem {
-	keywords := []string{
-		"for", "if", "else", "light", "camera", "bg",
-		"raymarch", "post", "mat", "debug", "glsl",
-	}
-	items := make([]CompletionItem, 0, len(keywords))
-	for _, kw := range keywords {
+	all := append(lang.Keywords, lang.Settings...)
+	items := make([]CompletionItem, 0, len(all))
+	for _, kw := range all {
 		item := CompletionItem{
 			Label: kw,
 			Kind:  CIKKeyword,
@@ -702,25 +617,13 @@ func keywordCompletions() []CompletionItem {
 }
 
 func builtinFuncCompletions() []CompletionItem {
-	funcs := []string{
-		"sin", "cos", "tan", "asin", "acos", "atan", "atan2",
-		"abs", "min", "max", "sqrt", "pow", "exp", "log",
-		"floor", "ceil", "fract", "sign",
-		"length", "normalize", "dot", "cross", "distance", "reflect",
-		"mix", "smoothstep", "step", "clamp", "saturate", "remap",
-		"mod", "noise", "fbm", "voronoi",
-		"rgb", "hsl",
-	}
-	items := make([]CompletionItem, 0, len(funcs))
-	for _, f := range funcs {
-		item := CompletionItem{
-			Label: f,
-			Kind:  CIKFunction,
-		}
-		if doc, ok := builtinFuncDocs[f]; ok {
-			item.Documentation = doc
-		}
-		items = append(items, item)
+	items := make([]CompletionItem, 0, len(lang.Functions))
+	for _, f := range lang.Functions {
+		items = append(items, CompletionItem{
+			Label:         f.Name,
+			Kind:          CIKFunction,
+			Documentation: f.Doc,
+		})
 	}
 	return items
 }

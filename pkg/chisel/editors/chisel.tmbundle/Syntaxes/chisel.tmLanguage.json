@@ -1,0 +1,164 @@
+{
+  "name": "Chisel",
+  "scopeName": "source.chisel",
+  "fileTypes": [
+    "chisel"
+  ],
+  "patterns": [
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#keyword"
+    },
+    {
+      "include": "#setting"
+    },
+    {
+      "include": "#shape"
+    },
+    {
+      "include": "#builtin-function"
+    },
+    {
+      "include": "#named-color"
+    },
+    {
+      "include": "#constant"
+    },
+    {
+      "include": "#builtin-var"
+    },
+    {
+      "include": "#operator"
+    },
+    {
+      "include": "#number"
+    },
+    {
+      "include": "#hex-color"
+    },
+    {
+      "include": "#string"
+    },
+    {
+      "include": "#method"
+    },
+    {
+      "include": "#punctuation"
+    }
+  ],
+  "repository": {
+    "builtin-function": {
+      "match": "\\b(sin|cos|tan|asin|acos|atan|atan2|pow|sqrt|exp|log|floor|ceil|round|fract|abs|sign|min|max|mix|smoothstep|step|clamp|saturate|remap|length|normalize|dot|cross|distance|reflect|mod|radians|degrees|noise|fbm|voronoi|pulse|saw|tri|ease_in|ease_out|ease_in_out|ease_cubic_in|ease_cubic_out|ease_cubic_in_out|ease_elastic|ease_bounce|ease_back|ease_expo|rgb|hsl|hsla|rgba)\\b",
+      "name": "support.function.builtin.chisel"
+    },
+    "builtin-var": {
+      "match": "(?\u003c![.a-zA-Z_])\\b(p|x|y|z|t)\\b",
+      "name": "variable.language.chisel"
+    },
+    "comment": {
+      "patterns": [
+        {
+          "match": "//.*$",
+          "name": "comment.line.double-slash.chisel"
+        },
+        {
+          "name": "comment.block.chisel",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "constant": {
+      "match": "\\b(PI|TAU|E|true|false)\\b",
+      "name": "constant.language.chisel"
+    },
+    "hex-color": {
+      "match": "#[0-9a-fA-F]{3,8}\\b",
+      "name": "constant.other.color.chisel"
+    },
+    "keyword": {
+      "match": "\\b(for|in|if|else|step|glsl)\\b",
+      "name": "keyword.control.chisel"
+    },
+    "method": {
+      "match": "(?\u003c=\\.)(at|scale|rot|orient|mirror|rep|array|flip|morph|shell|onion|displace|dilate|erode|round|elongate|twist|bend|bend_linear|swizzle|bounds|extrude|extrude_to|revolve|color|metallic|roughness|emission|opacity|mat)\\b",
+      "name": "entity.name.function.method.chisel"
+    },
+    "named-color": {
+      "match": "\\b(red|green|blue|white|black|yellow|cyan|magenta|gray|orange|purple|pink)\\b",
+      "name": "constant.language.color.chisel"
+    },
+    "number": {
+      "match": "\\b\\d+(\\.\\d+)?([eE][+-]?\\d+)?\\b",
+      "name": "constant.numeric.chisel"
+    },
+    "operator": {
+      "patterns": [
+        {
+          "match": "\\|[~/]",
+          "name": "keyword.operator.boolean.smooth.chisel"
+        },
+        {
+          "match": "-[~/]",
+          "name": "keyword.operator.boolean.smooth.chisel"
+        },
+        {
+          "match": "\u0026[~/]",
+          "name": "keyword.operator.boolean.smooth.chisel"
+        },
+        {
+          "match": "[|\u0026]",
+          "name": "keyword.operator.boolean.chisel"
+        },
+        {
+          "match": "==|!=|\u003c=|\u003e=|\u003c|\u003e",
+          "name": "keyword.operator.comparison.chisel"
+        },
+        {
+          "match": "-\u003e",
+          "name": "keyword.operator.arrow.chisel"
+        },
+        {
+          "match": "\\.\\.",
+          "name": "keyword.operator.range.chisel"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "match": "[()\\[\\]{}]",
+          "name": "punctuation.bracket.chisel"
+        },
+        {
+          "match": "[.,:]",
+          "name": "punctuation.delimiter.chisel"
+        }
+      ]
+    },
+    "setting": {
+      "match": "\\b(light|camera|bg|raymarch|post|debug|mat)\\b",
+      "name": "keyword.other.chisel"
+    },
+    "shape": {
+      "match": "\\b(sphere|box|cylinder|torus|capsule|cone|plane|octahedron|pyramid|ellipsoid|rounded_box|box_frame|capped_torus|hex_prism|octagon_prism|round_cone|tri_prism|capped_cone|solid_angle|rhombus|horseshoe|rounded_cylinder|tetrahedron|dodecahedron|icosahedron|slab|circle|rect|hexagon|polygon|triangle)\\b",
+      "name": "support.function.shape.chisel"
+    },
+    "string": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.chisel",
+          "begin": "\"",
+          "end": "\""
+        },
+        {
+          "name": "string.quoted.single.chisel",
+          "begin": "'",
+          "end": "'"
+        }
+      ]
+    }
+  }
+}

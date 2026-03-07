@@ -1,4 +1,4 @@
-.PHONY: all build test lint fmt check clean install run
+.PHONY: all build test lint fmt check clean install run generate
 
 # Binaries
 ASCIISHADER = asciishader
@@ -17,15 +17,20 @@ build-app:
 	$(GO) build -o $(ASCIISHADER) ./cmd/asciishader
 
 build-chisel:
-	$(GO) build -o $(CHISEL) ./cmd/chisel
+	$(GO) build -o $(CHISEL) ./pkg/chisel/cmd/chisel
 
 build-lsp:
-	$(GO) build -o $(CHISEL_LSP) ./cmd/chisel-lsp
+	$(GO) build -o $(CHISEL_LSP) ./pkg/chisel/cmd/chisel-lsp
 
 install:
 	$(GO) install ./cmd/asciishader
-	$(GO) install ./cmd/chisel
-	$(GO) install ./cmd/chisel-lsp
+	$(GO) install ./pkg/chisel/cmd/chisel
+	$(GO) install ./pkg/chisel/cmd/chisel-lsp
+
+# ─── Generate ───────────────────────────────────────────────────────
+
+generate:
+	$(GO) generate ./pkg/chisel/lang/
 
 # ─── Test ────────────────────────────────────────────────────────────
 

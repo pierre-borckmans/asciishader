@@ -6,64 +6,28 @@ import (
 
 	"asciishader/pkg/chisel/ast"
 	"asciishader/pkg/chisel/diagnostic"
+	"asciishader/pkg/chisel/lang"
 	"asciishader/pkg/chisel/token"
 )
 
-// knownMethods is the set of recognized method names in Chisel.
-var knownMethods = []string{
-	"at", "scale", "rot", "orient", "mirror", "rep", "array",
-	"morph", "shell", "onion", "displace", "dilate", "erode",
-	"round", "elongate", "twist", "bend", "bend_linear", "swizzle", "bounds", "flip",
-	"color", "metallic", "roughness", "emission", "opacity", "mat",
-	"extrude", "extrude_to", "revolve",
-	"red", "blue", "green", "white", "black", "yellow",
-	"cyan", "magenta", "orange", "gray",
-}
+// knownMethods is derived from the lang registry.
+var knownMethods = lang.MethodNames()
 
-// methodAliases maps common method names from other 3D tools/languages to
-// their Chisel equivalents. Used for helpful error messages.
-var methodAliases = map[string]string{
-	"translate": "at",
-	"move":      "at",
-	"position":  "at",
-	"rotate":    "rot",
-	"rotation":  "rot",
-	"size":      "scale",
-	"resize":    "scale",
-	"repeat":    "rep",
-	"duplicate": "array",
-	"subtract":  "color", // fallback; handled generically via fuzzy match
-	"hollow":    "shell",
-	"offset":    "at",
-}
+// methodAliases is derived from the lang registry.
+var methodAliases = lang.MethodAliases
 
-// shapeArity maps shape names to their expected positional argument counts.
-// A shape with multiple valid arities is represented by the maximum count;
-// we check that the call has at most that many positional args.
-var shapeArity = map[string]struct{ min, max int }{
-	"sphere":     {0, 1},
-	"box":        {0, 3},
-	"cylinder":   {0, 3},
-	"torus":      {0, 2},
-	"capsule":    {0, 3},
-	"cone":       {0, 3},
-	"plane":      {0, 0},
-	"octahedron": {0, 1},
-	"pyramid":    {0, 1},
-	"ellipsoid":  {0, 3},
-	"circle":     {0, 1},
-	"rect":       {0, 2},
-	"hexagon":    {0, 1},
-	"triangle":   {0, 1},
-	"polygon":    {1, 1},
-	"horseshoe":        {1, 4},
-	"capped_cone":      {0, 4},
-	"round_cone":       {0, 4},
-	"rounded_cylinder": {0, 3},
-	"tetrahedron":      {0, 1},
-	"dodecahedron":     {0, 1},
-	"icosahedron":      {0, 1},
-	"slab":             {0, 2},
+// shapeArity is derived from the lang registry.
+var shapeArity = buildShapeArity()
+
+func buildShapeArity() map[string]struct{ min, max int } {
+	m := make(map[string]struct{ min, max int })
+	for _, s := range lang.Shapes3D {
+		m[s.Name] = struct{ min, max int }{s.MinArgs, s.MaxArgs}
+	}
+	for _, s := range lang.Shapes2D {
+		m[s.Name] = struct{ min, max int }{s.MinArgs, s.MaxArgs}
+	}
+	return m
 }
 
 // Analyze walks the AST and performs semantic analysis, returning any
