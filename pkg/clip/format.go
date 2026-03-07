@@ -10,11 +10,25 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
+// Format constants.
+const (
+	FormatVersion = 2
+	SubW          = 2           // sub-pixel columns per cell
+	SubH          = 4           // sub-pixel rows per cell
+	SubPixels     = SubW * SubH // 8 brightness values per cell
+	NumPlanes     = SubPixels + 2
+
+	// PlaybackModeCount is the number of render modes available during clip playback.
+	// Shapes(0), Blocks(1), Braille(2) — Slice and Cost require GPU data.
+	PlaybackModeCount = 3
+)
+
 var clipMagic = [4]byte{'A', 'R', 'E', 'C'}
 
-// ClipHeader is the file header (15 bytes packed).
+// ClipHeader is the file header.
 type ClipHeader struct {
 	Magic      [4]byte
+	Version    uint8
 	FPS        uint8
 	NumFrames  uint16
 	Width      uint16
@@ -39,14 +53,10 @@ type Keyframe struct {
 	AOSteps     uint16
 }
 
-// ClipCell is a single cell: character + RGB565 color.
-type ClipCell struct {
-	Ch    byte
-	Color uint16 // RGB565
+// FrameSize returns the byte size of one frame for the given cell dimensions.
+func FrameSize(w, h int) int {
+	return w * h * NumPlanes
 }
-
-// ClipCellBytes is the on-disk size of one cell.
-const ClipCellBytes = 3
 
 func clampF(v, lo, hi float64) float64 {
 	if v < lo {
@@ -83,7 +93,7 @@ type Clip struct {
 	Keyframes []Keyframe
 	Width     int
 	Height    int
-	Frames    [][]ClipCell
+	Frames    [][]byte // [frameIdx] = planar frame data, FrameSize bytes each
 }
 
 // WriteClip writes a clip to the given path.
@@ -96,6 +106,7 @@ func WriteClip(path string, header ClipHeader, keyframes []Keyframe, trackData [
 	defer func() { _ = f.Close() }()
 
 	header.Magic = clipMagic
+	header.Version = FormatVersion
 	if err := binary.Write(f, binary.LittleEndian, &header); err != nil {
 		return fmt.Errorf("write header: %w", err)
 	}
@@ -132,6 +143,9 @@ func LoadClipFromBytes(data []byte) (*Clip, error) {
 	}
 	if header.Magic != clipMagic {
 		return nil, fmt.Errorf("bad magic: %v", header.Magic)
+	}
+	if header.Version != FormatVersion {
+		return nil, fmt.Errorf("unsupported format version %d (want %d)", header.Version, FormatVersion)
 	}
 
 	keyframes := make([]Keyframe, header.NumFrames)
@@ -184,4 +198,40 @@ func DecompressTrack(compData []byte) ([]byte, error) {
 	}
 	defer dec.Close()
 	return dec.DecodeAll(compData, nil)
+}
+
+// PackFrame packs sub-pixel brightness and color data into a planar frame.
+// brightness has SubPixels (8) values per cell, colors has one RGB565 per cell.
+// Layout: 8 brightness planes + 2 color byte planes, each W*H bytes.
+func PackFrame(brightness []uint8, colors []uint16, w, h int) []byte {
+	cellCount := w * h
+	frame := make([]byte, cellCount*NumPlanes)
+
+	// 8 brightness planes
+	for sp := 0; sp < SubPixels; sp++ {
+		for i := 0; i < cellCount; i++ {
+			frame[sp*cellCount+i] = brightness[i*SubPixels+sp]
+		}
+	}
+
+	// 2 color byte planes (low, high)
+	for i := 0; i < cellCount; i++ {
+		frame[SubPixels*cellCount+i] = byte(colors[i])
+		frame[(SubPixels+1)*cellCount+i] = byte(colors[i] >> 8)
+	}
+
+	return frame
+}
+
+// FrameBrightness returns the brightness (0-255) of a sub-pixel within a frame.
+// plane is the sub-pixel index (0-7), cellIdx is the cell index.
+func FrameBrightness(frame []byte, cellCount, cellIdx, plane int) uint8 {
+	return frame[plane*cellCount+cellIdx]
+}
+
+// FrameColor returns the RGB565 color of a cell within a frame.
+func FrameColor(frame []byte, cellCount, cellIdx int) uint16 {
+	lo := frame[SubPixels*cellCount+cellIdx]
+	hi := frame[(SubPixels+1)*cellCount+cellIdx]
+	return uint16(lo) | uint16(hi)<<8
 }

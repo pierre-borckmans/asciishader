@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"asciishader/pkg/clip"
+	"asciishader/pkg/core"
 	"asciishader/tui/components"
 
 	"charm.land/lipgloss/v2"
@@ -64,6 +65,9 @@ func (pv *PlayerView) HandleKey(key string) bool {
 			return true
 		case "l":
 			pv.Player.SetLoop(!pv.Player.Loop)
+			return true
+		case "m":
+			pv.Player.RenderMode = (pv.Player.RenderMode + 1) % clip.PlaybackModeCount
 			return true
 		case "esc":
 			pv.Loaded = false
@@ -150,6 +154,13 @@ func (pv *PlayerView) renderPlayback(width, height int) string {
 	}
 
 	// Status line
+	modeStr := "SHAPES"
+	switch pv.Player.RenderMode {
+	case core.RenderBlocks:
+		modeStr = "BLOCKS"
+	case core.RenderBraille:
+		modeStr = "BRAILLE"
+	}
 	pauseStr := ""
 	if pv.Player.Paused {
 		pauseStr = " PAUSED"
@@ -158,8 +169,8 @@ func (pv *PlayerView) renderPlayback(width, height int) string {
 	if pv.Player.Loop {
 		loopStr = " LOOP"
 	}
-	status := fmt.Sprintf(" Frame %d/%d%s%s  |  space: pause  l: loop  esc: back",
-		pv.Player.CurrentFrame+1, len(pv.Player.Clip().Frames), pauseStr, loopStr)
+	status := fmt.Sprintf(" Frame %d/%d [%s]%s%s  |  m: mode  space: pause  l: loop  esc: back",
+		pv.Player.CurrentFrame+1, len(pv.Player.Clip().Frames), modeStr, pauseStr, loopStr)
 
 	statusStyle := lipgloss.NewStyle().
 		Background(lipgloss.Color("235")).

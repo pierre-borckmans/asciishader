@@ -1,10 +1,8 @@
-package gpu
+package core
 
 import (
 	"strconv"
 	"unicode/utf8"
-
-	"asciishader/pkg/core"
 )
 
 // QuadrantChars maps 4-bit patterns (TL=bit3, TR=bit2, BL=bit1, BR=bit0) to Unicode quadrant block characters.
@@ -13,14 +11,14 @@ var QuadrantChars = [16]rune{
 	'\u2598', '\u259A', '\u258C', '\u2599', '\u2580', '\u259C', '\u259B', '\u2588',
 }
 
-// BuildANSI converts a core.Cell grid to an ANSI true-color string with fg+bg support.
-func BuildANSI(lines [][]core.Cell) string {
+// BuildANSI converts a Cell grid to an ANSI true-color string with fg+bg support.
+func BuildANSI(lines [][]Cell) string {
 	return string(AppendANSI(nil, lines))
 }
 
-// AppendANSI appends ANSI-encoded core.Cell grid to buf and returns the result.
+// AppendANSI appends ANSI-encoded Cell grid to buf and returns the result.
 // Reuses buf capacity to avoid allocation when the caller retains the buffer.
-func AppendANSI(buf []byte, lines [][]core.Cell) []byte {
+func AppendANSI(buf []byte, lines [][]Cell) []byte {
 	if len(lines) == 0 {
 		return buf
 	}
@@ -51,7 +49,7 @@ func AppendANSI(buf []byte, lines [][]core.Cell) []byte {
 				out = append(out, ' ')
 				continue
 			}
-			// If previous core.Cell set a bg but this core.Cell doesn't use bg, reset it
+			// If previous Cell set a bg but this Cell doesn't use bg, reset it
 			if !c.HasBg && (prevBR != -1 || prevBG != -1 || prevBB != -1) {
 				out = append(out, "\033[0m"...)
 				prevFR, prevFG, prevFB = -1, -1, -1

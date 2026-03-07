@@ -1,4 +1,4 @@
-package gpu
+package core
 
 import (
 	"image"
@@ -10,7 +10,7 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-// ShapeVec is a 6D brightness distribution vector (2 cols x 3 rows).
+// ShapeVec is a 6D brightness distribution vector (2 cols × 3 rows).
 // Layout: [TL, TR, ML, MR, BL, BR]
 type ShapeVec [6]float64
 
@@ -26,7 +26,7 @@ type ShapeTable struct {
 }
 
 // NewShapeTable renders each printable ASCII char (0x20-0x7E) using
-// basicfont.Face7x13 and computes the pixel density in 6 sub-regions.
+// basicfont.Face7x13 and computes the pixel density in 6 sub-regions (2×3).
 func NewShapeTable() *ShapeTable {
 	face := basicfont.Face7x13
 	st := &ShapeTable{}

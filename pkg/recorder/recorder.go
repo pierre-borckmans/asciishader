@@ -32,7 +32,7 @@ type Recorder struct {
 
 	// Bake state
 	bakeFrameIdx int
-	bakeFrames   [][]clip.ClipCell // [frameIdx] = flat cell grid
+	bakeFrames   [][]byte // [frameIdx] = planar sub-pixel frame
 
 	// Output
 	OutputPath string
@@ -79,7 +79,7 @@ func (rec *Recorder) StartLive() {
 // StartBake initializes the bake phase.
 func (rec *Recorder) StartBake() {
 	rec.bakeFrameIdx = 0
-	rec.bakeFrames = make([][]clip.ClipCell, len(rec.Keyframes))
+	rec.bakeFrames = make([][]byte, len(rec.Keyframes))
 }
 
 // BakeProgress returns (current, total) for progress display.
@@ -92,7 +92,7 @@ func (rec *Recorder) BakeDone() bool {
 	return rec.bakeFrameIdx >= len(rec.Keyframes)
 }
 
-// BakeStep renders one frame. Returns true when bake is complete.
+// BakeStep renders one frame as sub-pixel data. Returns true when bake is complete.
 func (rec *Recorder) BakeStep(m AppState) bool {
 	if rec.BakeDone() {
 		return true
@@ -101,11 +101,57 @@ func (rec *Recorder) BakeStep(m AppState) bool {
 	kf := rec.Keyframes[rec.bakeFrameIdx]
 	rec.applyKeyframe(m, kf)
 
-	cells := m.GetGPU().RenderToCells(m.GetRenderConfig())
-	rec.bakeFrames[rec.bakeFrameIdx] = rec.extractRegion(cells)
+	// Render at 2×4 sub-pixel resolution
+	m.GetGPU().RenderRaw(m.GetRenderConfig(), clip.SubW, clip.SubH)
+	pixels, pixW := m.GetGPU().RawPixels()
+
+	rec.bakeFrames[rec.bakeFrameIdx] = rec.extractSubPixels(pixels, pixW)
 
 	rec.bakeFrameIdx++
 	return rec.BakeDone()
+}
+
+// extractSubPixels reads the raw RGBA pixel buffer and packs brightness + color
+// into a planar frame suitable for the clip format.
+func (rec *Recorder) extractSubPixels(pixels []byte, pixW int) []byte {
+	w, h := rec.RegionW, rec.RegionH
+	cellCount := w * h
+
+	brightness := make([]uint8, cellCount*clip.SubPixels)
+	colors := make([]uint16, cellCount)
+
+	for cy := 0; cy < h; cy++ {
+		for cx := 0; cx < w; cx++ {
+			cellIdx := cy*w + cx
+			bx := cx * clip.SubW
+			by := cy * clip.SubH
+
+			var colR, colG, colB float64
+			var litCount float64
+			for sy := 0; sy < clip.SubH; sy++ {
+				for sx := 0; sx < clip.SubW; sx++ {
+					px := bx + sx
+					py := by + sy
+					off := (py*pixW + px) * 4
+					spIdx := sy*clip.SubW + sx
+					a := pixels[off+3]
+					brightness[cellIdx*clip.SubPixels+spIdx] = a
+					if a > 2 {
+						colR += float64(pixels[off])
+						colG += float64(pixels[off+1])
+						colB += float64(pixels[off+2])
+						litCount++
+					}
+				}
+			}
+
+			if litCount > 0 {
+				colors[cellIdx] = clip.RGB565Encode(colR/litCount/255, colG/litCount/255, colB/litCount/255)
+			}
+		}
+	}
+
+	return clip.PackFrame(brightness, colors, w, h)
 }
 
 // applyKeyframe configures the renderer from a keyframe for baking.
@@ -138,18 +184,6 @@ func (rec *Recorder) applyKeyframe(m AppState, kf clip.Keyframe) {
 	).Normalize()
 }
 
-// extractRegion converts the full core.Cell grid to a flat ClipCell slice.
-func (rec *Recorder) extractRegion(cells [][]core.Cell) []clip.ClipCell {
-	w, h := rec.RegionW, rec.RegionH
-	out := make([]clip.ClipCell, w*h)
-	for y := 0; y < h && y < len(cells); y++ {
-		for x := 0; x < w && x < len(cells[y]); x++ {
-			out[y*w+x] = cellToClipCell(cells[y][x])
-		}
-	}
-	return out
-}
-
 // Finalize encodes, compresses, and writes the .asciirec file.
 func (rec *Recorder) Finalize() error {
 	if len(rec.Keyframes) == 0 {
@@ -158,8 +192,18 @@ func (rec *Recorder) Finalize() error {
 
 	numFrames := len(rec.Keyframes)
 	lastKf := rec.Keyframes[numFrames-1]
+
+	// Compute actual FPS from captured timestamps
+	fps := uint8(30)
+	if lastKf.TimeMs > 0 {
+		fps = uint8(float64(numFrames) * 1000 / float64(lastKf.TimeMs))
+		if fps < 1 {
+			fps = 1
+		}
+	}
+
 	header := clip.ClipHeader{
-		FPS:        30,
+		FPS:        fps,
 		NumFrames:  uint16(numFrames),
 		Width:      uint16(rec.RegionW),
 		Height:     uint16(rec.RegionH),
@@ -183,11 +227,4 @@ func (rec *Recorder) Finalize() error {
 // RecordingDuration returns the elapsed time since recording started.
 func (rec *Recorder) RecordingDuration() time.Duration {
 	return time.Since(rec.StartTime)
-}
-
-func cellToClipCell(c core.Cell) clip.ClipCell {
-	return clip.ClipCell{
-		Ch:    byte(c.Ch),
-		Color: clip.RGB565Encode(c.Col.X, c.Col.Y, c.Col.Z),
-	}
 }

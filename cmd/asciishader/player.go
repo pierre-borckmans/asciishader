@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"asciishader/pkg/clip"
+	"asciishader/pkg/core"
 	"asciishader/tui/app"
 
 	tea "charm.land/bubbletea/v2"
@@ -73,6 +74,8 @@ func (pm playerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			pm.player.Paused = !pm.player.Paused
 		case "l":
 			pm.player.SetLoop(!pm.player.Loop)
+		case "m":
+			pm.player.RenderMode = (pm.player.RenderMode + 1) % clip.PlaybackModeCount
 		}
 		return pm, nil
 	}
@@ -88,8 +91,15 @@ func (pm playerModel) View() tea.View {
 
 	frame := pm.player.Render()
 
-	status := fmt.Sprintf(" Playing: %s | Frame %d/%d | q: quit | space: pause | l: loop",
-		pm.clipPath, pm.player.CurrentFrame+1, len(pm.player.Clip().Frames))
+	modeStr := "SHAPES"
+	switch pm.player.RenderMode {
+	case core.RenderBlocks:
+		modeStr = "BLOCKS"
+	case core.RenderBraille:
+		modeStr = "BRAILLE"
+	}
+	status := fmt.Sprintf(" %s | %s | Frame %d/%d | m: mode | space: pause | l: loop | q: quit",
+		pm.clipPath, modeStr, pm.player.CurrentFrame+1, len(pm.player.Clip().Frames))
 
 	statusStyle := lipgloss.NewStyle().
 		Background(lipgloss.Color("#333333")).

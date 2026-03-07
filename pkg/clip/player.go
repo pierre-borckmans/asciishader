@@ -1,8 +1,9 @@
 package clip
 
 import (
-	"strconv"
 	"strings"
+
+	"asciishader/pkg/core"
 )
 
 // Player plays back a loaded .asciirec clip.
@@ -15,6 +16,18 @@ type Player struct {
 	Paused       bool
 	width        int
 	height       int
+	RenderMode   int
+	Contrast     float64
+	shapeTable   *core.ShapeTable
+
+	// Render cache — avoids re-running shape matching when nothing changed
+	cachedFrame    int
+	cachedMode     int
+	cachedContrast float64
+	cachedWidth    int
+	cachedHeight   int
+	cachedOutput   string
+	ansiBuf        []byte
 }
 
 // NewPlayer creates a player for the given clip.
@@ -24,8 +37,10 @@ func NewPlayer(c *Clip) *Player {
 		fps = 30
 	}
 	return &Player{
-		clip:     c,
-		frameDur: 1.0 / fps,
+		clip:        c,
+		frameDur:    1.0 / fps,
+		Contrast:    1.0,
+		cachedFrame: -1,
 	}
 }
 
@@ -83,55 +98,53 @@ func (p *Player) Seek(frame int) {
 	p.timeAcc = 0
 }
 
-// Render builds the ANSI string for the current frame.
+// Render reconstructs cells from the current frame's sub-pixel data
+// and builds an ANSI-colored string. Results are cached to avoid
+// redundant shape matching when the frame/mode/size haven't changed.
 func (p *Player) Render() string {
 	if len(p.clip.Frames) == 0 || p.CurrentFrame >= len(p.clip.Frames) {
 		return ""
 	}
 
-	frame := p.clip.Frames[p.CurrentFrame]
+	// Return cached result if nothing changed
+	if p.CurrentFrame == p.cachedFrame &&
+		p.RenderMode == p.cachedMode &&
+		p.Contrast == p.cachedContrast &&
+		p.width == p.cachedWidth &&
+		p.height == p.cachedHeight {
+		return p.cachedOutput
+	}
+
+	// Lazily initialize shape table (needed for Shapes mode)
+	if p.shapeTable == nil {
+		p.shapeTable = core.NewShapeTable()
+	}
+
 	w := p.clip.Width
 	h := p.clip.Height
 
-	out := make([]byte, 0, w*h*20+h*10)
-	var prevR, prevG, prevB int
+	// Only reconstruct cells if the frame or mode changed
+	if p.CurrentFrame != p.cachedFrame ||
+		p.RenderMode != p.cachedMode ||
+		p.Contrast != p.cachedContrast {
 
-	for y := 0; y < h; y++ {
-		if y > 0 {
-			out = append(out, '\n')
-		}
-		prevR, prevG, prevB = -1, -1, -1
-
-		for x := 0; x < w; x++ {
-			idx := y*w + x
-			c := frame[idx]
-
-			if c.Ch == ' ' || c.Ch == 0 {
-				out = append(out, ' ')
-				continue
-			}
-
-			cr, cg, cb := RGB565Decode(c.Color)
-
-			if int(cr) != prevR || int(cg) != prevG || int(cb) != prevB {
-				out = append(out, "\033[38;2;"...)
-				out = strconv.AppendInt(out, int64(cr), 10)
-				out = append(out, ';')
-				out = strconv.AppendInt(out, int64(cg), 10)
-				out = append(out, ';')
-				out = strconv.AppendInt(out, int64(cb), 10)
-				out = append(out, 'm')
-				prevR, prevG, prevB = int(cr), int(cg), int(cb)
-			}
-			out = append(out, c.Ch)
-		}
-		out = append(out, "\033[0m"...)
+		frame := p.clip.Frames[p.CurrentFrame]
+		cells := CellsFromFrame(frame, w, h, p.RenderMode, p.shapeTable, p.Contrast)
+		p.ansiBuf = core.AppendANSI(p.ansiBuf[:0], cells)
 	}
 
-	rendered := string(out)
+	rendered := string(p.ansiBuf)
+
 	if p.width > w || p.height > h {
 		rendered = p.centerContent(rendered, w, h)
 	}
+
+	p.cachedFrame = p.CurrentFrame
+	p.cachedMode = p.RenderMode
+	p.cachedContrast = p.Contrast
+	p.cachedWidth = p.width
+	p.cachedHeight = p.height
+	p.cachedOutput = rendered
 
 	return rendered
 }

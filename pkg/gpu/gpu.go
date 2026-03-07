@@ -66,7 +66,7 @@ type GPURenderer struct {
 	pixels  []byte
 
 	// Shape table for ASCII shape matching
-	ShapeTable *ShapeTable
+	ShapeTable *core.ShapeTable
 
 	// Reusable buffers (avoid per-frame allocation)
 	cellBuf [][]core.Cell
@@ -117,7 +117,7 @@ func NewGPURenderer() (*GPURenderer, error) {
 		program:    program,
 		vao:        vao,
 		userCode:   shader.DefaultUserCode,
-		ShapeTable: NewShapeTable(),
+		ShapeTable: core.NewShapeTable(),
 	}
 
 	g.cacheUniforms()
@@ -160,15 +160,9 @@ func (g *GPURenderer) resize(termW, termH, subW, subH int) {
 	gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
 }
 
-// Render uses the GPU to raytrace and returns an ANSI-colored string.
-func (g *GPURenderer) Render(r *core.RenderConfig) string {
-	w, h := r.Width, r.Height
-	if w <= 0 || h <= 0 {
-		return ""
-	}
-
-	subW, subH := renderSubPixels(r.RenderMode)
-	g.resize(w, h, subW, subH)
+// renderPass runs the GPU shader and reads back pixels at the given sub-pixel resolution.
+func (g *GPURenderer) renderPass(r *core.RenderConfig, subW, subH int) {
+	g.resize(r.Width, r.Height, subW, subH)
 
 	gl.BindFramebuffer(gl.FRAMEBUFFER, g.fbo)
 	gl.Viewport(0, 0, int32(g.pixW), int32(g.pixH))
@@ -176,9 +170,8 @@ func (g *GPURenderer) Render(r *core.RenderConfig) string {
 
 	gl.UseProgram(g.program)
 
-	// Set uniforms — resolution is pixel resolution, termSize is terminal cells
 	gl.Uniform2f(g.uResolution, float32(g.pixW), float32(g.pixH))
-	gl.Uniform2f(g.uTermSize, float32(w), float32(h))
+	gl.Uniform2f(g.uTermSize, float32(r.Width), float32(r.Height))
 	gl.Uniform1f(g.uTime, float32(r.Time))
 	gl.Uniform3f(g.uCameraPos, float32(r.Camera.Pos.X), float32(r.Camera.Pos.Y), float32(r.Camera.Pos.Z))
 	gl.Uniform3f(g.uCameraTarget, float32(r.Camera.Target.X), float32(r.Camera.Target.Y), float32(r.Camera.Target.Z))
@@ -193,58 +186,46 @@ func (g *GPURenderer) Render(r *core.RenderConfig) string {
 	gl.Uniform1i(g.uSliceMode, int32(r.SliceMode))
 	gl.Uniform1f(g.uSliceY, float32(r.SliceY))
 
-	// Draw fullscreen quad
 	gl.BindVertexArray(g.vao)
 	gl.DrawArrays(gl.TRIANGLES, 0, 6)
 
-	// Read pixels at sub-pixel resolution
 	gl.ReadPixels(0, 0, int32(g.pixW), int32(g.pixH), gl.RGBA, gl.UNSIGNED_BYTE, unsafe.Pointer(&g.pixels[0]))
 	gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
+}
 
-	// Build cells then convert to ANSI
-	g.ansiBuf = AppendANSI(g.ansiBuf[:0], g.RenderCells(r))
+// Render uses the GPU to raytrace and returns an ANSI-colored string.
+func (g *GPURenderer) Render(r *core.RenderConfig) string {
+	if r.Width <= 0 || r.Height <= 0 {
+		return ""
+	}
+	subW, subH := renderSubPixels(r.RenderMode)
+	g.renderPass(r, subW, subH)
+	g.ansiBuf = core.AppendANSI(g.ansiBuf[:0], g.RenderCells(r))
 	return string(g.ansiBuf)
 }
 
 // RenderToCells does the full GPU render pass and returns the core.Cell grid (no ANSI).
 func (g *GPURenderer) RenderToCells(r *core.RenderConfig) [][]core.Cell {
-	w, h := r.Width, r.Height
-	if w <= 0 || h <= 0 {
+	if r.Width <= 0 || r.Height <= 0 {
 		return nil
 	}
-
 	subW, subH := renderSubPixels(r.RenderMode)
-	g.resize(w, h, subW, subH)
-
-	gl.BindFramebuffer(gl.FRAMEBUFFER, g.fbo)
-	gl.Viewport(0, 0, int32(g.pixW), int32(g.pixH))
-	gl.Clear(gl.COLOR_BUFFER_BIT)
-
-	gl.UseProgram(g.program)
-
-	gl.Uniform2f(g.uResolution, float32(g.pixW), float32(g.pixH))
-	gl.Uniform2f(g.uTermSize, float32(w), float32(h))
-	gl.Uniform1f(g.uTime, float32(r.Time))
-	gl.Uniform3f(g.uCameraPos, float32(r.Camera.Pos.X), float32(r.Camera.Pos.Y), float32(r.Camera.Pos.Z))
-	gl.Uniform3f(g.uCameraTarget, float32(r.Camera.Target.X), float32(r.Camera.Target.Y), float32(r.Camera.Target.Z))
-	gl.Uniform3f(g.uLightDir, float32(r.LightDir.X), float32(r.LightDir.Y), float32(r.LightDir.Z))
-	gl.Uniform1f(g.uFOV, float32(r.Camera.FOV))
-	gl.Uniform1f(g.uAmbient, float32(r.Ambient))
-	gl.Uniform1f(g.uSpecPower, float32(r.SpecPower))
-	gl.Uniform1i(g.uShadowSteps, int32(r.ShadowSteps))
-	gl.Uniform1i(g.uAOSteps, int32(r.AOSteps))
-	gl.Uniform1i(g.uProjection, int32(r.Projection))
-	gl.Uniform1f(g.uOrthoScale, float32(r.OrthoScale))
-	gl.Uniform1i(g.uSliceMode, int32(r.SliceMode))
-	gl.Uniform1f(g.uSliceY, float32(r.SliceY))
-
-	gl.BindVertexArray(g.vao)
-	gl.DrawArrays(gl.TRIANGLES, 0, 6)
-
-	gl.ReadPixels(0, 0, int32(g.pixW), int32(g.pixH), gl.RGBA, gl.UNSIGNED_BYTE, unsafe.Pointer(&g.pixels[0]))
-	gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
-
+	g.renderPass(r, subW, subH)
 	return g.RenderCells(r)
+}
+
+// RenderRaw runs the GPU shader at the given sub-pixel resolution without cell conversion.
+// Access raw pixel data afterwards via RawPixels().
+func (g *GPURenderer) RenderRaw(r *core.RenderConfig, subW, subH int) {
+	if r.Width <= 0 || r.Height <= 0 {
+		return
+	}
+	g.renderPass(r, subW, subH)
+}
+
+// RawPixels returns the RGBA pixel buffer and its width from the last render pass.
+func (g *GPURenderer) RawPixels() ([]byte, int) {
+	return g.pixels, g.pixW
 }
 
 // pixelBrightness returns the lighting-only brightness (0-1) stored in the alpha channel.
@@ -272,16 +253,14 @@ func (g *GPURenderer) pixelColor(px, py int) core.Vec3 {
 // renderSubPixels returns the sub-pixel dimensions for a given render mode.
 func renderSubPixels(mode int) (subW, subH int) {
 	switch mode {
-	case core.RenderBlocks:
-		return 2, 2
-	case core.RenderBraille:
-		return 2, 4
+	case core.RenderShapes:
+		return 2, 3
 	case core.RenderSlice:
 		return 1, 2 // half-block for color fidelity
 	case core.RenderCost:
 		return 1, 2
-	default: // RenderShapes
-		return 2, 3
+	default: // RenderBlocks, RenderBraille use 2×4
+		return 2, 4
 	}
 }
 
@@ -344,7 +323,7 @@ func (g *GPURenderer) renderCellsShaped(r *core.RenderConfig, tw, th int) [][]co
 			off02 := off01 + stride
 			off12 := off02 + 4
 
-			var sv ShapeVec
+			var sv core.ShapeVec
 			sv[0] = float64(pixels[off00+3]) * inv255
 			sv[1] = float64(pixels[off10+3]) * inv255
 			sv[2] = float64(pixels[off01+3]) * inv255
@@ -359,7 +338,7 @@ func (g *GPURenderer) renderCellsShaped(r *core.RenderConfig, tw, th int) [][]co
 			}
 
 			// External boundary samples (need bounds checks for edge cells)
-			var ext ShapeVec
+			var ext core.ShapeVec
 			ext[0] = g.pixelBrightness(bx-1, by-1)
 			ext[1] = g.pixelBrightness(bx+2, by-1)
 			ext[2] = g.pixelBrightness(bx-1, by+1)
@@ -367,102 +346,132 @@ func (g *GPURenderer) renderCellsShaped(r *core.RenderConfig, tw, th int) [][]co
 			ext[4] = g.pixelBrightness(bx-1, by+3)
 			ext[5] = g.pixelBrightness(bx+2, by+3)
 
-			sv = DirectionalContrast(sv, ext, contrast)
-			sv = EnhanceContrast(sv, contrast)
+			sv = core.DirectionalContrast(sv, ext, contrast)
+			sv = core.EnhanceContrast(sv, contrast)
 			ch := st.Match(sv)
 
-			// Average color from the 6 interior pixels (already bounds-safe)
-			colR := float64(pixels[off00]) + float64(pixels[off10]) +
-				float64(pixels[off01]) + float64(pixels[off11]) +
-				float64(pixels[off02]) + float64(pixels[off12])
-			colG := float64(pixels[off00+1]) + float64(pixels[off10+1]) +
-				float64(pixels[off01+1]) + float64(pixels[off11+1]) +
-				float64(pixels[off02+1]) + float64(pixels[off12+1])
-			colB := float64(pixels[off00+2]) + float64(pixels[off10+2]) +
-				float64(pixels[off01+2]) + float64(pixels[off11+2]) +
-				float64(pixels[off02+2]) + float64(pixels[off12+2])
+			// Average color from lit interior pixels
+			offs := [6]int{off00, off10, off01, off11, off02, off12}
+			var colR, colG, colB, litCount float64
+			for _, o := range offs {
+				if pixels[o+3] > 2 {
+					colR += float64(pixels[o])
+					colG += float64(pixels[o+1])
+					colB += float64(pixels[o+2])
+					litCount++
+				}
+			}
 
-			const inv6x255 = 1.0 / (6 * 255)
-			line[cx] = core.Cell{Ch: rune(ch), Col: core.Vec3{X: colR * inv6x255, Y: colG * inv6x255, Z: colB * inv6x255}}
+			if litCount < 1 {
+				litCount = 1
+			}
+			inv := 1.0 / (litCount * 255)
+			line[cx] = core.Cell{Ch: rune(ch), Col: core.Vec3{X: colR * inv, Y: colG * inv, Z: colB * inv}}
 		}
 	}
 	return lines
 }
 
-// renderCellsQuadrant uses 2×2 sub-pixels per core.Cell to produce quadrant block characters.
+// renderCellsQuadrant uses 2×4 sub-pixels per core.Cell to produce quadrant block characters.
+// Each quadrant averages 2 vertical sub-pixel rows for hit detection and color.
 func (g *GPURenderer) renderCellsQuadrant(tw, th int) [][]core.Cell {
 	lines := g.getCellBuf(tw, th)
 	for cy := 0; cy < th; cy++ {
 		line := lines[cy]
 		for cx := 0; cx < tw; cx++ {
 			bx := cx * 2
-			by := cy * 2
+			by := cy * 4
 
-			// Read 4 pixel colors in 2×2 grid: TL, TR, BL, BR
-			colors := [4]core.Vec3{
-				g.pixelColor(bx, by),     // TL
-				g.pixelColor(bx+1, by),   // TR
-				g.pixelColor(bx, by+1),   // BL
-				g.pixelColor(bx+1, by+1), // BR
+			// Read 8 sub-pixel colors and alpha from 2×4 grid
+			type subPx struct {
+				col core.Vec3
+				hit bool
 			}
-
-			// Compute brightness per pixel and detect hits via alpha
-			var bright [4]float64
-			hit := [4]bool{}
-			hitCount := 0
-			for i := 0; i < 4; i++ {
-				bright[i] = colors[i].X*0.299 + colors[i].Y*0.587 + colors[i].Z*0.114
-				// Use alpha channel to detect actual surface hits
+			var sp [8]subPx
+			for i := 0; i < 8; i++ {
 				px := bx + (i % 2)
 				py := by + (i / 2)
-				if px >= 0 && px < g.pixW && py >= 0 && py < g.pixH {
-					off := (py*g.pixW + px) * 4
-					if g.pixels[off+3] > 2 {
-						hit[i] = true
-						hitCount++
+				sp[i].col = g.pixelColor(px, py)
+				off := (py*g.pixW + px) * 4
+				sp[i].hit = g.pixels[off+3] > 2
+			}
+
+			// Compute quadrant brightness and colors (TL, TR, BL, BR)
+			// Each quadrant = 2 vertical sub-pixels
+			type quad struct {
+				bright float64
+				col    core.Vec3
+				hit    bool
+			}
+			quads := [4]quad{
+				{}, // TL: sp[0], sp[2] (col0, rows 0-1)
+				{}, // TR: sp[1], sp[3] (col1, rows 0-1)
+				{}, // BL: sp[4], sp[6] (col0, rows 2-3)
+				{}, // BR: sp[5], sp[7] (col1, rows 2-3)
+			}
+			qIdx := [4][2]int{{0, 2}, {1, 3}, {4, 6}, {5, 7}}
+			hitCount := 0
+			for qi := 0; qi < 4; qi++ {
+				a, b := qIdx[qi][0], qIdx[qi][1]
+				quads[qi].hit = sp[a].hit || sp[b].hit
+				if quads[qi].hit {
+					hitCount++
+					// Average color from hit sub-pixels in this quadrant
+					var col core.Vec3
+					n := 0.0
+					if sp[a].hit {
+						col = col.Add(sp[a].col)
+						n++
 					}
+					if sp[b].hit {
+						col = col.Add(sp[b].col)
+						n++
+					}
+					if n > 0 {
+						col = col.Mul(1.0 / n)
+					}
+					quads[qi].col = col
+					quads[qi].bright = col.X*0.299 + col.Y*0.587 + col.Z*0.114
 				}
 			}
 
-			// Mean brightness across all 4 (misses contribute 0)
-			mean := (bright[0] + bright[1] + bright[2] + bright[3]) / 4
-
+			mean := (quads[0].bright + quads[1].bright + quads[2].bright + quads[3].bright) * 0.25
 			if mean < 0.01 {
 				line[cx] = core.Cell{Ch: ' '}
 				continue
 			}
 
-			// Uniform surface check: all 4 hit with similar brightness → full block
+			// Uniform surface check
 			if hitCount == 4 {
-				minB, maxB := bright[0], bright[0]
+				minB, maxB := quads[0].bright, quads[0].bright
 				for i := 1; i < 4; i++ {
-					if bright[i] < minB {
-						minB = bright[i]
+					if quads[i].bright < minB {
+						minB = quads[i].bright
 					}
-					if bright[i] > maxB {
-						maxB = bright[i]
+					if quads[i].bright > maxB {
+						maxB = quads[i].bright
 					}
 				}
 				if maxB-minB < 0.08 {
-					avg := colors[0].Add(colors[1]).Add(colors[2]).Add(colors[3]).Mul(0.25)
+					avg := quads[0].col.Add(quads[1].col).Add(quads[2].col).Add(quads[3].col).Mul(0.25)
 					line[cx] = core.Cell{Ch: '█', Col: core.V(core.Clamp(avg.X, 0, 1), core.Clamp(avg.Y, 0, 1), core.Clamp(avg.Z, 0, 1))}
 					continue
 				}
 			}
 
-			// Threshold each pixel around mean
+			// Threshold each quadrant around mean
 			var pattern int
 			var onCount int
 			var fgCol, bgCol core.Vec3
 			bgHitCount := 0
 			for i := 0; i < 4; i++ {
-				bit := 3 - i // TL=bit3, TR=bit2, BL=bit1, BR=bit0
-				if hit[i] && bright[i] > mean {
+				bit := 3 - i
+				if quads[i].hit && quads[i].bright > mean {
 					pattern |= 1 << uint(bit)
-					fgCol = fgCol.Add(colors[i])
+					fgCol = fgCol.Add(quads[i].col)
 					onCount++
-				} else if hit[i] {
-					bgCol = bgCol.Add(colors[i])
+				} else if quads[i].hit {
+					bgCol = bgCol.Add(quads[i].col)
 					bgHitCount++
 				}
 			}
@@ -472,11 +481,10 @@ func (g *GPURenderer) renderCellsQuadrant(tw, th int) [][]core.Cell {
 				continue
 			}
 
-			ch := QuadrantChars[pattern]
+			ch := core.QuadrantChars[pattern]
 			fg := fgCol.Mul(1.0 / float64(onCount))
 			fg = core.V(core.Clamp(fg.X, 0, 1), core.Clamp(fg.Y, 0, 1), core.Clamp(fg.Z, 0, 1))
 
-			// Only set bg when off-pixels hit actual geometry
 			if bgHitCount == 0 {
 				line[cx] = core.Cell{Ch: ch, Col: fg}
 				continue
