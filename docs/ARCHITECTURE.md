@@ -27,39 +27,65 @@ AsciiShader is three systems wired together:
 
 ## Chisel Compiler (`pkg/chisel/`)
 
-A four-stage pipeline, each stage independently testable:
+A four-stage pipeline under `compiler/`, each stage independently testable:
 
-### Stage 1: Lexer (`lexer/`)
+### Stage 1: Lexer (`compiler/lexer/`)
 - Hand-written tokenizer producing 50+ token types
 - Handles significant newlines (Go-style automatic semicolons adapted for shape unions)
 - Newline suppression after continuation tokens (`|`, `&`, `,`, etc.)
 - Newline suppression before `.` to support method chaining across lines
 
-### Stage 2: Parser (`parser/`)
+### Stage 2: Parser (`compiler/parser/`)
 - Recursive descent with Pratt operator precedence for mixed SDF boolean / arithmetic expressions
 - 8 precedence levels: union < subtract < intersect < comparison < add/sub < mul/div < unary < postfix
 - Error recovery: on unexpected token, skip to next newline/`}`/`)`, record diagnostic, continue
 - Parses settings blocks (camera, light, bg, raymarch, post, debug) with `key: value` syntax
 - GLSL escape blocks captured as raw strings with brace-nesting tracking
 
-### Stage 3: Analyzer (`analyzer/`)
+### Stage 3: Analyzer (`compiler/analyzer/`)
 - Type system: float, vec2, vec3, bool, sdf2d, sdf3d, material, color, signal
 - Name resolution with scoped symbol table (builtins → top-level → block → loop)
 - Validates SDF operations (both sides same type), catches 2D shapes without `.extrude()`
 - Fuzzy matching for "did you mean?" suggestions on undefined identifiers
 
-### Stage 4: Code Generator (`codegen/`)
+### Stage 4: Code Generator (`compiler/codegen/`)
 - Emits GLSL with `sceneSDF(vec3 p)` and `sceneColor(vec3 p)` entry points
 - Shapes → GLSL SDF function calls with correct argument mapping
 - Transforms modify the point variable (`vec3 pN = transform(p)`)
 - For loops unrolled at compile time (GLSL can't dynamically union SDFs)
 - Noise/easing/helper functions emitted only when used (dead code elimination)
 
-### Supporting Packages
-- `ast/` — AST node definitions, `Walk()` traversal helper
-- `token/` — Token types and position tracking
-- `diagnostic/` — Error/warning structs with spans; Rust/Elm-style rendered output
-- `format/` — Canonical code formatter (2-space indent, idempotent)
+### Supporting Compiler Packages
+- `compiler/ast/` — AST node definitions, `Walk()` traversal, `Print()` debug output
+- `compiler/token/` — Token types and position tracking
+- `compiler/diagnostic/` — Error/warning structs with spans; Rust/Elm-style rendered output
+
+### Language Registry (`lang/`)
+- Single source of truth for all Chisel vocabulary: shapes, methods, functions, constants, colors
+- Operator precedence table and terminal patterns shared with the parser
+- `go generate ./pkg/chisel/lang/` produces all editor tooling files
+- See `GRAMMAR-DESIGN.md` for the rationale
+
+### Formatter (`format/`)
+- Canonical code formatter with comment preservation
+- Width-aware line breaking for method chains and argument lists (100-char target)
+- Precedence-aware parenthesization to avoid semantic changes
+
+### LSP (`lsp/`)
+- JSON-RPC 2.0 over stdin/stdout, no external framework
+- Diagnostics (errors/warnings on keystroke)
+- Completions (shapes, methods, functions, variables in scope)
+- Hover documentation
+- Go-to-definition (user definitions + virtual builtins document)
+- Folding ranges
+- Document formatting
+- Semantic tokens (shapes, functions, variables, parameters, methods, constants colored by role)
+
+### Editor Tooling (`editors/`)
+All generated from `lang/lang.go` via `go generate`:
+- Tree-sitter grammar (`grammar.js`) + highlight/fold/indent queries
+- TextMate grammar (`chisel.tmLanguage.json`) + preferences
+- VS Code language configuration (`language-configuration.json`)
 
 ## GPU Renderer (`pkg/gpu/`)
 
@@ -75,7 +101,7 @@ Renders ray-marched SDF scenes to a grid of ASCII cells:
 |------|-------------|
 | Shapes | Match sub-pixel brightness to ASCII character shapes |
 | Dual | Two-character cells for higher horizontal resolution |
-| Blocks | Unicode block elements (▀▄█) |
+| Blocks | Unicode block elements |
 | Half-block | Half-block characters for 2x vertical resolution |
 | Braille | Braille dot patterns for highest effective resolution |
 | Density | Simple brightness-to-character density mapping |
@@ -128,23 +154,6 @@ Built on Charm's BubbleTea framework (event-driven Elm architecture):
 - Delta encoding: stores XOR of colors and varint-encoded deltas between frames
 - zstd compression for final output
 - Playback engine with pause, loop, seek
-
-## Shader Files (`shaders/`)
-
-28 example scenes demonstrating Chisel features:
-- Basic shapes and transforms
-- Boolean operations with smooth/chamfer blending
-- Procedural animation (oscillators, noise, easing)
-- Materials (metallic, roughness, emission)
-- Space-folding transforms (mirror, rep, array)
-- Lighting and post-processing
-
-## Tree-sitter Grammar (`tree-sitter-chisel/`)
-
-Provides syntax highlighting for external editors:
-- Neovim, Helix, VS Code queries included
-- Supports code folding and auto-indentation
-- Incremental parsing for real-time highlighting
 
 ## Build System
 
