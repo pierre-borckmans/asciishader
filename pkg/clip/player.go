@@ -18,16 +18,20 @@ type Player struct {
 	height       int
 	RenderMode   int
 	Contrast     float64
+	BlockGamma   float64
+	BrailleGamma float64
 	shapeTable   *core.ShapeTable
 
 	// Render cache — avoids re-running shape matching when nothing changed
-	cachedFrame    int
-	cachedMode     int
-	cachedContrast float64
-	cachedWidth    int
-	cachedHeight   int
-	cachedOutput   string
-	ansiBuf        []byte
+	cachedFrame        int
+	cachedMode         int
+	cachedContrast     float64
+	cachedBlockGamma   float64
+	cachedBrailleGamma float64
+	cachedWidth        int
+	cachedHeight       int
+	cachedOutput       string
+	ansiBuf            []byte
 }
 
 // NewPlayer creates a player for the given clip.
@@ -37,10 +41,12 @@ func NewPlayer(c *Clip) *Player {
 		fps = 30
 	}
 	return &Player{
-		clip:        c,
-		frameDur:    1.0 / fps,
-		Contrast:    1.0,
-		cachedFrame: -1,
+		clip:         c,
+		frameDur:     1.0 / fps,
+		Contrast:     1.0,
+		BlockGamma:   core.DefaultBlockGamma,
+		BrailleGamma: core.DefaultBrailleGamma,
+		cachedFrame:  -1,
 	}
 }
 
@@ -110,6 +116,8 @@ func (p *Player) Render() string {
 	if p.CurrentFrame == p.cachedFrame &&
 		p.RenderMode == p.cachedMode &&
 		p.Contrast == p.cachedContrast &&
+		p.BlockGamma == p.cachedBlockGamma &&
+		p.BrailleGamma == p.cachedBrailleGamma &&
 		p.width == p.cachedWidth &&
 		p.height == p.cachedHeight {
 		return p.cachedOutput
@@ -126,10 +134,12 @@ func (p *Player) Render() string {
 	// Only reconstruct cells if the frame or mode changed
 	if p.CurrentFrame != p.cachedFrame ||
 		p.RenderMode != p.cachedMode ||
-		p.Contrast != p.cachedContrast {
+		p.Contrast != p.cachedContrast ||
+		p.BlockGamma != p.cachedBlockGamma ||
+		p.BrailleGamma != p.cachedBrailleGamma {
 
 		frame := p.clip.Frames[p.CurrentFrame]
-		cells := CellsFromFrame(frame, w, h, p.RenderMode, p.shapeTable, p.Contrast)
+		cells := CellsFromFrame(frame, w, h, p.RenderMode, p.shapeTable, p.Contrast, p.BlockGamma, p.BrailleGamma)
 		p.ansiBuf = core.AppendANSI(p.ansiBuf[:0], cells)
 	}
 
@@ -142,6 +152,8 @@ func (p *Player) Render() string {
 	p.cachedFrame = p.CurrentFrame
 	p.cachedMode = p.RenderMode
 	p.cachedContrast = p.Contrast
+	p.cachedBlockGamma = p.BlockGamma
+	p.cachedBrailleGamma = p.BrailleGamma
 	p.cachedWidth = p.width
 	p.cachedHeight = p.height
 	p.cachedOutput = rendered

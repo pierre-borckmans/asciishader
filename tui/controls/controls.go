@@ -12,31 +12,33 @@ import (
 	zone "github.com/lrstanley/bubblezone/v2"
 )
 
-// ControlsTab manages the 7 parameter sliders + scene selector + render mode toggle.
+// ControlsTab manages the 9 parameter sliders + scene selector + render mode toggle.
 type ControlsTab struct {
 	sliders     []*components.Slider
-	focus       int // which item is focused (0-8: 7 sliders + scene + blocks)
+	focus       int // which item is focused (0-10: 9 sliders + scene + blocks)
 	numItems    int
 	zoned       *components.ZonedInteraction
 	renderWidth int // last render width
 }
 
 const (
-	ctrlContrast    = 0
-	ctrlSpread      = 1
-	ctrlExtDist     = 2
-	ctrlAmbient     = 3
-	ctrlSpecPower   = 4
-	ctrlShadowSteps = 5
-	ctrlAOSteps     = 6
-	ctrlScene       = 7
-	ctrlBlocks      = 8
+	ctrlContrast     = 0
+	ctrlSpread       = 1
+	ctrlExtDist      = 2
+	ctrlAmbient      = 3
+	ctrlSpecPower    = 4
+	ctrlShadowSteps  = 5
+	ctrlAOSteps      = 6
+	ctrlBlockGamma   = 7
+	ctrlBrailleGamma = 8
+	ctrlScene        = 9
+	ctrlBlocks       = 10
 )
 
 // NewControlsTab creates the controls tab with default slider values.
 func NewControlsTab() *ControlsTab {
 	ct := &ControlsTab{
-		numItems: 9,
+		numItems: 11,
 		zoned:    components.NewZonedInteraction("ctrl"),
 		sliders: []*components.Slider{
 			{Label: "Contrast", Min: 0.5, Max: 5.0, Step: 0.25, Format: "%.2f"},
@@ -46,6 +48,8 @@ func NewControlsTab() *ControlsTab {
 			{Label: "SpecPower", Min: 4, Max: 128, Step: 0, Format: "%.0f"}, // uses *1.5 / /1.5
 			{Label: "Shadows", Min: 0, Max: 48, Step: 4, Format: "%.0f"},
 			{Label: "AO Steps", Min: 0, Max: 10, Step: 1, Format: "%.0f"},
+			{Label: "Block Lum", Min: 0.1, Max: 1.0, Step: 0.05, Format: "%.2f"},
+			{Label: "Braille Lum", Min: 0.5, Max: 4.0, Step: 0.1, Format: "%.1f"},
 		},
 	}
 	return ct
@@ -60,6 +64,8 @@ func (ct *ControlsTab) SyncFromRenderConfig(rc *core.RenderConfig) {
 	ct.sliders[ctrlSpecPower].Value = rc.SpecPower
 	ct.sliders[ctrlShadowSteps].Value = float64(rc.ShadowSteps)
 	ct.sliders[ctrlAOSteps].Value = float64(rc.AOSteps)
+	ct.sliders[ctrlBlockGamma].Value = rc.BlockGamma
+	ct.sliders[ctrlBrailleGamma].Value = rc.BrailleGamma
 }
 
 // SyncToRenderConfig writes slider values back to the config.
@@ -71,6 +77,8 @@ func (ct *ControlsTab) SyncToRenderConfig(rc *core.RenderConfig) {
 	rc.SpecPower = ct.sliders[ctrlSpecPower].Value
 	rc.ShadowSteps = int(ct.sliders[ctrlShadowSteps].Value)
 	rc.AOSteps = int(ct.sliders[ctrlAOSteps].Value)
+	rc.BlockGamma = ct.sliders[ctrlBlockGamma].Value
+	rc.BrailleGamma = ct.sliders[ctrlBrailleGamma].Value
 }
 
 // HandleKey processes a key press. Returns true if consumed.

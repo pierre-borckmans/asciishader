@@ -288,9 +288,9 @@ func (g *GPURenderer) RenderCells(r *core.RenderConfig) [][]core.Cell {
 
 	switch r.RenderMode {
 	case core.RenderBlocks:
-		return g.renderCellsQuadrant(tw, th)
+		return g.renderCellsQuadrant(r, tw, th)
 	case core.RenderBraille:
-		return g.renderCellsBraille(tw, th)
+		return g.renderCellsBraille(r, tw, th)
 	case core.RenderSlice:
 		return g.renderCellsHalfBlock(tw, th)
 	case core.RenderCost:
@@ -370,7 +370,7 @@ func (g *GPURenderer) renderCellsShaped(r *core.RenderConfig, tw, th int) [][]co
 
 // renderCellsQuadrant uses 2×4 sub-pixels per core.Cell to produce quadrant block characters.
 // Each quadrant averages 2 vertical sub-pixel rows for hit detection and color.
-func (g *GPURenderer) renderCellsQuadrant(tw, th int) [][]core.Cell {
+func (g *GPURenderer) renderCellsQuadrant(r *core.RenderConfig, tw, th int) [][]core.Cell {
 	lines := g.getCellBuf(tw, th)
 	for cy := 0; cy < th; cy++ {
 		line := lines[cy]
@@ -450,7 +450,7 @@ func (g *GPURenderer) renderCellsQuadrant(tw, th int) [][]core.Cell {
 				}
 				if maxB-minB < 0.08 {
 					avg := quads[0].col.Add(quads[1].col).Add(quads[2].col).Add(quads[3].col).Mul(0.25)
-					line[cx] = core.Cell{Ch: '█', Col: core.V(core.Clamp(avg.X, 0, 1), core.Clamp(avg.Y, 0, 1), core.Clamp(avg.Z, 0, 1))}
+					line[cx] = core.Cell{Ch: '█', Col: core.CompensateColor(avg, r.BlockGamma)}
 					continue
 				}
 			}
@@ -478,16 +478,14 @@ func (g *GPURenderer) renderCellsQuadrant(tw, th int) [][]core.Cell {
 			}
 
 			ch := core.QuadrantChars[pattern]
-			fg := fgCol.Mul(1.0 / float64(onCount))
-			fg = core.V(core.Clamp(fg.X, 0, 1), core.Clamp(fg.Y, 0, 1), core.Clamp(fg.Z, 0, 1))
+			fg := core.CompensateColor(fgCol.Mul(1.0/float64(onCount)), r.BlockGamma)
 
 			if bgHitCount == 0 {
 				line[cx] = core.Cell{Ch: ch, Col: fg}
 				continue
 			}
 
-			bg := bgCol.Mul(1.0 / float64(bgHitCount))
-			bg = core.V(core.Clamp(bg.X, 0, 1), core.Clamp(bg.Y, 0, 1), core.Clamp(bg.Z, 0, 1))
+			bg := core.CompensateColor(bgCol.Mul(1.0/float64(bgHitCount)), r.BlockGamma)
 
 			line[cx] = core.Cell{Ch: ch, Col: fg, Bg: bg, HasBg: true}
 		}
@@ -556,7 +554,7 @@ func (g *GPURenderer) renderCellsHalfBlock(tw, th int) [][]core.Cell {
 // row1  bit1 bit4
 // row2  bit2 bit5
 // row3  bit6 bit7
-func (g *GPURenderer) renderCellsBraille(tw, th int) [][]core.Cell {
+func (g *GPURenderer) renderCellsBraille(r *core.RenderConfig, tw, th int) [][]core.Cell {
 	pixels := g.pixels
 	stride := g.pixW * 4
 	const hitThresh byte = 2 // same as half-block / quadrant
@@ -635,7 +633,8 @@ func (g *GPURenderer) renderCellsBraille(tw, th int) [][]core.Cell {
 				}
 			}
 			inv := 1.0 / (litCount * 255)
-			line[cx] = core.Cell{Ch: 0x2800 + pattern, Col: core.Vec3{X: colR * inv, Y: colG * inv, Z: colB * inv}}
+			col := core.CompensateColor(core.Vec3{X: colR * inv, Y: colG * inv, Z: colB * inv}, r.BrailleGamma)
+			line[cx] = core.Cell{Ch: 0x2800 + pattern, Col: col}
 		}
 	}
 	return lines

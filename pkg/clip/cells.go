@@ -4,12 +4,12 @@ import "asciishader/pkg/core"
 
 // CellsFromFrame reconstructs a core.Cell grid from a planar sub-pixel frame.
 // The render mode determines which algorithm maps brightness patterns to characters.
-func CellsFromFrame(frame []byte, w, h, mode int, st *core.ShapeTable, contrast float64) [][]core.Cell {
+func CellsFromFrame(frame []byte, w, h, mode int, st *core.ShapeTable, contrast, blockGamma, brailleGamma float64) [][]core.Cell {
 	switch mode {
 	case core.RenderBlocks:
-		return cellsBlocks(frame, w, h)
+		return cellsBlocks(frame, w, h, blockGamma)
 	case core.RenderBraille:
-		return cellsBraille(frame, w, h)
+		return cellsBraille(frame, w, h, brailleGamma)
 	default:
 		return cellsShaped(frame, w, h, st, contrast)
 	}
@@ -81,7 +81,7 @@ func cellsShaped(frame []byte, w, h int, st *core.ShapeTable, contrast float64) 
 // cellsBlocks reconstructs cells using quadrant block characters.
 // Uses all 8 sub-pixel brightness values directly — each quadrant checks
 // whether ANY of its 2 vertical sub-pixels are lit (preserves sharp edges).
-func cellsBlocks(frame []byte, w, h int) [][]core.Cell {
+func cellsBlocks(frame []byte, w, h int, gamma float64) [][]core.Cell {
 	cc := w * h
 	lines := makeCellGrid(w, h)
 	const hitThresh uint8 = 2
@@ -139,9 +139,10 @@ func cellsBlocks(frame []byte, w, h int) [][]core.Cell {
 				if maxB-minB < 0.08 {
 					color := FrameColor(frame, cc, ci)
 					cr, cg, cb := RGB565Decode(color)
-					line[cx] = core.Cell{Ch: '█', Col: core.Vec3{
+					col := core.CompensateColor(core.Vec3{
 						X: float64(cr) / 255, Y: float64(cg) / 255, Z: float64(cb) / 255,
-					}}
+					}, gamma)
+					line[cx] = core.Cell{Ch: '█', Col: col}
 					continue
 				}
 			}
@@ -163,10 +164,10 @@ func cellsBlocks(frame []byte, w, h int) [][]core.Cell {
 			color := FrameColor(frame, cc, ci)
 			cr, cg, cb := RGB565Decode(color)
 			ch := core.QuadrantChars[pattern]
-			line[cx] = core.Cell{
-				Ch:  ch,
-				Col: core.Vec3{X: float64(cr) / 255, Y: float64(cg) / 255, Z: float64(cb) / 255},
-			}
+			col := core.CompensateColor(core.Vec3{
+				X: float64(cr) / 255, Y: float64(cg) / 255, Z: float64(cb) / 255,
+			}, gamma)
+			line[cx] = core.Cell{Ch: ch, Col: col}
 		}
 	}
 	return lines
@@ -174,7 +175,7 @@ func cellsBlocks(frame []byte, w, h int) [][]core.Cell {
 
 // cellsBraille reconstructs cells using braille dot patterns.
 // 2×4 sub-pixels map directly to the 2×4 braille dot grid.
-func cellsBraille(frame []byte, w, h int) [][]core.Cell {
+func cellsBraille(frame []byte, w, h int, gamma float64) [][]core.Cell {
 	cc := w * h
 	lines := makeCellGrid(w, h)
 	const hitThresh uint8 = 2
@@ -206,10 +207,10 @@ func cellsBraille(frame []byte, w, h int) [][]core.Cell {
 
 			color := FrameColor(frame, cc, ci)
 			cr, cg, cb := RGB565Decode(color)
-			line[cx] = core.Cell{
-				Ch:  0x2800 + pattern,
-				Col: core.Vec3{X: float64(cr) / 255, Y: float64(cg) / 255, Z: float64(cb) / 255},
-			}
+			col := core.CompensateColor(core.Vec3{
+				X: float64(cr) / 255, Y: float64(cg) / 255, Z: float64(cb) / 255,
+			}, gamma)
+			line[cx] = core.Cell{Ch: 0x2800 + pattern, Col: col}
 		}
 	}
 	return lines
