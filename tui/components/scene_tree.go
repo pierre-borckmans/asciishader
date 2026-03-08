@@ -178,6 +178,20 @@ func buildSettingNode(s *ast.SettingStmt) TreeNode {
 		}
 	}
 
+	// Single expression body (e.g. "bg #1a1a2e", "light [-1,-1,-1]")
+	// Show inline as a leaf if the expression is simple
+	if expr, ok := s.Body.(ast.Expr); ok {
+		summary := summarizeExpr(expr)
+		if exprChildren(expr) == nil {
+			// Simple leaf: show value as detail
+			return TreeNode{
+				Label:  label,
+				Detail: summary,
+				Data:   s.Span,
+			}
+		}
+	}
+
 	return TreeNode{
 		Label: label,
 		Data:  s.Span,
@@ -190,6 +204,12 @@ func buildSettingNode(s *ast.SettingStmt) TreeNode {
 func settingBodyChildren(kind string, body interface{}) []TreeNode {
 	switch v := body.(type) {
 	case map[string]interface{}:
+		// mat stores {"name": string, "body": map} — skip name, show body contents
+		if kind == "mat" {
+			if bodyMap, ok := v["body"].(map[string]interface{}); ok {
+				return mapChildren(bodyMap)
+			}
+		}
 		return mapChildren(v)
 	case ast.Expr:
 		return []TreeNode{{
@@ -223,6 +243,15 @@ func mapChildren(m map[string]interface{}) []TreeNode {
 				Data:   nil,
 				Children: func() []TreeNode {
 					return mapChildren(val)
+				},
+			})
+		case *ast.Block:
+			// Block in settings context (e.g. bloom: { intensity: 0.3 })
+			nodes = append(nodes, TreeNode{
+				Label: k,
+				Data:  val.NodeSpan(),
+				Children: func() []TreeNode {
+					return blockChildren(val)
 				},
 			})
 		case ast.Expr:
