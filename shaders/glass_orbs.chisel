@@ -2,7 +2,7 @@
 // Three overlapping transparent spheres with a solid floor
 
 
-// sphere.at(-1.2, 0, 0.5).color(#ff000066)
-sphere.at(0, 0, -0.5).color(#00ff0066)
+sphere.at(-1.2, 0, 0.5).color(#ff000066)
+|~0.5 sphere.at(0, 0, -0.5).color(#00ff0066)
 | sphere.at(1.2, 0, 0).color(#0060ff66)
 

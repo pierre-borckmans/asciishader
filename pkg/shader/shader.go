@@ -522,6 +522,7 @@ vec3 shapeNormal(vec3 p, int idx) {
 // Raymarch with front-to-back alpha compositing for transparent surfaces.
 // Tracks each shape individually so overlapping transparent objects blend
 // with correct 3D intersections (not flat Voronoi boundaries).
+// Also handles smooth union blend regions via union-surface fallback.
 vec4 raymarchTransparent(vec3 ro, vec3 rd) {
     vec3 accum = vec3(0.0);
     float accumA = 0.0;
@@ -529,11 +530,12 @@ vec4 raymarchTransparent(vec3 ro, vec3 rd) {
     // Per-shape hit tracking
     bool shapeHit[SHAPE_COUNT];
     for (int s = 0; s < SHAPE_COUNT; s++) shapeHit[s] = false;
+    bool unionHit = false;
 
     for (int i = 0; i < MAX_STEPS * 2; i++) {
         vec3 p = ro + rd * t;
         float dAll[SHAPE_COUNT];
-        sceneSDFAll(p, dAll);
+        float dScene = sceneSDFAll(p, dAll);
 
         // Check each shape for a front-face hit
         bool anyHit = false;
@@ -547,7 +549,6 @@ vec4 raymarchTransparent(vec3 ro, vec3 rd) {
                     vec3 color = sceneShapeColor(s);
                     vec3 hitColor;
                     // Use full shading at the union surface, simplified inside
-                    float dScene = sceneSDF(p);
                     if (abs(dScene) < SURF_DIST * 2.0) {
                         vec4 sh = shade(ro, rd, t);
                         hitColor = max(sh.rgb, color * 0.2);
@@ -566,19 +567,36 @@ vec4 raymarchTransparent(vec3 ro, vec3 rd) {
             }
         }
 
+        // Fallback: union surface not claimed by any individual shape
+        // (handles smooth union blend regions)
+        if (!anyHit && !unionHit && dScene < SURF_DIST) {
+            vec3 n = calcNormal(p);
+            if (dot(n, rd) < 0.0) {
+                float opacity = sceneOpacity(p);
+                vec3 color = sceneColor(p);
+                vec4 sh = shade(ro, rd, t);
+                vec3 hitColor = max(sh.rgb, color * 0.2);
+                float contrib = (1.0 - accumA) * opacity;
+                accum += hitColor * contrib;
+                accumA += contrib;
+            }
+            unionHit = true;
+            anyHit = true;
+        }
+
         if (accumA > 0.99) break;
 
         if (anyHit) {
             t += SURF_DIST * 4.0;
         } else {
-            // Step using min absolute distance of un-hit shapes
-            float step = MAX_DIST;
+            // Step using union distance (respects smooth blend) and un-hit shapes
+            float step = abs(dScene);
             for (int s = 0; s < SHAPE_COUNT; s++) {
                 if (!shapeHit[s]) {
                     step = min(step, abs(dAll[s]));
                 }
             }
-            if (step >= MAX_DIST) break; // all shapes hit
+            if (step >= MAX_DIST) break; // all shapes hit, no union surface
             t += max(step, SURF_DIST * 2.0);
         }
         if (t > MAX_DIST) break;
@@ -603,11 +621,12 @@ vec2 raymarchTransparentCost(vec3 ro, vec3 rd) {
     float accumA = 0.0;
     bool shapeHit[SHAPE_COUNT];
     for (int s = 0; s < SHAPE_COUNT; s++) shapeHit[s] = false;
+    bool unionHit = false;
 
     for (int i = 0; i < MAX_STEPS * 2; i++) {
         vec3 p = ro + rd * t;
         float dAll[SHAPE_COUNT];
-        sceneSDFAll(p, dAll);
+        float dScene = sceneSDFAll(p, dAll);
 
         bool anyHit = false;
         for (int s = 0; s < SHAPE_COUNT; s++) {
@@ -620,12 +639,20 @@ vec2 raymarchTransparentCost(vec3 ro, vec3 rd) {
             }
         }
 
+        if (!anyHit && !unionHit && dScene < SURF_DIST) {
+            unionHit = true;
+            anyHit = true;
+            float opacity = sceneOpacity(p);
+            float contrib = (1.0 - accumA) * opacity;
+            accumA += contrib;
+        }
+
         if (accumA > 0.99) return vec2(t, float(i));
 
         if (anyHit) {
             t += SURF_DIST * 4.0;
         } else {
-            float step = MAX_DIST;
+            float step = abs(dScene);
             for (int s = 0; s < SHAPE_COUNT; s++) {
                 if (!shapeHit[s]) {
                     step = min(step, abs(dAll[s]));

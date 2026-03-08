@@ -191,12 +191,14 @@ func Generate(prog *ast.Program) (string, []diagnostic.Diagnostic) {
 		shapeCount := len(g.colors)
 		fmt.Fprintf(&out, "\n#define SHAPE_COUNT %d\n", shapeCount)
 
-		// sceneSDFAll: same body as sceneSDF, but outputs each shape's distance.
-		fmt.Fprintf(&out, "void sceneSDFAll(vec3 p, out float dists[%d]) {\n", shapeCount)
+		// sceneSDFAll: same body as sceneSDF, but outputs each shape's distance
+		// and returns the union result (needed for smooth union blend regions).
+		fmt.Fprintf(&out, "float sceneSDFAll(vec3 p, out float dists[%d]) {\n", shapeCount)
 		out.WriteString(g.body.String())
 		for i, c := range g.colors {
 			fmt.Fprintf(&out, "    dists[%d] = %s;\n", i, c.sdfVar)
 		}
+		fmt.Fprintf(&out, "    return %s;\n", result)
 		out.WriteString("}\n\n")
 
 		// sceneShapeColor: return color for shape at given index.
