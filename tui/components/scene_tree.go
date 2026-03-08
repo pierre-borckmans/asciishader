@@ -87,7 +87,7 @@ func BuildSceneTreeFromAST(prog *ast.Program, source string) []TreeNode {
 	}
 
 	if len(geometry) > 0 {
-		roots = append(roots, buildGeometryNode(geometry))
+		roots = append(roots, buildGeometryNode(geometry, source))
 	}
 
 	return roots
@@ -112,11 +112,11 @@ func buildVariablesNode(vars []*ast.AssignStmt, source string) TreeNode {
 					Data:   NodeData{Span: v.Span},
 					Color:  colorFromExpr(v.Value),
 					Children: func() []TreeNode {
-						return exprChildren(v.Value)
+						return exprChildren(v.Value, source)
 					},
 				}
 				// Simple values (no sub-expressions) are editable
-				if exprChildren(v.Value) == nil && isEditableExpr(v.Value) {
+				if exprChildren(v.Value, source) == nil && isEditableExpr(v.Value) {
 					node.Children = nil
 					node.Editable = true
 					node.Data = NodeData{Span: v.Span, EditSpan: v.Value.NodeSpan()}
@@ -148,7 +148,7 @@ func buildFunctionsNode(fns []*ast.AssignStmt) TreeNode {
 					Label: sig,
 					Data:  NodeData{Span: f.Span},
 					Children: func() []TreeNode {
-						return exprChildren(fn.Value)
+						return exprChildren(fn.Value, "")
 					},
 				}
 			}
@@ -222,7 +222,7 @@ func buildSettingNode(s *ast.SettingStmt, source string) TreeNode {
 	// Show inline as a leaf if the expression is simple
 	if expr, ok := s.Body.(ast.Expr); ok {
 		summary := summarizeExpr(expr)
-		if exprChildren(expr) == nil {
+		if exprChildren(expr, source) == nil {
 			node := TreeNode{
 				Label:  label,
 				Detail: summary,
@@ -262,7 +262,7 @@ func settingBodyChildren(kind string, body interface{}, source string) []TreeNod
 			Label: summarizeExpr(v),
 			Data:  NodeData{Span: v.NodeSpan()},
 			Children: func() []TreeNode {
-				return exprChildren(v)
+				return exprChildren(v, source)
 			},
 		}}
 	}
@@ -297,7 +297,7 @@ func mapChildren(m map[string]interface{}, source string) []TreeNode {
 				Label: k,
 				Data:  NodeData{Span: val.NodeSpan()},
 				Children: func() []TreeNode {
-					return blockChildren(val)
+					return blockChildren(val, source)
 				},
 			})
 		case ast.Expr:
@@ -332,13 +332,13 @@ func mapChildren(m map[string]interface{}, source string) []TreeNode {
 // Geometry section
 // ---------------------------------------------------------------------------
 
-func buildGeometryNode(exprs []ast.Expr) TreeNode {
+func buildGeometryNode(exprs []ast.Expr, source string) TreeNode {
 	return TreeNode{
 		Label: "Geometry",
 		Children: func() []TreeNode {
 			nodes := make([]TreeNode, len(exprs))
 			for i, e := range exprs {
-				nodes[i] = exprToNode(e)
+				nodes[i] = exprToNode(e, source)
 			}
 			return nodes
 		},
@@ -350,24 +350,24 @@ func buildGeometryNode(exprs []ast.Expr) TreeNode {
 // ---------------------------------------------------------------------------
 
 // exprToNode converts an AST expression into a TreeNode for the tree view.
-func exprToNode(expr ast.Expr) TreeNode {
+func exprToNode(expr ast.Expr, source string) TreeNode {
 	if expr == nil {
 		return TreeNode{Label: "(nil)"}
 	}
 
 	switch e := expr.(type) {
 	case *ast.BinaryExpr:
-		return binaryNode(e)
+		return binaryNode(e, source)
 	case *ast.MethodCall:
-		return methodCallNode(e)
+		return methodCallNode(e, source)
 	case *ast.FuncCall:
-		return funcCallNode(e)
+		return funcCallNode(e, source)
 	case *ast.ForExpr:
-		return forNode(e)
+		return forNode(e, source)
 	case *ast.IfExpr:
-		return ifNode(e)
+		return ifNode(e, source)
 	case *ast.Block:
-		return blockNode(e)
+		return blockNode(e, source)
 	case *ast.Ident:
 		return TreeNode{Label: e.Name, Data: NodeData{Span: e.Span}}
 	case *ast.UnaryExpr:
@@ -375,7 +375,7 @@ func exprToNode(expr ast.Expr) TreeNode {
 			Label: "(-)",
 			Data:  NodeData{Span: e.Span},
 			Children: func() []TreeNode {
-				return []TreeNode{exprToNode(e.Operand)}
+				return []TreeNode{exprToNode(e.Operand, source)}
 			},
 		}
 	case *ast.GlslEscape:
@@ -385,7 +385,7 @@ func exprToNode(expr ast.Expr) TreeNode {
 	}
 }
 
-func binaryNode(e *ast.BinaryExpr) TreeNode {
+func binaryNode(e *ast.BinaryExpr, source string) TreeNode {
 	label := binaryOpLabel(e.Op)
 	if e.Blend != nil {
 		label += fmt.Sprintf(" (r=%.2g)", *e.Blend)
@@ -395,7 +395,7 @@ func binaryNode(e *ast.BinaryExpr) TreeNode {
 		Label: label,
 		Data:  NodeData{Span: e.Span},
 		Children: func() []TreeNode {
-			return []TreeNode{exprToNode(e.Left), exprToNode(e.Right)}
+			return []TreeNode{exprToNode(e.Left, source), exprToNode(e.Right, source)}
 		},
 	}
 }
@@ -427,7 +427,7 @@ func binaryOpLabel(op ast.BinaryOp) string {
 
 // methodCallNode flattens a method chain: sphere(1).at(2,0,0).color(#f00)
 // becomes a node for the root receiver with method calls as children.
-func methodCallNode(e *ast.MethodCall) TreeNode {
+func methodCallNode(e *ast.MethodCall, source string) TreeNode {
 	// Collect the chain of method calls
 	var methods []*ast.MethodCall
 	var root ast.Expr = e
@@ -446,19 +446,19 @@ func methodCallNode(e *ast.MethodCall) TreeNode {
 	}
 
 	// Build the root node
-	rootNode := exprToNode(root)
+	rootNode := exprToNode(root, source)
 
 	// If root is a leaf (no children func), attach methods as children
 	if rootNode.Children == nil {
 		rootNode.Children = func() []TreeNode {
-			return methodNodes(methods)
+			return methodNodes(methods, source)
 		}
 	} else {
 		// Root has its own children (e.g., a BinaryExpr) — append methods
 		origChildren := rootNode.Children
 		rootNode.Children = func() []TreeNode {
 			children := origChildren()
-			children = append(children, methodNodes(methods)...)
+			children = append(children, methodNodes(methods, source)...)
 			return children
 		}
 	}
@@ -469,27 +469,52 @@ func methodCallNode(e *ast.MethodCall) TreeNode {
 	return rootNode
 }
 
-func methodNodes(methods []*ast.MethodCall) []TreeNode {
+func methodNodes(methods []*ast.MethodCall, source string) []TreeNode {
 	nodes := make([]TreeNode, len(methods))
 	for i, mc := range methods {
 		label := "." + mc.Name + "(" + summarizeArgs(mc.Args) + ")"
-		nodes[i] = TreeNode{
+		node := TreeNode{
 			Label: label,
 			Data:  NodeData{Span: mc.Span},
 		}
+
+		// Single-arg methods with simple editable values get slider/edit support
+		if len(mc.Args) == 1 && isEditableExpr(mc.Args[0].Value) {
+			arg := mc.Args[0].Value
+			node.Editable = true
+			node.Data = NodeData{Span: mc.Span, EditSpan: arg.NodeSpan()}
+			node.EditValue = spanText(source, arg.NodeSpan())
+			node.Color = colorFromExpr(arg)
+			node.SliderRange = sliderRangeForMethod(mc.Name, arg)
+		}
+
+		nodes[i] = node
 	}
 	return nodes
 }
 
-func funcCallNode(e *ast.FuncCall) TreeNode {
+func funcCallNode(e *ast.FuncCall, source string) TreeNode {
 	label := e.Name + "(" + summarizeArgs(e.Args) + ")"
-	return TreeNode{
+	node := TreeNode{
 		Label: label,
 		Data:  NodeData{Span: e.Span},
 	}
+
+	// Single-arg primitives with a simple numeric value get slider support
+	if len(e.Args) == 1 && isEditableExpr(e.Args[0].Value) {
+		arg := e.Args[0].Value
+		if sr := sliderRangeForPrimitive(e.Name, arg); sr != nil {
+			node.Editable = true
+			node.Data = NodeData{Span: e.Span, EditSpan: arg.NodeSpan()}
+			node.EditValue = spanText(source, arg.NodeSpan())
+			node.SliderRange = sr
+		}
+	}
+
+	return node
 }
 
-func forNode(e *ast.ForExpr) TreeNode {
+func forNode(e *ast.ForExpr, source string) TreeNode {
 	// Build "for i in 0..8" label from iterators
 	var parts []string
 	for _, it := range e.Iterators {
@@ -510,12 +535,12 @@ func forNode(e *ast.ForExpr) TreeNode {
 			if e.Body == nil {
 				return nil
 			}
-			return blockChildren(e.Body)
+			return blockChildren(e.Body, source)
 		},
 	}
 }
 
-func ifNode(e *ast.IfExpr) TreeNode {
+func ifNode(e *ast.IfExpr, source string) TreeNode {
 	label := "if " + summarizeExpr(e.Cond)
 	return TreeNode{
 		Label: label,
@@ -527,7 +552,7 @@ func ifNode(e *ast.IfExpr) TreeNode {
 					Label: "then",
 					Data:  NodeData{Span: e.Then.Span},
 					Children: func() []TreeNode {
-						return blockChildren(e.Then)
+						return blockChildren(e.Then, source)
 					},
 				})
 			}
@@ -536,7 +561,7 @@ func ifNode(e *ast.IfExpr) TreeNode {
 					Label: "else",
 					Data:  NodeData{Span: e.Else.NodeSpan()},
 					Children: func() []TreeNode {
-						return exprChildren(e.Else)
+						return exprChildren(e.Else, source)
 					},
 				})
 			}
@@ -545,17 +570,17 @@ func ifNode(e *ast.IfExpr) TreeNode {
 	}
 }
 
-func blockNode(e *ast.Block) TreeNode {
+func blockNode(e *ast.Block, source string) TreeNode {
 	return TreeNode{
 		Label: "{ ... }",
 		Data:  NodeData{Span: e.Span},
 		Children: func() []TreeNode {
-			return blockChildren(e)
+			return blockChildren(e, source)
 		},
 	}
 }
 
-func blockChildren(b *ast.Block) []TreeNode {
+func blockChildren(b *ast.Block, source string) []TreeNode {
 	var nodes []TreeNode
 	for _, s := range b.Stmts {
 		switch stmt := s.(type) {
@@ -567,22 +592,22 @@ func blockChildren(b *ast.Block) []TreeNode {
 				Data:   NodeData{Span: stmt.Span},
 			})
 		case *ast.ExprStmt:
-			nodes = append(nodes, exprToNode(stmt.Expression))
+			nodes = append(nodes, exprToNode(stmt.Expression, source))
 		}
 	}
 	if b.Result != nil {
-		nodes = append(nodes, exprToNode(b.Result))
+		nodes = append(nodes, exprToNode(b.Result, source))
 	}
 	return nodes
 }
 
 // exprChildren returns child TreeNodes for an expression's sub-expressions.
 // Used when a variable or setting value needs to be expandable.
-func exprChildren(expr ast.Expr) []TreeNode {
+func exprChildren(expr ast.Expr, source string) []TreeNode {
 	if expr == nil {
 		return nil
 	}
-	node := exprToNode(expr)
+	node := exprToNode(expr, source)
 	if node.Children != nil {
 		return node.Children()
 	}
@@ -809,6 +834,49 @@ func colorFromExpr(expr ast.Expr) *[3]uint8 {
 		}
 	}
 	return nil
+}
+
+// sliderRangeForMethod returns slider range heuristics based on method name.
+// Returns nil for methods that shouldn't use sliders (e.g. color).
+func sliderRangeForMethod(name string, arg ast.Expr) *SliderRange {
+	// Only numeric args get sliders
+	if _, ok := arg.(*ast.NumberLit); !ok {
+		if u, ok := arg.(*ast.UnaryExpr); ok {
+			if _, ok := u.Operand.(*ast.NumberLit); !ok {
+				return nil
+			}
+		} else {
+			return nil
+		}
+	}
+
+	switch name {
+	case "opacity":
+		return &SliderRange{Min: 0, Max: 1, Step: 0.01}
+	case "round", "shell":
+		return &SliderRange{Min: 0, Max: 1, Step: 0.01}
+	case "scale":
+		return &SliderRange{Min: 0.01, Max: 5, Step: 0.05}
+	default:
+		return nil
+	}
+}
+
+// sliderRangeForPrimitive returns slider range for single-arg primitive calls.
+func sliderRangeForPrimitive(name string, arg ast.Expr) *SliderRange {
+	if _, ok := arg.(*ast.NumberLit); !ok {
+		return nil
+	}
+	switch name {
+	case "sphere", "octahedron":
+		return &SliderRange{Min: 0.01, Max: 5, Step: 0.05}
+	case "box", "rounded_box":
+		return &SliderRange{Min: 0.01, Max: 5, Step: 0.05}
+	case "torus":
+		return &SliderRange{Min: 0.01, Max: 3, Step: 0.05}
+	default:
+		return nil
+	}
 }
 
 // isEditableExpr returns true if the expression is a simple value that can be

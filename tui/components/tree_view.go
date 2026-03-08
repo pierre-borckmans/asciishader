@@ -5,9 +5,15 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	zone "github.com/lrstanley/bubblezone/v2"
 )
 
 const treeIndent = 2
+
+// SliderRange describes min/max/step for numeric slider editing.
+type SliderRange struct {
+	Min, Max, Step float64
+}
 
 // TreeNode represents a node in a tree structure with lazy-loaded children.
 type TreeNode struct {
@@ -16,10 +22,11 @@ type TreeNode struct {
 	Children func() []TreeNode // nil = leaf; called lazily on first expand
 	Data     interface{}       // opaque caller data (e.g., AST source spans)
 
-	Scaffold  bool      // render as scaffold (+) node with dimmed style
-	Editable  bool      // allow inline editing on Enter
-	EditValue string    // initial value for inline editing
-	Color     *[3]uint8 // non-nil: render color swatch ██; use color picker on edit
+	Scaffold    bool         // render as scaffold (+) node with dimmed style
+	Editable    bool         // allow inline editing on Enter
+	EditValue   string       // initial value for inline editing
+	Color       *[3]uint8    // non-nil: render color swatch ██; use color picker on edit
+	SliderRange *SliderRange // non-nil: numeric slider editing on Enter/click
 }
 
 // TreeView is a collapsible tree viewer component with keyboard and mouse support.
@@ -50,6 +57,11 @@ type TreeView struct {
 	// Color picker (non-nil when active; component handles its own keys/render)
 	colorPicker *ColorPicker
 
+	// Slider state (active when editing a numeric node with SliderRange)
+	slider       *Slider
+	sliderNode   TreeNode // node being slider-edited
+	sliderActive bool
+
 	// EditResult is set when the user confirms an inline edit. The caller
 	// should consume it (set to nil) and apply the change.
 	EditResult *EditResult
@@ -57,6 +69,10 @@ type TreeView struct {
 	// ScaffoldResult is set when the user activates a scaffold node. The
 	// caller should consume it (set to nil) and insert the template.
 	ScaffoldResult *TreeNode
+
+	// NeedsRebuild signals the caller should rebuild the tree (e.g. after
+	// slider editing ends and the tree labels need updating).
+	NeedsRebuild bool
 }
 
 // EditResult holds the result of a confirmed inline edit.
@@ -171,9 +187,9 @@ func (tv *TreeView) buildFlat(node TreeNode, depth int, parentPath string, sibId
 	}
 }
 
-// IsEditing returns true if the tree is in inline edit or color picker mode.
+// IsEditing returns true if the tree is in inline edit, color picker, or slider mode.
 func (tv *TreeView) IsEditing() bool {
-	return tv.editing || tv.colorPicker != nil
+	return tv.editing || tv.colorPicker != nil || tv.sliderActive
 }
 
 // CancelEdit exits edit mode without applying changes.
@@ -181,6 +197,8 @@ func (tv *TreeView) CancelEdit() {
 	tv.editing = false
 	tv.editBuf = nil
 	tv.colorPicker = nil
+	tv.sliderActive = false
+	tv.slider = nil
 }
 
 func (tv *TreeView) startEdit() {
@@ -216,6 +234,59 @@ func (tv *TreeView) startColorPicker() {
 		return
 	}
 	tv.colorPicker = NewColorPicker(node.Color[0], node.Color[1], node.Color[2])
+}
+
+func (tv *TreeView) startSlider() {
+	if tv.cursor < 0 || tv.cursor >= len(tv.flat) {
+		return
+	}
+	node := tv.flat[tv.cursor].node
+	if node.SliderRange == nil {
+		return
+	}
+	sr := node.SliderRange
+	val := 0.0
+	if _, err := fmt.Sscanf(node.EditValue, "%f", &val); err != nil {
+		return
+	}
+	tv.slider = &Slider{
+		Label:  node.Label,
+		Value:  val,
+		Min:    sr.Min,
+		Max:    sr.Max,
+		Step:   sr.Step,
+		Format: "%.2f",
+	}
+	tv.sliderNode = node
+	tv.sliderActive = true
+}
+
+func (tv *TreeView) handleSliderKey(key string) bool {
+	if !tv.sliderActive || tv.slider == nil {
+		return false
+	}
+	switch key {
+	case "left", "h":
+		tv.slider.Decrease()
+		tv.emitSliderEdit()
+	case "right", "l":
+		tv.slider.Increase()
+		tv.emitSliderEdit()
+	case "enter", "esc":
+		tv.sliderActive = false
+		tv.slider = nil
+		tv.NeedsRebuild = true
+	default:
+		return true
+	}
+	return true
+}
+
+func (tv *TreeView) emitSliderEdit() {
+	newVal := fmt.Sprintf(tv.slider.Format, tv.slider.Value)
+	if newVal != tv.sliderNode.EditValue {
+		tv.EditResult = &EditResult{Node: tv.sliderNode, NewValue: newVal}
+	}
 }
 
 func (tv *TreeView) handleColorPickerKey(key string) bool {
@@ -310,6 +381,9 @@ func (tv *TreeView) HandleKey(key string) bool {
 	if tv.colorPicker != nil {
 		return tv.handleColorPickerKey(key)
 	}
+	if tv.sliderActive {
+		return tv.handleSliderKey(key)
+	}
 	if tv.editing {
 		return tv.handleEditKey(key)
 	}
@@ -353,10 +427,12 @@ func (tv *TreeView) HandleKey(key string) bool {
 		if tv.cursor >= 0 && tv.cursor < len(tv.flat) {
 			e := tv.flat[tv.cursor]
 			node := e.node
-			// Editable leaf: enter edit mode (color picker for color nodes)
+			// Editable leaf: enter edit mode (slider, color picker, or text)
 			if node.Editable && !e.hasChildren {
 				if node.Color != nil {
 					tv.startColorPicker()
+				} else if node.SliderRange != nil {
+					tv.startSlider()
 				} else {
 					tv.startEdit()
 				}
@@ -391,6 +467,28 @@ func (tv *TreeView) HandleKey(key string) bool {
 func (tv *TreeView) HandleMouse(msg tea.MouseMsg) bool {
 	if len(tv.flat) == 0 {
 		return false
+	}
+
+	// Active slider: route drag/motion to slider even outside tree bounds
+	if tv.sliderActive && tv.slider != nil {
+		// Update slider screen position from zone
+		rowID := fmt.Sprintf("row-%d", tv.cursor)
+		zi := zone.Get(tv.zoned.ZoneID(rowID))
+		if !zi.IsZero() {
+			tv.slider.SetScreenX(zi.StartX)
+		}
+		if tv.slider.HandleMouse(msg) {
+			tv.emitSliderEdit()
+			return true
+		}
+		// Any click or release (inside or outside) dismisses the slider
+		switch msg.(type) {
+		case tea.MouseClickMsg, tea.MouseReleaseMsg:
+			tv.sliderActive = false
+			tv.slider = nil
+			tv.NeedsRebuild = true
+			return true
+		}
 	}
 
 	// Only handle events within the tree area
@@ -461,6 +559,11 @@ func (tv *TreeView) HandleMouse(msg tea.MouseMsg) bool {
 	if e.node.Scaffold {
 		nodeCopy := e.node
 		tv.ScaffoldResult = &nodeCopy
+		return true
+	}
+	// Double-click on slider-editable node activates slider
+	if result.DoubleClicked != "" && e.node.Editable && e.node.SliderRange != nil {
+		tv.startSlider()
 		return true
 	}
 	if e.hasChildren {
@@ -570,7 +673,13 @@ func (tv *TreeView) Render() string {
 		// Build row content into a separate buffer for zone wrapping
 		var row strings.Builder
 
-		if tv.editing && i == tv.cursor {
+		if tv.sliderActive && tv.slider != nil && i == tv.cursor {
+			// Slider mode: render inline slider
+			tv.slider.SetScreenX(0) // will be adjusted by zone
+			tv.slider.Label = e.node.Label
+			sliderRow := tv.slider.Render(contentWidth, true)
+			row.WriteString(sliderRow)
+		} else if tv.editing && i == tv.cursor {
 			// Edit mode: show label + editable value with cursor
 			prefix := fmt.Sprintf(" %s  %s ", indent, e.node.Label)
 			row.WriteString(tv.renderEditRow(prefix, contentWidth))

@@ -147,6 +147,10 @@ func processTreeActions(m *Model) {
 		m.SceneTree.ScaffoldResult = nil
 		applyScaffold(m, n)
 	}
+	if m.SceneTree.NeedsRebuild {
+		m.SceneTree.NeedsRebuild = false
+		syncSceneTree(m, currentChiselSource(m))
+	}
 }
 
 // applyTreeEdit splices a new value into the Chisel source at the node's edit span.
@@ -205,5 +209,9 @@ func updateChiselSource(m *Model, newSource string) {
 		m.Editor.Compile(m.GPU)
 	}
 	syncCompileErr(m)
-	syncSceneTree(m, newSource)
+	// Skip tree rebuild during slider editing — the slider manages its own
+	// display and rebuilding would lose cursor position (label changes).
+	if !m.SceneTree.IsEditing() {
+		syncSceneTree(m, newSource)
+	}
 }
