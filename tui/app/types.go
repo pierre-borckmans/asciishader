@@ -12,6 +12,7 @@ type FocusZone int
 const (
 	FocusViewport FocusZone = iota
 	FocusControls
+	FocusTree
 	FocusEditor
 )
 

@@ -8,6 +8,7 @@ import (
 	gpupkg "asciishader/pkg/gpu"
 	"asciishader/pkg/recorder"
 	"asciishader/pkg/scene"
+	"asciishader/tui/components"
 	"asciishader/tui/controls"
 	"asciishader/tui/editor"
 	"asciishader/tui/layout"
@@ -46,6 +47,7 @@ type Model struct {
 	RightPanel  *layout.RightPanel
 	BottomPanel *layout.BottomPanel
 	Controls    *controls.ControlsTab
+	SceneTree   *components.TreeView
 	Editor      *editor.EditorTab
 	Focus       FocusZone
 
@@ -108,6 +110,7 @@ func NewModel() Model {
 		RightPanel:  rp,
 		BottomPanel: bp,
 		Controls:    controls.NewControlsTab(),
+		SceneTree:   components.NewTreeView(),
 		Editor:      editor.NewEditorTab(),
 		Focus:       FocusViewport,
 		Mode:        ViewShader,

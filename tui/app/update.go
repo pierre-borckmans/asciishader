@@ -247,6 +247,14 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// Scene tree mouse interaction
+		if m.SceneTree.Len() > 0 {
+			if m.SceneTree.HandleMouse(msg) {
+				m.Focus = FocusTree
+				return m, nil
+			}
+		}
+
 		// Scrollbar interaction
 		if m.RightPanel.HandleMouseEvent(msg) {
 			return m, nil
@@ -469,7 +477,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		cmd := m.RightPanel.ToggleExpanded()
 		if m.RightPanel.IsExpanded() {
 			m.Focus = FocusControls
-		} else if m.Focus == FocusControls {
+		} else if m.Focus == FocusControls || m.Focus == FocusTree {
 			m.Focus = FocusViewport
 		}
 		m.ResizeViewport()
@@ -497,6 +505,8 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleViewportKey(key)
 	case FocusControls:
 		return m.handleControlsKey(key)
+	case FocusTree:
+		return m.handleTreeKey(key)
 	case FocusEditor:
 		return m.handleEditorKey(msg)
 	}
@@ -691,7 +701,9 @@ func (m Model) handleControlsKey(key string) (tea.Model, tea.Cmd) {
 		m.Focus = FocusViewport
 		return m, nil
 	case "tab":
-		if m.BottomPanel.IsExpanded() {
+		if m.SceneTree.Len() > 0 {
+			m.Focus = FocusTree
+		} else if m.BottomPanel.IsExpanded() {
 			m.Focus = FocusEditor
 			m.Editor.Focus()
 		} else {
@@ -708,6 +720,27 @@ func (m Model) handleControlsKey(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) handleTreeKey(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "esc":
+		m.Focus = FocusViewport
+		return m, nil
+	case "tab":
+		if m.BottomPanel.IsExpanded() {
+			m.Focus = FocusEditor
+			m.Editor.Focus()
+		} else {
+			m.Focus = FocusViewport
+		}
+		return m, nil
+	case "q":
+		return m, tea.Quit
+	}
+
+	m.SceneTree.HandleKey(key)
+	return m, nil
+}
+
 func (m Model) handleEditorKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	switch key {
@@ -718,6 +751,9 @@ func (m Model) handleEditorKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+r":
 		m.Editor.Compile(m.GPU)
 		syncCompileErr(&m)
+		if m.Editor.ChiselMode {
+			syncSceneTree(&m, m.Editor.Code())
+		}
 		return m, nil
 	}
 

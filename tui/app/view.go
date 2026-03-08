@@ -135,6 +135,8 @@ func (m Model) View() tea.View {
 		switch m.Focus {
 		case FocusControls:
 			focusStr = "[Controls]"
+		case FocusTree:
+			focusStr = "[Tree]"
 		case FocusEditor:
 			focusStr = "[Editor]"
 		}
@@ -253,7 +255,36 @@ func (m Model) View() tea.View {
 	var rightPanelStr string
 	if m.Mode == ViewShader && m.RightPanel.Width() > 0 {
 		m.Controls.SyncFromRenderConfig(m.Config)
-		controlsContent := m.Controls.Render(m.RightPanel.InnerWidth()-1, &m)
+		rpInner := m.RightPanel.InnerWidth() - 1
+		controlsContent := m.Controls.Render(rpInner, &m)
+
+		// Scene tree below controls (chisel scenes only)
+		if m.SceneTree.Len() > 0 {
+			controlsLines := strings.Count(controlsContent, "\n") + 1
+			treeHeaderLines := 3 // blank + header + separator
+			treeHeight := middleHeight - controlsLines - treeHeaderLines
+			if treeHeight < 3 {
+				treeHeight = 3
+			}
+			m.SceneTree.SetSize(rpInner, treeHeight)
+
+			// Set tree screen position for mouse handling
+			rpX := m.Width - m.RightPanel.Width() + 2
+			treeY := hh + controlsLines + treeHeaderLines - m.RightPanel.ScrollView().ScrollOffset()
+			m.SceneTree.SetPosition(rpX, treeY)
+
+			headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Bold(true)
+			dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("243"))
+			sep := " ───────────────────────────"
+			if rpInner > len(sep) {
+				sep += strings.Repeat(" ", rpInner-len(sep))
+			}
+			treeHeader := "\n" + headerStyle.Render(fmt.Sprintf(" %-*s", rpInner-1, "Scene Tree")) + "\n" +
+				dimStyle.Render(sep) + "\n"
+
+			controlsContent += treeHeader + m.SceneTree.Render()
+		}
+
 		rightPanelStr = m.RightPanel.Render(middleHeight, controlsContent)
 	}
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"asciishader/pkg/scene"
+	"asciishader/tui/components"
 )
 
 // switchView changes the active view mode and updates the sidebar.
@@ -48,6 +49,7 @@ func syncSceneGLSL(m *Model) {
 			m.Editor.Compile(m.GPU)
 		}
 		syncCompileErr(m)
+		syncSceneTree(m, s.Chisel)
 		return
 	}
 
@@ -65,6 +67,7 @@ func syncSceneGLSL(m *Model) {
 			}
 		}
 		syncCompileErr(m)
+		m.SceneTree.SetRoots(nil) // no tree for raw GLSL
 	}
 }
 
@@ -120,7 +123,16 @@ func checkFileChanged(m *Model) {
 		m.Editor.Compile(m.GPU)
 	}
 	syncCompileErr(m)
+	if isChisel {
+		syncSceneTree(m, content)
+	}
 
 	m.RecMessage = fmt.Sprintf("Reloaded %s", filepath.Base(m.WatchFile))
 	m.RecMessageTime = time.Now()
+}
+
+// syncSceneTree rebuilds the scene tree from Chisel source.
+func syncSceneTree(m *Model, chiselSource string) {
+	roots := components.BuildSceneTree(chiselSource)
+	m.SceneTree.SetRoots(roots)
 }
