@@ -143,6 +143,87 @@ func Generate(prog *ast.Program) (string, []diagnostic.Diagnostic) {
 	}
 	out.WriteString("}\n")
 
+	// Emit sceneOpacity if any shape has non-default opacity.
+	if g.hasTransparency() {
+		out.WriteString("\n#define HAS_TRANSPARENCY\nfloat sceneOpacity(vec3 p) {\n")
+		if len(g.colors) == 1 {
+			opacity := g.colors[0].opacityExpr
+			if opacity == "" {
+				opacity = "1.0"
+			}
+			fmt.Fprintf(&out, "    return %s;\n", opacity)
+		} else {
+			// Re-emit SDF body for distance comparison.
+			opGen := &generator{
+				scope:      g.scope,
+				funcs:      g.funcs,
+				helpers:    g.helpers,
+				emittedFn:  g.emittedFn,
+				fnDefs:     g.fnDefs,
+				pointVar:   "p",
+				skipBounds: true,
+			}
+			opGen.emitSDF(sceneExpr)
+			out.WriteString(opGen.body.String())
+			opColors := opGen.colors
+
+			for i := 0; i < len(opColors)-1; i++ {
+				cmp := opColors[i].sdfVar
+				restCmp := opColors[i+1].sdfVar
+				for j := i + 2; j < len(opColors); j++ {
+					restCmp = fmt.Sprintf("min(%s, %s)", restCmp, opColors[j].sdfVar)
+				}
+				opacity := opColors[i].opacityExpr
+				if opacity == "" {
+					opacity = "1.0"
+				}
+				fmt.Fprintf(&out, "    if (%s < %s) return %s;\n", cmp, restCmp, opacity)
+			}
+			lastOpacity := opColors[len(opColors)-1].opacityExpr
+			if lastOpacity == "" {
+				lastOpacity = "1.0"
+			}
+			fmt.Fprintf(&out, "    return %s;\n", lastOpacity)
+		}
+		out.WriteString("}\n")
+
+		// Emit per-shape SDF access for per-shape transparent raymarching.
+		shapeCount := len(g.colors)
+		fmt.Fprintf(&out, "\n#define SHAPE_COUNT %d\n", shapeCount)
+
+		// sceneSDFAll: same body as sceneSDF, but outputs each shape's distance.
+		fmt.Fprintf(&out, "void sceneSDFAll(vec3 p, out float dists[%d]) {\n", shapeCount)
+		out.WriteString(g.body.String())
+		for i, c := range g.colors {
+			fmt.Fprintf(&out, "    dists[%d] = %s;\n", i, c.sdfVar)
+		}
+		out.WriteString("}\n\n")
+
+		// sceneShapeColor: return color for shape at given index.
+		out.WriteString("vec3 sceneShapeColor(int idx) {\n")
+		for i := 0; i < shapeCount-1; i++ {
+			fmt.Fprintf(&out, "    if (idx == %d) return %s;\n", i, g.colors[i].colorExpr)
+		}
+		fmt.Fprintf(&out, "    return %s;\n", g.colors[shapeCount-1].colorExpr)
+		out.WriteString("}\n\n")
+
+		// sceneShapeOpacity: return opacity for shape at given index.
+		out.WriteString("float sceneShapeOpacity(int idx) {\n")
+		for i := 0; i < shapeCount-1; i++ {
+			opacity := g.colors[i].opacityExpr
+			if opacity == "" {
+				opacity = "1.0"
+			}
+			fmt.Fprintf(&out, "    if (idx == %d) return %s;\n", i, opacity)
+		}
+		lastOp := g.colors[shapeCount-1].opacityExpr
+		if lastOp == "" {
+			lastOp = "1.0"
+		}
+		fmt.Fprintf(&out, "    return %s;\n", lastOp)
+		out.WriteString("}\n")
+	}
+
 	// Emit sceneBg if a bg setting was defined.
 	if g.bgCode != "" {
 		out.WriteString("\n#define HAS_SCENE_BG\nvec3 sceneBg(vec2 uv) {\n")
@@ -170,10 +251,11 @@ type scopeEntry struct {
 	varName string   // for entryFloat (GLSL variable name)
 }
 
-// colorEntry tracks the color associated with a specific SDF variable.
+// colorEntry tracks the color and opacity associated with a specific SDF variable.
 type colorEntry struct {
-	sdfVar    string // the GLSL variable name holding the SDF distance (e.g. "d0")
-	colorExpr string // the GLSL color expression (e.g. "vec3(1.0, 0.0, 0.0)")
+	sdfVar      string // the GLSL variable name holding the SDF distance (e.g. "d0")
+	colorExpr   string // the GLSL color expression (e.g. "vec3(1.0, 0.0, 0.0)")
+	opacityExpr string // the GLSL opacity expression (e.g. "0.5"), empty means 1.0
 }
 
 type generator struct {
@@ -203,6 +285,16 @@ type generator struct {
 
 	// bgCode holds the GLSL body of sceneBg(vec2 uv), if a bg setting was found.
 	bgCode string
+}
+
+// hasTransparency reports whether any color entry has a non-default opacity.
+func (g *generator) hasTransparency() bool {
+	for _, c := range g.colors {
+		if c.opacityExpr != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // freshVar returns a fresh temporary variable name like "d0", "d1", etc.
@@ -684,6 +776,8 @@ func (g *generator) emitMethodCall(e *ast.MethodCall) string {
 		return g.emitTransformRot(e)
 	case "color":
 		return g.emitColor(e)
+	case "opacity":
+		return g.emitOpacity(e)
 	case "mirror":
 		return g.emitMirror(e)
 	case "rep":
@@ -878,15 +972,20 @@ func (g *generator) emitTransformRot(e *ast.MethodCall) string {
 // Color method
 // ---------------------------------------------------------------------------
 
-// emitColor handles .color(r, g, b) and .color(#hex)
+// emitColor handles .color(r, g, b), .color(#hex), and .color(r, g, b, a).
+// When a hex color has alpha < 1.0, the alpha is extracted as opacity.
 func (g *generator) emitColor(e *ast.MethodCall) string {
 	result := g.emitSDF(e.Receiver)
 
 	var colorExpr string
+	var opacityExpr string
 	if len(e.Args) == 1 {
 		// Could be .color(#hex) where the arg is a HexColorLit
 		if hex, ok := e.Args[0].Value.(*ast.HexColorLit); ok {
 			colorExpr = fmt.Sprintf("vec3(%s, %s, %s)", formatFloat(hex.R), formatFloat(hex.G), formatFloat(hex.B))
+			if hex.A < 1.0 {
+				opacityExpr = formatFloat(hex.A)
+			}
 		} else {
 			colorExpr = g.emitScalarExpr(e.Args[0].Value)
 		}
@@ -895,12 +994,45 @@ func (g *generator) emitColor(e *ast.MethodCall) string {
 		gv := g.emitScalarExpr(e.Args[1].Value)
 		b := g.emitScalarExpr(e.Args[2].Value)
 		colorExpr = fmt.Sprintf("vec3(%s, %s, %s)", r, gv, b)
+	} else if len(e.Args) == 4 {
+		r := g.emitScalarExpr(e.Args[0].Value)
+		gv := g.emitScalarExpr(e.Args[1].Value)
+		b := g.emitScalarExpr(e.Args[2].Value)
+		colorExpr = fmt.Sprintf("vec3(%s, %s, %s)", r, gv, b)
+		opacityExpr = g.emitScalarExpr(e.Args[3].Value)
 	} else {
-		g.addDiag(diagnostic.Error, ".color() requires 1 or 3 arguments", e.NodeSpan())
+		g.addDiag(diagnostic.Error, ".color() requires 1, 3, or 4 arguments", e.NodeSpan())
 		return result
 	}
 
-	g.colors = append(g.colors, colorEntry{sdfVar: result, colorExpr: colorExpr})
+	g.colors = append(g.colors, colorEntry{sdfVar: result, colorExpr: colorExpr, opacityExpr: opacityExpr})
+	return result
+}
+
+// emitOpacity handles .opacity(value)
+func (g *generator) emitOpacity(e *ast.MethodCall) string {
+	result := g.emitSDF(e.Receiver)
+
+	if len(e.Args) != 1 {
+		g.addDiag(diagnostic.Error, ".opacity() requires 1 argument", e.NodeSpan())
+		return result
+	}
+
+	opacityExpr := g.emitScalarExpr(e.Args[0].Value)
+
+	// Find the last color entry for this SDF variable and set its opacity,
+	// or create a new entry if none exists.
+	found := false
+	for i := len(g.colors) - 1; i >= 0; i-- {
+		if g.colors[i].sdfVar == result {
+			g.colors[i].opacityExpr = opacityExpr
+			found = true
+			break
+		}
+	}
+	if !found {
+		g.colors = append(g.colors, colorEntry{sdfVar: result, colorExpr: "vec3(1.0)", opacityExpr: opacityExpr})
+	}
 	return result
 }
 

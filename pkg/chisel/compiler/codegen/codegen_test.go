@@ -807,6 +807,35 @@ func TestSetting_BgRadialGradient(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Transparency / Opacity
+// ---------------------------------------------------------------------------
+
+func TestOpacityMethod(t *testing.T) {
+	glsl := compile(t, "sphere.color(#f00).opacity(0.5)")
+	assertContains(t, glsl, "sceneOpacity", "sceneOpacity function emitted")
+	assertContains(t, glsl, "HAS_TRANSPARENCY", "HAS_TRANSPARENCY define emitted")
+	assertContains(t, glsl, "0.5", "opacity value present")
+}
+
+func TestOpacityFromHexAlpha(t *testing.T) {
+	glsl := compile(t, "sphere.color(#ff000080)")
+	assertContains(t, glsl, "sceneOpacity", "sceneOpacity from hex alpha")
+	assertContains(t, glsl, "HAS_TRANSPARENCY", "HAS_TRANSPARENCY define emitted")
+}
+
+func TestNoTransparencyNoDefine(t *testing.T) {
+	glsl := compile(t, "sphere.color(#ff0000)")
+	assertNotContains(t, glsl, "HAS_TRANSPARENCY", "no transparency when all opaque")
+	assertNotContains(t, glsl, "sceneOpacity", "no sceneOpacity when all opaque")
+}
+
+func TestColor4Args(t *testing.T) {
+	glsl := compile(t, "sphere.color(1, 0, 0, 0.5)")
+	assertContains(t, glsl, "sceneOpacity", "sceneOpacity from 4-arg color")
+	assertContains(t, glsl, "0.5", "opacity value present")
+}
+
+// ---------------------------------------------------------------------------
 // Task 6.2 — Lighting
 // ---------------------------------------------------------------------------
 

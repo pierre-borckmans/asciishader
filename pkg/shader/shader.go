@@ -397,6 +397,11 @@ const ShaderSuffix = `
 vec3 sceneBg(vec2 uv) { return vec3(0.0); }
 #endif
 
+// Default opacity (fully opaque) when user code doesn't define sceneOpacity.
+#ifndef HAS_TRANSPARENCY
+float sceneOpacity(vec3 p) { return 1.0; }
+#endif
+
 // ---- Raymarching ----
 float raymarch(vec3 ro, vec3 rd) {
     float t = 0.0;
@@ -500,6 +505,141 @@ vec4 shade(vec3 ro, vec3 rd, float t) {
     return vec4(clamp(col, 0.0, 1.0), clamp(brightness, 0.0, 1.0));
 }
 
+#ifdef HAS_TRANSPARENCY
+// Per-shape normal via finite differences on individual SDF.
+vec3 shapeNormal(vec3 p, int idx) {
+    float h = NORMAL_EPS;
+    float d[SHAPE_COUNT];
+    sceneSDFAll(p, d);
+    float d0 = d[idx];
+    float nx, ny, nz;
+    sceneSDFAll(vec3(p.x+h, p.y, p.z), d); nx = d[idx] - d0;
+    sceneSDFAll(vec3(p.x, p.y+h, p.z), d); ny = d[idx] - d0;
+    sceneSDFAll(vec3(p.x, p.y, p.z+h), d); nz = d[idx] - d0;
+    return normalize(vec3(nx, ny, nz));
+}
+
+// Raymarch with front-to-back alpha compositing for transparent surfaces.
+// Tracks each shape individually so overlapping transparent objects blend
+// with correct 3D intersections (not flat Voronoi boundaries).
+vec4 raymarchTransparent(vec3 ro, vec3 rd) {
+    vec3 accum = vec3(0.0);
+    float accumA = 0.0;
+    float t = 0.0;
+    // Per-shape hit tracking
+    bool shapeHit[SHAPE_COUNT];
+    for (int s = 0; s < SHAPE_COUNT; s++) shapeHit[s] = false;
+
+    for (int i = 0; i < MAX_STEPS * 2; i++) {
+        vec3 p = ro + rd * t;
+        float dAll[SHAPE_COUNT];
+        sceneSDFAll(p, dAll);
+
+        // Check each shape for a front-face hit
+        bool anyHit = false;
+        for (int s = 0; s < SHAPE_COUNT; s++) {
+            if (!shapeHit[s] && dAll[s] < SURF_DIST) {
+                vec3 n = shapeNormal(p, s);
+                if (dot(n, rd) < 0.0) {
+                    shapeHit[s] = true;
+                    anyHit = true;
+                    float opacity = sceneShapeOpacity(s);
+                    vec3 color = sceneShapeColor(s);
+                    vec3 hitColor;
+                    // Use full shading at the union surface, simplified inside
+                    float dScene = sceneSDF(p);
+                    if (abs(dScene) < SURF_DIST * 2.0) {
+                        vec4 sh = shade(ro, rd, t);
+                        hitColor = max(sh.rgb, color * 0.2);
+                    } else {
+                        float diff = max(dot(n, uLightDir), 0.0);
+                        hitColor = color * (uAmbient + diff * 0.65);
+                    }
+                    float contrib = (1.0 - accumA) * opacity;
+                    accum += hitColor * contrib;
+                    accumA += contrib;
+                } else {
+                    // Back face — mark as hit but don't shade
+                    shapeHit[s] = true;
+                    anyHit = true;
+                }
+            }
+        }
+
+        if (accumA > 0.99) break;
+
+        if (anyHit) {
+            t += SURF_DIST * 4.0;
+        } else {
+            // Step using min absolute distance of un-hit shapes
+            float step = MAX_DIST;
+            for (int s = 0; s < SHAPE_COUNT; s++) {
+                if (!shapeHit[s]) {
+                    step = min(step, abs(dAll[s]));
+                }
+            }
+            if (step >= MAX_DIST) break; // all shapes hit
+            t += max(step, SURF_DIST * 2.0);
+        }
+        if (t > MAX_DIST) break;
+    }
+
+    // Blend remaining transparency with background
+    vec2 uv = gl_FragCoord.xy / uResolution;
+    vec3 bg = sceneBg(uv);
+    float bgLuma = dot(bg, vec3(0.299, 0.587, 0.114));
+    if (accumA < 0.001) {
+        if (bgLuma < 0.001) return vec4(0.0);
+        return vec4(bg, pow(bgLuma, 0.5));
+    }
+    vec3 finalColor = accum + (1.0 - accumA) * bg;
+    float luma = dot(finalColor, vec3(0.299, 0.587, 0.114));
+    return vec4(finalColor, pow(max(luma, 0.001), 0.5));
+}
+
+// Cost variant of raymarchTransparent for the cost heatmap.
+vec2 raymarchTransparentCost(vec3 ro, vec3 rd) {
+    float t = 0.0;
+    float accumA = 0.0;
+    bool shapeHit[SHAPE_COUNT];
+    for (int s = 0; s < SHAPE_COUNT; s++) shapeHit[s] = false;
+
+    for (int i = 0; i < MAX_STEPS * 2; i++) {
+        vec3 p = ro + rd * t;
+        float dAll[SHAPE_COUNT];
+        sceneSDFAll(p, dAll);
+
+        bool anyHit = false;
+        for (int s = 0; s < SHAPE_COUNT; s++) {
+            if (!shapeHit[s] && dAll[s] < SURF_DIST) {
+                shapeHit[s] = true;
+                anyHit = true;
+                float opacity = sceneShapeOpacity(s);
+                float contrib = (1.0 - accumA) * opacity;
+                accumA += contrib;
+            }
+        }
+
+        if (accumA > 0.99) return vec2(t, float(i));
+
+        if (anyHit) {
+            t += SURF_DIST * 4.0;
+        } else {
+            float step = MAX_DIST;
+            for (int s = 0; s < SHAPE_COUNT; s++) {
+                if (!shapeHit[s]) {
+                    step = min(step, abs(dAll[s]));
+                }
+            }
+            if (step >= MAX_DIST) break;
+            t += max(step, SURF_DIST * 2.0);
+        }
+        if (t > MAX_DIST) return vec2(MAX_DIST, float(i));
+    }
+    return vec2(t, float(MAX_STEPS * 2));
+}
+#endif
+
 void main() {
     vec2 ndc;
     ndc.x = gl_FragCoord.x / uResolution.x * 2.0 - 1.0;
@@ -568,9 +708,15 @@ void main() {
 
     if (uSliceMode == 2) {
         // Cost heatmap: step count visualization
+#ifdef HAS_TRANSPARENCY
+        vec2 rc = raymarchTransparentCost(ro, rd);
+        float steps = rc.y;
+        float ratio = steps / float(MAX_STEPS * 2);
+#else
         vec2 rc = raymarchCost(ro, rd);
         float steps = rc.y;
         float ratio = steps / float(MAX_STEPS);
+#endif
 
         // Blue (cheap) → green → yellow → red (expensive)
         vec3 col;
@@ -593,17 +739,22 @@ void main() {
         return;
     }
 
+    vec2 uv = gl_FragCoord.xy / uResolution;
+
+#ifdef HAS_TRANSPARENCY
+    vec4 result = raymarchTransparent(ro, rd);
+#else
     float t = raymarch(ro, rd);
 
     vec4 result;
     if (t < MAX_DIST) {
         result = shade(ro, rd, t);
     } else {
-        vec2 uv = gl_FragCoord.xy / uResolution;
         vec3 bg = sceneBg(uv);
         float luma = dot(bg, vec3(0.299, 0.587, 0.114));
         result = vec4(bg, pow(luma, 0.5));
     }
+#endif
 
     fragColor = result;
 }
