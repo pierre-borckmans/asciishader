@@ -7,100 +7,100 @@
 glsl(p) {
   float speed = uTime * 3.0;
 
-      // === BULLET TRAIN ===
-      vec3 tp = p - vec3(0.0, 0.35, 1.5);
-      float body = sdBox(tp - vec3(0.0, 0.0, 2.5), vec3(0.75, 0.6, 3.2));
-      body = opRound(body, 0.22);
-      vec3 np = tp;
-      np.z *= 0.36;
-      float nose = sdSphere(np, 0.82);
-      float train = opSmoothUnion(body, nose, 0.5);
-      float ws = sdBox(tp - vec3(0.0, 0.6, 0.15), vec3(0.38, 0.16, 0.08));
-      train = max(train, -ws);
-      float stripe = sdBox(tp - vec3(0.0, 0.32, 2.0), vec3(1.05, 0.02, 4.2));
-      train = max(train, -stripe);
-      train = min(train, sdSphere(tp - vec3(-0.45, -0.05, -0.58), 0.07));
-      train = min(train, sdSphere(tp - vec3( 0.45, -0.05, -0.58), 0.07));
-      train = min(train, sdBox(tp - vec3(0.0, 0.95, 3.0), vec3(0.06, 0.02, 1.8)));
+        // === BULLET TRAIN ===
+        vec3 tp = p - vec3(0.0, 0.35, 1.5);
+        float body = sdBox(tp - vec3(0.0, 0.0, 2.5), vec3(0.75, 0.6, 3.2));
+        body = opRound(body, 0.22);
+        vec3 np = tp;
+        np.z *= 0.36;
+        float nose = sdSphere(np, 0.82);
+        float train = opSmoothUnion(body, nose, 0.5);
+        float ws = sdBox(tp - vec3(0.0, 0.6, 0.15), vec3(0.38, 0.16, 0.08));
+        train = max(train, -ws);
+        float stripe = sdBox(tp - vec3(0.0, 0.32, 2.0), vec3(1.05, 0.02, 4.2));
+        train = max(train, -stripe);
+        train = min(train, sdSphere(tp - vec3(-0.45, -0.05, -0.58), 0.07));
+        train = min(train, sdSphere(tp - vec3( 0.45, -0.05, -0.58), 0.07));
+        train = min(train, sdBox(tp - vec3(0.0, 0.95, 3.0), vec3(0.06, 0.02, 1.8)));
 
-      // === ENERGY RAILS ===
-      float r1 = sdBox(p - vec3(-0.55, -0.28, 0.0), vec3(0.035, 0.035, 50.0));
-      float r2 = sdBox(p - vec3( 0.55, -0.28, 0.0), vec3(0.035, 0.035, 50.0));
-      float rails = min(r1, r2);
-      rails = min(rails, sdBox(p - vec3(0.0, -0.35, 0.0), vec3(0.72, 0.025, 50.0)));
-      vec3 tieP = p - vec3(0.0, -0.40, 0.0);
-      tieP.z = mod(tieP.z + speed + 0.35, 0.7) - 0.35;
-      rails = min(rails, sdBox(tieP, vec3(0.88, 0.012, 0.035)));
+        // === ENERGY RAILS ===
+        float r1 = sdBox(p - vec3(-0.55, -0.28, 0.0), vec3(0.035, 0.035, 50.0));
+        float r2 = sdBox(p - vec3( 0.55, -0.28, 0.0), vec3(0.035, 0.035, 50.0));
+        float rails = min(r1, r2);
+        rails = min(rails, sdBox(p - vec3(0.0, -0.35, 0.0), vec3(0.72, 0.025, 50.0)));
+        vec3 tieP = p - vec3(0.0, -0.40, 0.0);
+        tieP.z = mod(tieP.z + speed + 0.35, 0.7) - 0.35;
+        rails = min(rails, sdBox(tieP, vec3(0.88, 0.012, 0.035)));
 
-      // === PORTAL RINGS ===
-      vec3 ringP = p;
-      float ringRep = 5.0;
-      ringP.z = mod(ringP.z + speed * 0.7 + ringRep * 0.5, ringRep) - ringRep * 0.5;
-      float ring = sdTorus(vec3(ringP.x, ringP.z, ringP.y - 0.15), 2.4, 0.04);
+        // === PORTAL RINGS ===
+        vec3 ringP = p;
+        float ringRep = 5.0;
+        ringP.z = mod(ringP.z + speed * 0.7 + ringRep * 0.5, ringRep) - ringRep * 0.5;
+        float ring = sdTorus(vec3(ringP.x, ringP.z, ringP.y - 0.15), 2.4, 0.04);
 
-      // === SUPPORT PYLONS ===
-      vec3 pylP = p;
-      pylP.z = mod(pylP.z + 2.5, 5.0) - 2.5;
-      float pylons = min(
-          sdCylinder(pylP - vec3(-0.7, -1.25, 0.0), 0.05, 0.92),
-          sdCylinder(pylP - vec3( 0.7, -1.25, 0.0), 0.05, 0.92)
-      );
-      pylons = min(pylons, sdBox(pylP - vec3(0.0, -1.75, 0.0), vec3(0.82, 0.025, 0.05)));
+        // === SUPPORT PYLONS ===
+        vec3 pylP = p;
+        pylP.z = mod(pylP.z + 2.5, 5.0) - 2.5;
+        float pylons = min(
+            sdCylinder(pylP - vec3(-0.7, -1.25, 0.0), 0.05, 0.92),
+            sdCylinder(pylP - vec3( 0.7, -1.25, 0.0), 0.05, 0.92)
+        );
+        pylons = min(pylons, sdBox(pylP - vec3(0.0, -1.75, 0.0), vec3(0.82, 0.025, 0.05)));
 
-      // === GROUND ===
-      float ground = p.y + 2.2;
+        // === GROUND ===
+        float ground = p.y + 2.2;
 
-      return min(min(min(train, rails), min(ring, pylons)), ground);
+        return min(min(min(train, rails), min(ring, pylons)), ground);
 }
   .color(
     glsl(p) {
       float speed = uTime * 3.0;
-          vec3 lavender = vec3(0.7, 0.55, 0.9);
-          vec3 purple   = vec3(0.6, 0.35, 0.95);
-          vec3 cyan     = vec3(0.3, 0.95, 1.0);
-          vec3 magenta  = vec3(1.0, 0.55, 0.85);
+                vec3 lavender = vec3(0.7, 0.55, 0.9);
+                vec3 purple   = vec3(0.6, 0.35, 0.95);
+                vec3 cyan     = vec3(0.3, 0.95, 1.0);
+                vec3 magenta  = vec3(1.0, 0.55, 0.85);
 
-          vec3 tp = p - vec3(0.0, 0.35, 1.5);
-          float bodyD = opRound(sdBox(tp - vec3(0.0, 0.0, 2.5), vec3(0.75, 0.6, 3.2)), 0.22);
-          vec3 np = tp; np.z *= 0.36;
-          float trainD = min(bodyD, sdSphere(np, 0.82));
+                vec3 tp = p - vec3(0.0, 0.35, 1.5);
+                float bodyD = opRound(sdBox(tp - vec3(0.0, 0.0, 2.5), vec3(0.75, 0.6, 3.2)), 0.22);
+                vec3 np = tp; np.z *= 0.36;
+                float trainD = min(bodyD, sdSphere(np, 0.82));
 
-          if (trainD < 0.15) {
-              vec3 col = vec3(0.9, 0.88, 0.95);
-              if (abs(tp.y - 0.32) < 0.06) {
-                  float pulse = sin(tp.z * 2.5 - uTime * 6.0) * 0.5 + 0.5;
-                  col = mix(cyan * 0.7, cyan, pulse);
-              }
-              if (tp.y > 0.42 && tp.z < 0.35 && abs(tp.x) < 0.42) {
-                  col = mix(lavender, cyan * 0.8, 0.5);
-              }
-              if (tp.z < 0.0) col = mix(col, purple, 0.3);
-              return clamp(col, 0.0, 1.0);
-          }
+                if (trainD < 0.15) {
+                    vec3 col = vec3(0.9, 0.88, 0.95);
+                    if (abs(tp.y - 0.32) < 0.06) {
+                        float pulse = sin(tp.z * 2.5 - uTime * 6.0) * 0.5 + 0.5;
+                        col = mix(cyan * 0.7, cyan, pulse);
+                    }
+                    if (tp.y > 0.42 && tp.z < 0.35 && abs(tp.x) < 0.42) {
+                        col = mix(lavender, cyan * 0.8, 0.5);
+                    }
+                    if (tp.z < 0.0) col = mix(col, purple, 0.3);
+                    return clamp(col, 0.0, 1.0);
+                }
 
-          if (p.y > -0.38 && p.y < -0.18) {
-              if (abs(abs(p.x) - 0.55) < 0.07) {
-                  float pulse = sin(p.z * 3.0 - uTime * 8.0) * 0.5 + 0.5;
-                  return mix(cyan * 0.6, cyan, pulse);
-              }
-              return lavender * 0.9;
-          }
+                if (p.y > -0.38 && p.y < -0.18) {
+                    if (abs(abs(p.x) - 0.55) < 0.07) {
+                        float pulse = sin(p.z * 3.0 - uTime * 8.0) * 0.5 + 0.5;
+                        return mix(cyan * 0.6, cyan, pulse);
+                    }
+                    return lavender * 0.9;
+                }
 
-          if (p.y > -0.45 && p.y < -0.36) return lavender * 0.75;
+                if (p.y > -0.45 && p.y < -0.36) return lavender * 0.75;
 
-          vec3 ringP = p;
-          ringP.z = mod(ringP.z + speed * 0.7 + 2.5, 5.0) - 2.5;
-          float ringDist = abs(length(vec2(ringP.x, ringP.y - 0.15)) - 2.4);
-          if (ringDist < 0.12) {
-              float angle = atan(ringP.y - 0.15, ringP.x);
-              float glow = sin(angle * 4.0 + uTime * 3.5) * 0.5 + 0.5;
-              return mix(purple, magenta, glow);
-          }
+                vec3 ringP = p;
+                ringP.z = mod(ringP.z + speed * 0.7 + 2.5, 5.0) - 2.5;
+                float ringDist = abs(length(vec2(ringP.x, ringP.y - 0.15)) - 2.4);
+                if (ringDist < 0.12) {
+                    float angle = atan(ringP.y - 0.15, ringP.x);
+                    float glow = sin(angle * 4.0 + uTime * 3.5) * 0.5 + 0.5;
+                    return mix(purple, magenta, glow);
+                }
 
-          if (p.y < -0.35 && p.y > -2.3) return lavender * 0.65;
+                if (p.y < -0.35 && p.y > -2.3) return lavender * 0.65;
 
-          float gx = smoothstep(0.03, 0.0, abs(fract(p.x * 0.5) - 0.5) - 0.47);
-          float gz = smoothstep(0.03, 0.0, abs(fract(p.z * 0.25 + uTime * 0.5) - 0.5) - 0.47);
-          return mix(vec3(0.25, 0.2, 0.35), purple * 0.7, max(gx, gz));
+                float gx = smoothstep(0.03, 0.0, abs(fract(p.x * 0.5) - 0.5) - 0.47);
+                float gz = smoothstep(0.03, 0.0, abs(fract(p.z * 0.25 + uTime * 0.5) - 0.5) - 0.47);
+                return mix(vec3(0.25, 0.2, 0.35), purple * 0.7, max(gx, gz));
     }
   )

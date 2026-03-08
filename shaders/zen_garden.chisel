@@ -1,7 +1,7 @@
 // Scene: Zen Garden
 // Smooth stones on raked sand with ripple patterns
 
-raymarch { steps: 150, precision: 0.001 }
+raymarch { precision: 0.001, steps: 150 }
 
 // Raked sand — plane with sinusoidal ripples
 sand = plane

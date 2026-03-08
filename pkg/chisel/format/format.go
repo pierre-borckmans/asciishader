@@ -436,7 +436,22 @@ func (f *formatter) formatBinaryExpr(e *ast.BinaryExpr, multiLine bool) {
 			f.writeln()
 			f.writeIndent()
 			f.write(part.op + " ")
-			f.formatExpr(part.expr, true)
+			// Wrap in parens if the operand is a CSG expr that would
+			// bind wrong without them (lower or equal precedence on
+			// the right side of a left-associative chain).
+			needsWrap := false
+			if childBin, ok := part.expr.(*ast.BinaryExpr); ok {
+				if opPrecedence(childBin.Op) <= opPrecedence(part.binOp) {
+					needsWrap = true
+				}
+			}
+			if needsWrap {
+				f.write("(")
+				f.formatExpr(part.expr, false)
+				f.write(")")
+			} else {
+				f.formatExpr(part.expr, true)
+			}
 		}
 	}
 }
@@ -479,8 +494,9 @@ func opPrecedence(op ast.BinaryOp) int {
 }
 
 type csgPart struct {
-	op   string // operator string (empty for the first part)
-	expr ast.Expr
+	op    string       // operator string (empty for the first part)
+	binOp ast.BinaryOp // the actual binary op (for precedence checks)
+	expr  ast.Expr
 }
 
 // flattenCSGChain flattens a left-associative chain of CSG binary exprs.
@@ -499,7 +515,7 @@ func flattenCSGChain(e *ast.BinaryExpr) []csgPart {
 			op += formatNumberStr(*be.Blend)
 		}
 		// Mark the operator on the last part added.
-		parts = append(parts, csgPart{op: op, expr: be.Right})
+		parts = append(parts, csgPart{op: op, binOp: be.Op, expr: be.Right})
 	}
 	flatten(e)
 	return parts

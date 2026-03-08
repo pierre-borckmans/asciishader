@@ -6,8 +6,7 @@
 pattern = box(1, 4, 1).rot(45, y).array(24, 1.6)
 
 knurling = rounded_cylinder(1, 0.1, 5)
--~0.1 pattern.twist(0.75)
-| pattern.twist(-0.75)
+-~0.1 (pattern.twist(0.75) | pattern.twist(-0.75))
 -~0.1 cylinder(0.5, 100)
 -~0.1 cylinder(0.25, 100).orient(x).at(0, -2.5, 0)
 -~0.1 cylinder(0.25, 100).orient(x).at(0, 2.5, 0)
