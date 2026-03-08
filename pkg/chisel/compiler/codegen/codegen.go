@@ -143,6 +143,13 @@ func Generate(prog *ast.Program) (string, []diagnostic.Diagnostic) {
 	}
 	out.WriteString("}\n")
 
+	// Emit sceneBg if a bg setting was defined.
+	if g.bgCode != "" {
+		out.WriteString("\n#define HAS_SCENE_BG\nvec3 sceneBg(vec2 uv) {\n")
+		out.WriteString(g.bgCode)
+		out.WriteString("}\n")
+	}
+
 	return out.String(), g.diags
 }
 
@@ -193,6 +200,9 @@ type generator struct {
 
 	// settingComments collects comment lines for camera, light, bg, post settings.
 	settingComments []string
+
+	// bgCode holds the GLSL body of sceneBg(vec2 uv), if a bg setting was found.
+	bgCode string
 }
 
 // freshVar returns a fresh temporary variable name like "d0", "d1", etc.
@@ -2260,13 +2270,75 @@ func (g *generator) processLightSetting(s *ast.SettingStmt) {
 	}
 }
 
-// processBgSetting emits background metadata as comments (Task 6.1).
+// processBgSetting emits a sceneBg(vec2 uv) function body.
+// Supports three forms:
+//   - Uniform color:    bg #1a1a2e
+//   - Linear gradient:  bg { start: #112, stop: #334, angle: 90 }
+//   - Radial gradient:  bg { center: #fff, edge: #000 }
 func (g *generator) processBgSetting(s *ast.SettingStmt) {
-	switch s.Body.(type) {
+	switch body := s.Body.(type) {
 	case map[string]interface{}:
-		g.settingComments = append(g.settingComments, "// chisel:bg gradient settings present")
+		g.processBgBlock(body)
 	default:
-		g.settingComments = append(g.settingComments, "// chisel:bg color override")
+		// Single expression — uniform color.
+		if expr, ok := s.Body.(ast.Expr); ok {
+			colorStr := g.emitScalarExpr(expr)
+			g.bgCode = fmt.Sprintf("    return %s;\n", colorStr)
+		}
+	}
+}
+
+// processBgBlock handles bg { ... } blocks for gradient backgrounds.
+func (g *generator) processBgBlock(body map[string]interface{}) {
+	// Detect gradient type by which keys are present.
+	_, hasCenter := body["center"]
+	_, hasEdge := body["edge"]
+	_, hasStart := body["start"]
+	_, hasStop := body["stop"]
+
+	if hasCenter || hasEdge {
+		// Radial gradient: bg { center: #fff, edge: #000 }
+		centerStr := "vec3(1.0)"
+		edgeStr := "vec3(0.0)"
+		if c, ok := body["center"]; ok {
+			if expr, ok := c.(ast.Expr); ok {
+				centerStr = g.emitScalarExpr(expr)
+			}
+		}
+		if e, ok := body["edge"]; ok {
+			if expr, ok := e.(ast.Expr); ok {
+				edgeStr = g.emitScalarExpr(expr)
+			}
+		}
+		g.bgCode = fmt.Sprintf("    vec3 ctr = %s;\n    vec3 edg = %s;\n"+
+			"    return mix(ctr, edg, clamp(length(uv - 0.5) * 2.0, 0.0, 1.0));\n",
+			centerStr, edgeStr)
+	} else if hasStart || hasStop {
+		// Linear gradient: bg { start: #112, stop: #334, angle: 90 }
+		startStr := "vec3(0.0)"
+		stopStr := "vec3(1.0)"
+		angleStr := "0.0"
+		if s, ok := body["start"]; ok {
+			if expr, ok := s.(ast.Expr); ok {
+				startStr = g.emitScalarExpr(expr)
+			}
+		}
+		if s, ok := body["stop"]; ok {
+			if expr, ok := s.(ast.Expr); ok {
+				stopStr = g.emitScalarExpr(expr)
+			}
+		}
+		if a, ok := body["angle"]; ok {
+			if expr, ok := a.(ast.Expr); ok {
+				angleStr = g.emitScalarExpr(expr)
+			}
+		}
+		g.bgCode = fmt.Sprintf("    vec3 a = %s;\n    vec3 b = %s;\n"+
+			"    float ang = %s * 3.14159265 / 180.0;\n"+
+			"    vec2 dir = vec2(cos(ang), sin(ang));\n"+
+			"    float t = dot(uv - 0.5, dir) + 0.5;\n"+
+			"    return mix(a, b, clamp(t, 0.0, 1.0));\n",
+			startStr, stopStr, angleStr)
 	}
 }
 

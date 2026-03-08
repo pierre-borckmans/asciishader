@@ -788,7 +788,22 @@ func TestSetting_BgHex(t *testing.T) {
 	glsl := compile(t, "bg #1a1a2e\nsphere")
 	assertContains(t, glsl, "sceneSDF", "sceneSDF still emitted")
 	assertContains(t, glsl, "sdSphere", "sphere still works with bg setting")
-	assertContains(t, glsl, "// chisel:bg", "bg comment present")
+	assertContains(t, glsl, "sceneBg", "sceneBg function emitted")
+	assertContains(t, glsl, "HAS_SCENE_BG", "HAS_SCENE_BG define emitted")
+}
+
+func TestSetting_BgLinearGradient(t *testing.T) {
+	glsl := compile(t, "bg { start: #112, stop: #334, angle: 90 }\nsphere")
+	assertContains(t, glsl, "sceneBg", "sceneBg function emitted")
+	assertContains(t, glsl, "mix(a, b", "linear gradient uses mix")
+	assertContains(t, glsl, "cos(ang)", "uses angle direction")
+}
+
+func TestSetting_BgRadialGradient(t *testing.T) {
+	glsl := compile(t, "bg { center: #fff, edge: #000 }\nsphere")
+	assertContains(t, glsl, "sceneBg", "sceneBg function emitted")
+	assertContains(t, glsl, "mix(ctr, edg", "radial gradient uses mix")
+	assertContains(t, glsl, "length(uv - 0.5)", "radial uses distance from center")
 }
 
 // ---------------------------------------------------------------------------

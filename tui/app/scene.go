@@ -136,3 +136,74 @@ func syncSceneTree(m *Model, chiselSource string) {
 	roots := components.BuildSceneTree(chiselSource)
 	m.SceneTree.SetRoots(roots)
 }
+
+// processTreeActions handles pending edit and scaffold results from the tree.
+func processTreeActions(m *Model) {
+	if r := m.SceneTree.EditResult; r != nil {
+		m.SceneTree.EditResult = nil
+		applyTreeEdit(m, r)
+	}
+	if n := m.SceneTree.ScaffoldResult; n != nil {
+		m.SceneTree.ScaffoldResult = nil
+		applyScaffold(m, n)
+	}
+}
+
+// applyTreeEdit splices a new value into the Chisel source at the node's edit span.
+func applyTreeEdit(m *Model, r *components.EditResult) {
+	source := currentChiselSource(m)
+	if source == "" {
+		return
+	}
+	nd, ok := r.Node.Data.(components.NodeData)
+	if !ok {
+		return
+	}
+	start := nd.EditSpan.Start.Offset
+	end := nd.EditSpan.End.Offset
+	if start < 0 || end > len(source) || start > end || start == end {
+		return
+	}
+	newSource := source[:start] + r.NewValue + source[end:]
+	updateChiselSource(m, newSource)
+}
+
+// applyScaffold inserts a scaffold template into the Chisel source.
+func applyScaffold(m *Model, node *components.TreeNode) {
+	source := currentChiselSource(m)
+	sd, ok := node.Data.(components.ScaffoldInfo)
+	if !ok {
+		return
+	}
+	insertAt := sd.InsertAt
+	if insertAt < 0 {
+		insertAt = 0
+	}
+	if insertAt > len(source) {
+		insertAt = len(source)
+	}
+	newSource := source[:insertAt] + sd.Template + source[insertAt:]
+	updateChiselSource(m, newSource)
+}
+
+// currentChiselSource returns the Chisel source for the current scene.
+func currentChiselSource(m *Model) string {
+	if m.Scene < 0 || m.Scene >= len(scene.Scenes) {
+		return ""
+	}
+	return scene.Scenes[m.Scene].Chisel
+}
+
+// updateChiselSource updates the scene, editor, and tree with new Chisel source.
+func updateChiselSource(m *Model, newSource string) {
+	if m.Scene < 0 || m.Scene >= len(scene.Scenes) {
+		return
+	}
+	scene.Scenes[m.Scene].Chisel = newSource
+	m.Editor.SetChiselCode(newSource)
+	if m.GPU != nil {
+		m.Editor.Compile(m.GPU)
+	}
+	syncCompileErr(m)
+	syncSceneTree(m, newSource)
+}

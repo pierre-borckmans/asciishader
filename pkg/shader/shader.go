@@ -392,6 +392,11 @@ vec3 rotateX(vec3 p, float a) {
 
 // ShaderSuffix contains raymarch, shading pipeline, and main.
 const ShaderSuffix = `
+// Default background (black) when user code doesn't define sceneBg.
+#ifndef HAS_SCENE_BG
+vec3 sceneBg(vec2 uv) { return vec3(0.0); }
+#endif
+
 // ---- Raymarching ----
 float raymarch(vec3 ro, vec3 rd) {
     float t = 0.0;
@@ -590,9 +595,14 @@ void main() {
 
     float t = raymarch(ro, rd);
 
-    vec4 result = vec4(0);
+    vec4 result;
     if (t < MAX_DIST) {
         result = shade(ro, rd, t);
+    } else {
+        vec2 uv = gl_FragCoord.xy / uResolution;
+        vec3 bg = sceneBg(uv);
+        float luma = dot(bg, vec3(0.299, 0.587, 0.114));
+        result = vec4(bg, pow(luma, 0.5));
     }
 
     fragColor = result;

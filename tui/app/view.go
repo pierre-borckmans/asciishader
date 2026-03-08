@@ -8,6 +8,7 @@ import (
 	"asciishader/pkg/core"
 	"asciishader/pkg/recorder"
 	"asciishader/pkg/scene"
+	"asciishader/tui/components"
 	"asciishader/tui/layout"
 
 	tea "charm.land/bubbletea/v2"
@@ -268,11 +269,6 @@ func (m Model) View() tea.View {
 			}
 			m.SceneTree.SetSize(rpInner, treeHeight)
 
-			// Set tree screen position for mouse handling
-			rpX := m.Width - m.RightPanel.Width() + 2
-			treeY := hh + controlsLines + treeHeaderLines - m.RightPanel.ScrollView().ScrollOffset()
-			m.SceneTree.SetPosition(rpX, treeY)
-
 			headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Bold(true)
 			dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("243"))
 			sep := " ───────────────────────────"
@@ -301,7 +297,23 @@ func (m Model) View() tea.View {
 		middle = lipgloss.JoinHorizontal(lipgloss.Top, sidebarStr, leftGap, viewContentBlock)
 	}
 
-	v := tea.NewView(zone.Scan(header + "\n" + middle + "\n" + footer))
+	composed := header + "\n" + middle + "\n" + footer
+
+	// Floating color picker overlay
+	if picker := m.SceneTree.ActiveColorPicker(); picker != nil {
+		composed = components.OverlayCentered(composed, picker.Render(), m.Width, m.Height)
+	}
+
+	// Tooltip overlays
+	var tooltips []components.Tooltip
+	if tip := m.Sidebar.ActiveTooltip(hh); tip != nil {
+		tooltips = append(tooltips, *tip)
+	}
+	if len(tooltips) > 0 {
+		composed = components.OverlayTooltips(composed, tooltips)
+	}
+
+	v := tea.NewView(zone.Scan(composed))
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeAllMotion
 	return v

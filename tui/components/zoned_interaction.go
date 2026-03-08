@@ -17,15 +17,20 @@ type ZonedInteraction struct {
 	hoveredID     string    // Currently hovered item ID
 	lastClickTime time.Time // Time of last click for double-click detection
 	lastClickID   string    // ID of last clicked item for double-click detection
+
+	tooltips         map[string]string           // Zone ID → tooltip text
+	tooltipPlacement map[string]TooltipPlacement // Zone ID → placement
 }
 
 // NewZonedInteraction creates a new ZonedInteraction with the given prefix.
 func NewZonedInteraction(prefix string) *ZonedInteraction {
 	return &ZonedInteraction{
-		prefix:        prefix,
-		hoveredID:     "",
-		lastClickTime: time.Time{},
-		lastClickID:   "",
+		prefix:           prefix,
+		hoveredID:        "",
+		lastClickTime:    time.Time{},
+		lastClickID:      "",
+		tooltips:         make(map[string]string),
+		tooltipPlacement: make(map[string]TooltipPlacement),
 	}
 }
 
@@ -103,6 +108,46 @@ func (z *ZonedInteraction) HoveredID() string {
 // ClearHover clears the current hover state.
 func (z *ZonedInteraction) ClearHover() {
 	z.hoveredID = ""
+}
+
+// InBounds returns whether the mouse event is within the zone for the given ID.
+func (z *ZonedInteraction) InBounds(id string, msg tea.MouseMsg) bool {
+	zi := zone.Get(z.ZoneID(id))
+	return !zi.IsZero() && zi.InBounds(msg)
+}
+
+// SetTooltip associates a tooltip with a zone ID (default placement: below).
+func (z *ZonedInteraction) SetTooltip(id, text string) {
+	z.tooltips[id] = text
+}
+
+// SetTooltipWithPlacement associates a tooltip with a zone ID and placement.
+func (z *ZonedInteraction) SetTooltipWithPlacement(id, text string, placement TooltipPlacement) {
+	z.tooltips[id] = text
+	z.tooltipPlacement[id] = placement
+}
+
+// ActiveTooltip returns the tooltip for the currently hovered zone, or nil if none.
+func (z *ZonedInteraction) ActiveTooltip() *Tooltip {
+	if z.hoveredID == "" {
+		return nil
+	}
+	text, ok := z.tooltips[z.hoveredID]
+	if !ok || text == "" {
+		return nil
+	}
+	zi := zone.Get(z.ZoneID(z.hoveredID))
+	if zi.IsZero() {
+		return nil
+	}
+	pos := ZonePosition{
+		StartX: zi.StartX,
+		StartY: zi.StartY,
+		EndX:   zi.EndX,
+		EndY:   zi.EndY,
+	}
+	placement := z.tooltipPlacement[z.hoveredID]
+	return newTooltipAtZone(pos, text, placement)
 }
 
 // HandleMouseCoords processes a mouse event using a caller-provided hit test function

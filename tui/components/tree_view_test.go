@@ -1,9 +1,17 @@
 package components
 
 import (
+	"os"
 	"strings"
 	"testing"
+
+	zone "github.com/lrstanley/bubblezone/v2"
 )
+
+func TestMain(m *testing.M) {
+	zone.NewGlobal()
+	os.Exit(m.Run())
+}
 
 func makeTestTree() []TreeNode {
 	return []TreeNode{
@@ -301,5 +309,129 @@ func TestTreeViewRenderScrollbar(t *testing.T) {
 	// Should contain scrollbar character (●)
 	if !strings.Contains(output, "●") {
 		t.Error("expected scrollbar thumb in output when content exceeds height")
+	}
+}
+
+func TestTreeViewScaffoldRender(t *testing.T) {
+	tv := NewTreeView()
+	tv.SetSize(30, 5)
+	tv.SetRoots([]TreeNode{
+		{Label: "bg", Detail: "#1a1a2e"},
+		{Label: "light", Scaffold: true},
+		{Label: "camera", Scaffold: true},
+	})
+
+	output := tv.Render()
+	// Scaffold nodes should show with + prefix
+	if !strings.Contains(output, "+ light") {
+		t.Error("expected scaffold '+ light' in output")
+	}
+	if !strings.Contains(output, "+ camera") {
+		t.Error("expected scaffold '+ camera' in output")
+	}
+	// Scaffold nodes should have dimmed styling (color 239)
+	if !strings.Contains(output, "\x1b[38;5;239m") {
+		t.Error("expected dimmed ANSI styling for scaffold nodes")
+	}
+}
+
+func TestTreeViewScaffoldEnter(t *testing.T) {
+	tv := NewTreeView()
+	tv.SetSize(30, 5)
+	tv.SetRoots([]TreeNode{
+		{Label: "light", Scaffold: true, Data: "scaffold-data"},
+	})
+
+	tv.HandleKey("enter")
+	if tv.ScaffoldResult == nil {
+		t.Fatal("expected ScaffoldResult to be set after enter on scaffold node")
+	}
+	if tv.ScaffoldResult.Label != "light" {
+		t.Errorf("expected scaffold label 'light', got %q", tv.ScaffoldResult.Label)
+	}
+}
+
+func TestTreeViewEditMode(t *testing.T) {
+	tv := NewTreeView()
+	tv.SetSize(40, 5)
+	tv.SetRoots([]TreeNode{
+		{Label: "bg", Detail: "#1a1a2e", Editable: true, EditValue: "#1a1a2e"},
+		{Label: "gamma"},
+	})
+
+	// Enter starts edit mode
+	tv.HandleKey("enter")
+	if !tv.IsEditing() {
+		t.Fatal("expected edit mode after enter on editable node")
+	}
+
+	// Type some characters
+	tv.HandleKey("backspace") // delete last char
+	tv.HandleKey("f")
+
+	// Confirm edit
+	tv.HandleKey("enter")
+	if tv.IsEditing() {
+		t.Error("expected edit mode to end after enter")
+	}
+	if tv.EditResult == nil {
+		t.Fatal("expected EditResult after confirming edit")
+	}
+	if tv.EditResult.NewValue != "#1a1a2f" {
+		t.Errorf("expected '#1a1a2f', got %q", tv.EditResult.NewValue)
+	}
+}
+
+func TestTreeViewEditCancel(t *testing.T) {
+	tv := NewTreeView()
+	tv.SetSize(40, 5)
+	tv.SetRoots([]TreeNode{
+		{Label: "r", Detail: "= 1.5", Editable: true, EditValue: "1.5"},
+	})
+
+	tv.HandleKey("enter")
+	if !tv.IsEditing() {
+		t.Fatal("expected edit mode")
+	}
+
+	tv.HandleKey("esc")
+	if tv.IsEditing() {
+		t.Error("expected edit mode to end on esc")
+	}
+	if tv.EditResult != nil {
+		t.Error("expected no EditResult after cancel")
+	}
+}
+
+func TestTreeViewEditRender(t *testing.T) {
+	tv := NewTreeView()
+	tv.SetSize(40, 5)
+	tv.SetRoots([]TreeNode{
+		{Label: "bg", Detail: "#1a1a2e", Editable: true, EditValue: "#1a1a2e"},
+	})
+
+	tv.HandleKey("enter")
+	output := tv.Render()
+	// Should show yellow edit mode styling
+	if !strings.Contains(output, "\x1b[93m") {
+		t.Error("expected yellow ANSI styling in edit mode")
+	}
+	// Should show reverse video cursor
+	if !strings.Contains(output, "\x1b[7m") {
+		t.Error("expected reverse video cursor in edit mode")
+	}
+}
+
+func TestTreeViewEditNoChangeNoResult(t *testing.T) {
+	tv := NewTreeView()
+	tv.SetSize(40, 5)
+	tv.SetRoots([]TreeNode{
+		{Label: "r", Detail: "= 1.5", Editable: true, EditValue: "1.5"},
+	})
+
+	tv.HandleKey("enter") // start edit
+	tv.HandleKey("enter") // confirm without changes
+	if tv.EditResult != nil {
+		t.Error("expected no EditResult when value unchanged")
 	}
 }

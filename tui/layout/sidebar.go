@@ -395,6 +395,29 @@ func (s *Sidebar) IsHovered(id string) bool {
 	return s.zoned.IsHovered(id)
 }
 
+// ActiveTooltip returns a tooltip for the currently hovered sidebar item,
+// or nil if nothing is hovered or the sidebar is expanded.
+// offsetY is the screen Y where the sidebar content starts (header height).
+func (s *Sidebar) ActiveTooltip(offsetY int) *components.Tooltip {
+	if s.expanded || s.animator.Animating() {
+		return nil
+	}
+	hovered := s.zoned.HoveredID()
+	if hovered == "" || hovered == "toggle" {
+		return nil
+	}
+	for i, item := range s.items {
+		if item.ID == hovered {
+			return &components.Tooltip{
+				Text: item.Name,
+				Row:  offsetY + 2 + i*2, // items are at rows 2, 4, 6, ...
+				Col:  s.Width() + 1,
+			}
+		}
+	}
+	return nil
+}
+
 // ActiveIndex returns the index of the active item, or -1 if not found.
 func (s *Sidebar) ActiveIndex() int {
 	for i, item := range s.items {

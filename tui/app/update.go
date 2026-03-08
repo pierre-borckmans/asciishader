@@ -172,6 +172,14 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	hh := HeaderHeight()
 	mouse := msg.Mouse()
 
+	// Color picker is a modal overlay — intercept all mouse events first
+	if m.SceneTree.ActiveColorPicker() != nil {
+		if m.SceneTree.HandleColorPickerMouse(msg, m.Width, m.Height) {
+			processTreeActions(&m)
+			return m, nil
+		}
+	}
+
 	// Sidebar mouse interaction (all views)
 	sidebarWidth := m.Sidebar.Width()
 	sbResult := m.Sidebar.HandleMouse(msg, hh)
@@ -251,6 +259,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if m.SceneTree.Len() > 0 {
 			if m.SceneTree.HandleMouse(msg) {
 				m.Focus = FocusTree
+				processTreeActions(&m)
 				return m, nil
 			}
 		}
@@ -723,9 +732,16 @@ func (m Model) handleControlsKey(key string) (tea.Model, tea.Cmd) {
 func (m Model) handleTreeKey(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "esc":
+		if m.SceneTree.IsEditing() {
+			m.SceneTree.CancelEdit()
+			return m, nil
+		}
 		m.Focus = FocusViewport
 		return m, nil
 	case "tab":
+		if m.SceneTree.IsEditing() {
+			return m, nil
+		}
 		if m.BottomPanel.IsExpanded() {
 			m.Focus = FocusEditor
 			m.Editor.Focus()
@@ -734,10 +750,15 @@ func (m Model) handleTreeKey(key string) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "q":
+		if m.SceneTree.IsEditing() {
+			m.SceneTree.HandleKey(key)
+			return m, nil
+		}
 		return m, tea.Quit
 	}
 
 	m.SceneTree.HandleKey(key)
+	processTreeActions(&m)
 	return m, nil
 }
 

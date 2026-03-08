@@ -11,6 +11,31 @@ import (
 	"asciishader/pkg/chisel/compiler/token"
 )
 
+// NodeData carries source span and editing metadata for tree nodes.
+type NodeData struct {
+	Span     token.Span // span of the whole construct
+	EditSpan token.Span // span of the editable value (zero if not editable)
+}
+
+// ScaffoldInfo describes a template to insert when a scaffold node is activated.
+type ScaffoldInfo struct {
+	Kind     string // setting kind (e.g. "light", "camera")
+	Template string // Chisel code to insert
+	InsertAt int    // byte offset where to insert
+}
+
+// scaffoldKinds lists the settings that can be scaffolded, in display order.
+var scaffoldKinds = []struct {
+	kind     string
+	template string
+}{
+	{"bg", "bg #1a1a2e\n"},
+	{"light", "light [-1, -1, -1]\n"},
+	{"camera", "camera { pos: [0, 2, 5], target: [0, 0, 0] }\n"},
+	{"raymarch", "raymarch { steps: 128 }\n"},
+	{"post", "post { gamma: 2.2 }\n"},
+}
+
 // BuildSceneTree parses Chisel source and returns TreeNode roots for the scene
 // tree panel. Returns nil if parsing fails.
 func BuildSceneTree(source string) []TreeNode {
@@ -19,12 +44,13 @@ func BuildSceneTree(source string) []TreeNode {
 	if prog == nil {
 		return nil
 	}
-	return BuildSceneTreeFromAST(prog)
+	return BuildSceneTreeFromAST(prog, source)
 }
 
 // BuildSceneTreeFromAST builds TreeNode roots from a parsed AST program.
 // The tree has up to four sections: Variables, Functions, Settings, Geometry.
-func BuildSceneTreeFromAST(prog *ast.Program) []TreeNode {
+// The source parameter is used for editable values and scaffold insertion points.
+func BuildSceneTreeFromAST(prog *ast.Program, source string) []TreeNode {
 	var variables []*ast.AssignStmt
 	var functions []*ast.AssignStmt
 	var settings []*ast.SettingStmt
@@ -48,14 +74,18 @@ func BuildSceneTreeFromAST(prog *ast.Program) []TreeNode {
 	var roots []TreeNode
 
 	if len(variables) > 0 {
-		roots = append(roots, buildVariablesNode(variables))
+		roots = append(roots, buildVariablesNode(variables, source))
 	}
 	if len(functions) > 0 {
 		roots = append(roots, buildFunctionsNode(functions))
 	}
-	if len(settings) > 0 {
-		roots = append(roots, buildSettingsNode(settings))
+
+	// Build settings with scaffold nodes for missing kinds
+	scaffolds := buildScaffoldNodes(settings, geometry, source)
+	if len(settings) > 0 || len(scaffolds) > 0 {
+		roots = append(roots, buildSettingsNodeWithScaffolds(settings, scaffolds, source))
 	}
+
 	if len(geometry) > 0 {
 		roots = append(roots, buildGeometryNode(geometry))
 	}
@@ -67,7 +97,7 @@ func BuildSceneTreeFromAST(prog *ast.Program) []TreeNode {
 // Variables section
 // ---------------------------------------------------------------------------
 
-func buildVariablesNode(vars []*ast.AssignStmt) TreeNode {
+func buildVariablesNode(vars []*ast.AssignStmt, source string) TreeNode {
 	return TreeNode{
 		Label:  "Variables",
 		Detail: fmt.Sprintf("(%d)", len(vars)),
@@ -76,14 +106,23 @@ func buildVariablesNode(vars []*ast.AssignStmt) TreeNode {
 			nodes := make([]TreeNode, len(vars))
 			for i, v := range vars {
 				summary := summarizeExpr(v.Value)
-				nodes[i] = TreeNode{
+				node := TreeNode{
 					Label:  v.Name,
 					Detail: "= " + summary,
-					Data:   v.Span,
+					Data:   NodeData{Span: v.Span},
+					Color:  colorFromExpr(v.Value),
 					Children: func() []TreeNode {
 						return exprChildren(v.Value)
 					},
 				}
+				// Simple values (no sub-expressions) are editable
+				if exprChildren(v.Value) == nil && isEditableExpr(v.Value) {
+					node.Children = nil
+					node.Editable = true
+					node.Data = NodeData{Span: v.Span, EditSpan: v.Value.NodeSpan()}
+					node.EditValue = spanText(source, v.Value.NodeSpan())
+				}
+				nodes[i] = node
 			}
 			return nodes
 		},
@@ -107,7 +146,7 @@ func buildFunctionsNode(fns []*ast.AssignStmt) TreeNode {
 				fn := f
 				nodes[i] = TreeNode{
 					Label: sig,
-					Data:  f.Span,
+					Data:  NodeData{Span: f.Span},
 					Children: func() []TreeNode {
 						return exprChildren(fn.Value)
 					},
@@ -140,22 +179,23 @@ func buildSignature(f *ast.AssignStmt) string {
 // Settings section
 // ---------------------------------------------------------------------------
 
-func buildSettingsNode(settings []*ast.SettingStmt) TreeNode {
+func buildSettingsNodeWithScaffolds(settings []*ast.SettingStmt, scaffolds []TreeNode, source string) TreeNode {
 	return TreeNode{
 		Label:  "Settings",
 		Detail: fmt.Sprintf("(%d)", len(settings)),
 		Data:   nil,
 		Children: func() []TreeNode {
-			nodes := make([]TreeNode, len(settings))
-			for i, s := range settings {
-				nodes[i] = buildSettingNode(s)
+			nodes := make([]TreeNode, 0, len(settings)+len(scaffolds))
+			for _, s := range settings {
+				nodes = append(nodes, buildSettingNode(s, source))
 			}
+			nodes = append(nodes, scaffolds...)
 			return nodes
 		},
 	}
 }
 
-func buildSettingNode(s *ast.SettingStmt) TreeNode {
+func buildSettingNode(s *ast.SettingStmt, source string) TreeNode {
 	label := s.Kind
 
 	// mat has a name: "mat gold"
@@ -173,7 +213,7 @@ func buildSettingNode(s *ast.SettingStmt) TreeNode {
 			return TreeNode{
 				Label:  label,
 				Detail: mode,
-				Data:   s.Span,
+				Data:   NodeData{Span: s.Span},
 			}
 		}
 	}
@@ -183,38 +223,44 @@ func buildSettingNode(s *ast.SettingStmt) TreeNode {
 	if expr, ok := s.Body.(ast.Expr); ok {
 		summary := summarizeExpr(expr)
 		if exprChildren(expr) == nil {
-			// Simple leaf: show value as detail
-			return TreeNode{
+			node := TreeNode{
 				Label:  label,
 				Detail: summary,
-				Data:   s.Span,
+				Data:   NodeData{Span: s.Span},
+				Color:  colorFromExpr(expr),
 			}
+			if isEditableExpr(expr) {
+				node.Editable = true
+				node.Data = NodeData{Span: s.Span, EditSpan: expr.NodeSpan()}
+				node.EditValue = spanText(source, expr.NodeSpan())
+			}
+			return node
 		}
 	}
 
 	return TreeNode{
 		Label: label,
-		Data:  s.Span,
+		Data:  NodeData{Span: s.Span},
 		Children: func() []TreeNode {
-			return settingBodyChildren(s.Kind, s.Body)
+			return settingBodyChildren(s.Kind, s.Body, source)
 		},
 	}
 }
 
-func settingBodyChildren(kind string, body interface{}) []TreeNode {
+func settingBodyChildren(kind string, body interface{}, source string) []TreeNode {
 	switch v := body.(type) {
 	case map[string]interface{}:
 		// mat stores {"name": string, "body": map} — skip name, show body contents
 		if kind == "mat" {
 			if bodyMap, ok := v["body"].(map[string]interface{}); ok {
-				return mapChildren(bodyMap)
+				return mapChildren(bodyMap, source)
 			}
 		}
-		return mapChildren(v)
+		return mapChildren(v, source)
 	case ast.Expr:
 		return []TreeNode{{
 			Label: summarizeExpr(v),
-			Data:  v.NodeSpan(),
+			Data:  NodeData{Span: v.NodeSpan()},
 			Children: func() []TreeNode {
 				return exprChildren(v)
 			},
@@ -223,7 +269,7 @@ func settingBodyChildren(kind string, body interface{}) []TreeNode {
 	return nil
 }
 
-func mapChildren(m map[string]interface{}) []TreeNode {
+func mapChildren(m map[string]interface{}, source string) []TreeNode {
 	// Sort keys for stable output
 	keys := make([]string, 0, len(m))
 	for k := range m {
@@ -242,24 +288,31 @@ func mapChildren(m map[string]interface{}) []TreeNode {
 				Detail: fmt.Sprintf("(%d)", count),
 				Data:   nil,
 				Children: func() []TreeNode {
-					return mapChildren(val)
+					return mapChildren(val, source)
 				},
 			})
 		case *ast.Block:
 			// Block in settings context (e.g. bloom: { intensity: 0.3 })
 			nodes = append(nodes, TreeNode{
 				Label: k,
-				Data:  val.NodeSpan(),
+				Data:  NodeData{Span: val.NodeSpan()},
 				Children: func() []TreeNode {
 					return blockChildren(val)
 				},
 			})
 		case ast.Expr:
-			nodes = append(nodes, TreeNode{
+			node := TreeNode{
 				Label:  k,
 				Detail: summarizeExpr(val),
-				Data:   val.NodeSpan(),
-			})
+				Data:   NodeData{Span: val.NodeSpan()},
+				Color:  colorFromExpr(val),
+			}
+			if isEditableExpr(val) {
+				node.Editable = true
+				node.Data = NodeData{Span: val.NodeSpan(), EditSpan: val.NodeSpan()}
+				node.EditValue = spanText(source, val.NodeSpan())
+			}
+			nodes = append(nodes, node)
 		case string:
 			nodes = append(nodes, TreeNode{
 				Label:  k,
@@ -316,19 +369,19 @@ func exprToNode(expr ast.Expr) TreeNode {
 	case *ast.Block:
 		return blockNode(e)
 	case *ast.Ident:
-		return TreeNode{Label: e.Name, Data: e.Span}
+		return TreeNode{Label: e.Name, Data: NodeData{Span: e.Span}}
 	case *ast.UnaryExpr:
 		return TreeNode{
 			Label: "(-)",
-			Data:  e.Span,
+			Data:  NodeData{Span: e.Span},
 			Children: func() []TreeNode {
 				return []TreeNode{exprToNode(e.Operand)}
 			},
 		}
 	case *ast.GlslEscape:
-		return TreeNode{Label: "glsl { ... }", Data: e.Span}
+		return TreeNode{Label: "glsl { ... }", Data: NodeData{Span: e.Span}}
 	default:
-		return TreeNode{Label: summarizeExpr(expr), Data: expr.NodeSpan()}
+		return TreeNode{Label: summarizeExpr(expr), Data: NodeData{Span: expr.NodeSpan()}}
 	}
 }
 
@@ -340,7 +393,7 @@ func binaryNode(e *ast.BinaryExpr) TreeNode {
 
 	return TreeNode{
 		Label: label,
-		Data:  e.Span,
+		Data:  NodeData{Span: e.Span},
 		Children: func() []TreeNode {
 			return []TreeNode{exprToNode(e.Left), exprToNode(e.Right)}
 		},
@@ -411,7 +464,7 @@ func methodCallNode(e *ast.MethodCall) TreeNode {
 	}
 
 	// Use the outermost span so clicking jumps to the full expression
-	rootNode.Data = e.Span
+	rootNode.Data = NodeData{Span: e.Span}
 
 	return rootNode
 }
@@ -422,7 +475,7 @@ func methodNodes(methods []*ast.MethodCall) []TreeNode {
 		label := "." + mc.Name + "(" + summarizeArgs(mc.Args) + ")"
 		nodes[i] = TreeNode{
 			Label: label,
-			Data:  mc.Span,
+			Data:  NodeData{Span: mc.Span},
 		}
 	}
 	return nodes
@@ -432,7 +485,7 @@ func funcCallNode(e *ast.FuncCall) TreeNode {
 	label := e.Name + "(" + summarizeArgs(e.Args) + ")"
 	return TreeNode{
 		Label: label,
-		Data:  e.Span,
+		Data:  NodeData{Span: e.Span},
 	}
 }
 
@@ -452,7 +505,7 @@ func forNode(e *ast.ForExpr) TreeNode {
 
 	return TreeNode{
 		Label: label,
-		Data:  e.Span,
+		Data:  NodeData{Span: e.Span},
 		Children: func() []TreeNode {
 			if e.Body == nil {
 				return nil
@@ -466,13 +519,13 @@ func ifNode(e *ast.IfExpr) TreeNode {
 	label := "if " + summarizeExpr(e.Cond)
 	return TreeNode{
 		Label: label,
-		Data:  e.Span,
+		Data:  NodeData{Span: e.Span},
 		Children: func() []TreeNode {
 			var children []TreeNode
 			if e.Then != nil {
 				children = append(children, TreeNode{
 					Label: "then",
-					Data:  e.Then.Span,
+					Data:  NodeData{Span: e.Then.Span},
 					Children: func() []TreeNode {
 						return blockChildren(e.Then)
 					},
@@ -481,7 +534,7 @@ func ifNode(e *ast.IfExpr) TreeNode {
 			if e.Else != nil {
 				children = append(children, TreeNode{
 					Label: "else",
-					Data:  e.Else.NodeSpan(),
+					Data:  NodeData{Span: e.Else.NodeSpan()},
 					Children: func() []TreeNode {
 						return exprChildren(e.Else)
 					},
@@ -495,7 +548,7 @@ func ifNode(e *ast.IfExpr) TreeNode {
 func blockNode(e *ast.Block) TreeNode {
 	return TreeNode{
 		Label: "{ ... }",
-		Data:  e.Span,
+		Data:  NodeData{Span: e.Span},
 		Children: func() []TreeNode {
 			return blockChildren(e)
 		},
@@ -511,7 +564,7 @@ func blockChildren(b *ast.Block) []TreeNode {
 			nodes = append(nodes, TreeNode{
 				Label:  stmt.Name,
 				Detail: "= " + summary,
-				Data:   stmt.Span,
+				Data:   NodeData{Span: stmt.Span},
 			})
 		case *ast.ExprStmt:
 			nodes = append(nodes, exprToNode(stmt.Expression))
@@ -674,10 +727,119 @@ func formatNumber(v float64) string {
 }
 
 // SpanFromData extracts a token.Span from a TreeNode's Data field.
-// Returns the zero Span if Data is not a Span.
+// Returns the zero Span if Data is not a Span or NodeData.
 func SpanFromData(n TreeNode) token.Span {
-	if s, ok := n.Data.(token.Span); ok {
-		return s
+	switch d := n.Data.(type) {
+	case token.Span:
+		return d
+	case NodeData:
+		return d.Span
 	}
 	return token.Span{}
+}
+
+// ---------------------------------------------------------------------------
+// Scaffold node generation
+// ---------------------------------------------------------------------------
+
+func buildScaffoldNodes(settings []*ast.SettingStmt, geometry []ast.Expr, source string) []TreeNode {
+	if source == "" {
+		return nil
+	}
+
+	// Collect present setting kinds
+	present := make(map[string]bool)
+	for _, s := range settings {
+		present[s.Kind] = true
+	}
+
+	// Compute insertion point: after last setting, or before first geometry
+	insertAt := 0
+	if len(settings) > 0 {
+		last := settings[len(settings)-1]
+		insertAt = last.Span.End.Offset
+		// Skip to end of line
+		for insertAt < len(source) && source[insertAt] != '\n' {
+			insertAt++
+		}
+		if insertAt < len(source) {
+			insertAt++ // past the newline
+		}
+	} else if len(geometry) > 0 {
+		// Insert before first geometry expression
+		insertAt = geometry[0].NodeSpan().Start.Offset
+		// Make sure we're at a line start
+		for insertAt > 0 && source[insertAt-1] != '\n' {
+			insertAt--
+		}
+	} else {
+		insertAt = len(source)
+	}
+
+	var scaffolds []TreeNode
+	for _, sk := range scaffoldKinds {
+		if present[sk.kind] {
+			continue
+		}
+		scaffolds = append(scaffolds, TreeNode{
+			Label:    sk.kind,
+			Scaffold: true,
+			Data: ScaffoldInfo{
+				Kind:     sk.kind,
+				Template: sk.template,
+				InsertAt: insertAt,
+			},
+		})
+	}
+	return scaffolds
+}
+
+// ---------------------------------------------------------------------------
+// Editing helpers
+// ---------------------------------------------------------------------------
+
+// colorFromExpr extracts RGB values from a HexColorLit expression.
+// Returns nil if the expression is not a hex color.
+func colorFromExpr(expr ast.Expr) *[3]uint8 {
+	if c, ok := expr.(*ast.HexColorLit); ok {
+		return &[3]uint8{
+			uint8(c.R * 255),
+			uint8(c.G * 255),
+			uint8(c.B * 255),
+		}
+	}
+	return nil
+}
+
+// isEditableExpr returns true if the expression is a simple value that can be
+// edited inline (number, color, boolean, vector of simple values).
+func isEditableExpr(expr ast.Expr) bool {
+	switch e := expr.(type) {
+	case *ast.NumberLit, *ast.HexColorLit, *ast.BoolLit:
+		return true
+	case *ast.VecLit:
+		for _, elem := range e.Elems {
+			if !isEditableExpr(elem) {
+				return false
+			}
+		}
+		return true
+	case *ast.UnaryExpr:
+		return isEditableExpr(e.Operand)
+	}
+	return false
+}
+
+// spanText extracts source text for the given span. Returns "" if source is
+// empty or span offsets are out of range.
+func spanText(source string, span token.Span) string {
+	if source == "" {
+		return ""
+	}
+	start := span.Start.Offset
+	end := span.End.Offset
+	if start < 0 || end > len(source) || start > end {
+		return ""
+	}
+	return source[start:end]
 }

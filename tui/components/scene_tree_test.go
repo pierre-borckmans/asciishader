@@ -9,11 +9,14 @@ import (
 
 func TestBuildSceneTreeSimple(t *testing.T) {
 	roots := BuildSceneTree("sphere")
-	if len(roots) != 1 {
-		t.Fatalf("expected 1 root (Geometry), got %d", len(roots))
+	geo := findRoot(roots, "Geometry")
+	if geo == nil {
+		t.Fatal("expected Geometry root")
 	}
-	if roots[0].Label != "Geometry" {
-		t.Errorf("expected Geometry root, got %q", roots[0].Label)
+	// Settings section should exist with scaffold nodes
+	settings := findRoot(roots, "Settings")
+	if settings == nil {
+		t.Fatal("expected Settings root with scaffold nodes")
 	}
 }
 
@@ -24,13 +27,7 @@ phase = t * 0.8
 sphere(r)
 `
 	roots := BuildSceneTree(source)
-	var varNode *TreeNode
-	for i := range roots {
-		if roots[i].Label == "Variables" {
-			varNode = &roots[i]
-			break
-		}
-	}
+	varNode := findRoot(roots, "Variables")
 	if varNode == nil {
 		t.Fatal("expected Variables section")
 	}
@@ -56,13 +53,7 @@ gear(r, teeth, thickness=0.1) = cylinder(r, thickness)
 sphere
 `
 	roots := BuildSceneTree(source)
-	var fnNode *TreeNode
-	for i := range roots {
-		if roots[i].Label == "Functions" {
-			fnNode = &roots[i]
-			break
-		}
-	}
+	fnNode := findRoot(roots, "Functions")
 	if fnNode == nil {
 		t.Fatal("expected Functions section")
 	}
@@ -88,13 +79,7 @@ bg #1a1a2e
 sphere
 `
 	roots := BuildSceneTree(source)
-	var settNode *TreeNode
-	for i := range roots {
-		if roots[i].Label == "Settings" {
-			settNode = &roots[i]
-			break
-		}
-	}
+	settNode := findRoot(roots, "Settings")
 	if settNode == nil {
 		t.Fatal("expected Settings section")
 	}
@@ -127,13 +112,7 @@ func TestBuildSceneTreeGeometry(t *testing.T) {
 	source := `sphere(1.5) | box(2).at(1, 0, 0)`
 	roots := BuildSceneTree(source)
 
-	var geo *TreeNode
-	for i := range roots {
-		if roots[i].Label == "Geometry" {
-			geo = &roots[i]
-			break
-		}
-	}
+	geo := findRoot(roots, "Geometry")
 	if geo == nil {
 		t.Fatal("expected Geometry section")
 	}
@@ -156,13 +135,7 @@ func TestBuildSceneTreeMethodChain(t *testing.T) {
 	source := `sphere(1).at(2, 0, 0).color(#ff0000)`
 	roots := BuildSceneTree(source)
 
-	var geo *TreeNode
-	for i := range roots {
-		if roots[i].Label == "Geometry" {
-			geo = &roots[i]
-			break
-		}
-	}
+	geo := findRoot(roots, "Geometry")
 	if geo == nil {
 		t.Fatal("expected Geometry section")
 	}
@@ -201,13 +174,7 @@ for i in 0..8 {
 `
 	roots := BuildSceneTree(source)
 
-	var geo *TreeNode
-	for i := range roots {
-		if roots[i].Label == "Geometry" {
-			geo = &roots[i]
-			break
-		}
-	}
+	geo := findRoot(roots, "Geometry")
 	if geo == nil {
 		t.Fatal("expected Geometry section")
 	}
@@ -235,34 +202,35 @@ sphere
 `
 	roots := BuildSceneTree(source)
 
-	var settNode *TreeNode
-	for i := range roots {
-		if roots[i].Label == "Settings" {
-			settNode = &roots[i]
-			break
-		}
-	}
+	settNode := findRoot(roots, "Settings")
 	if settNode == nil {
 		t.Fatal("expected Settings section")
 	}
 
 	children := settNode.Children()
-	if len(children) != 1 {
-		t.Fatalf("expected 1 setting (mat), got %d", len(children))
+	// First child should be the real mat setting
+	if len(children) == 0 {
+		t.Fatal("expected at least 1 setting")
 	}
 	if children[0].Label != "mat gold" {
 		t.Errorf("expected 'mat gold', got %q", children[0].Label)
+	}
+	// Remaining children should be scaffold nodes
+	for _, c := range children[1:] {
+		if !c.Scaffold {
+			t.Errorf("expected scaffold node, got regular node %q", c.Label)
+		}
 	}
 }
 
 func TestBuildSceneTreeSpanData(t *testing.T) {
 	source := `sphere(1.5)`
 	roots := BuildSceneTree(source)
-	if len(roots) == 0 {
-		t.Fatal("expected roots")
-	}
 
-	geo := roots[0]
+	geo := findRoot(roots, "Geometry")
+	if geo == nil {
+		t.Fatal("expected Geometry root")
+	}
 	if geo.Children == nil {
 		t.Fatal("expected Geometry to have children")
 	}
@@ -290,10 +258,161 @@ func TestBuildSceneTreeParseError(t *testing.T) {
 	_ = roots
 }
 
+func findRoot(roots []TreeNode, label string) *TreeNode {
+	for i := range roots {
+		if roots[i].Label == label {
+			return &roots[i]
+		}
+	}
+	return nil
+}
+
 func nodeLabels(nodes []TreeNode) []string {
 	labels := make([]string, len(nodes))
 	for i, n := range nodes {
 		labels[i] = n.Label
 	}
 	return labels
+}
+
+func TestBuildSceneTreeScaffoldNodes(t *testing.T) {
+	// Only bg is present — scaffold should show for light, camera, raymarch, post
+	source := "bg #1a1a2e\nsphere\n"
+	roots := BuildSceneTree(source)
+
+	settNode := findRoot(roots, "Settings")
+	if settNode == nil {
+		t.Fatal("expected Settings section")
+	}
+
+	children := settNode.Children()
+	var scaffolds []string
+	for _, c := range children {
+		if c.Scaffold {
+			scaffolds = append(scaffolds, c.Label)
+		}
+	}
+	// bg is present, so only light, camera, raymarch, post should be scaffolded
+	expected := []string{"light", "camera", "raymarch", "post"}
+	if len(scaffolds) != len(expected) {
+		t.Fatalf("expected %d scaffold nodes, got %d: %v", len(expected), len(scaffolds), scaffolds)
+	}
+	for i, s := range scaffolds {
+		if s != expected[i] {
+			t.Errorf("scaffold[%d]: expected %q, got %q", i, expected[i], s)
+		}
+	}
+}
+
+func TestBuildSceneTreeScaffoldInsertAt(t *testing.T) {
+	source := "bg #1a1a2e\nsphere\n"
+	roots := BuildSceneTree(source)
+
+	settNode := findRoot(roots, "Settings")
+	if settNode == nil {
+		t.Fatal("expected Settings section")
+	}
+
+	children := settNode.Children()
+	for _, c := range children {
+		if !c.Scaffold {
+			continue
+		}
+		sd, ok := c.Data.(ScaffoldInfo)
+		if !ok {
+			t.Errorf("scaffold node %q has wrong Data type", c.Label)
+			continue
+		}
+		if sd.InsertAt <= 0 {
+			t.Errorf("scaffold node %q has InsertAt=%d, expected > 0", c.Label, sd.InsertAt)
+		}
+		if sd.Template == "" {
+			t.Errorf("scaffold node %q has empty template", c.Label)
+		}
+	}
+}
+
+func TestBuildSceneTreeEditableVariable(t *testing.T) {
+	source := "r = 1.5\nsphere(r)\n"
+	roots := BuildSceneTree(source)
+
+	varNode := findRoot(roots, "Variables")
+	if varNode == nil {
+		t.Fatal("expected Variables section")
+	}
+
+	children := varNode.Children()
+	if len(children) == 0 {
+		t.Fatal("expected at least 1 variable")
+	}
+	r := children[0]
+	if r.Label != "r" {
+		t.Fatalf("expected variable 'r', got %q", r.Label)
+	}
+	if !r.Editable {
+		t.Error("expected variable 'r' to be editable")
+	}
+	if r.EditValue != "1.5" {
+		t.Errorf("expected EditValue '1.5', got %q", r.EditValue)
+	}
+}
+
+func TestBuildSceneTreeEditableSetting(t *testing.T) {
+	source := "bg #1a1a2e\nsphere\n"
+	roots := BuildSceneTree(source)
+
+	settNode := findRoot(roots, "Settings")
+	if settNode == nil {
+		t.Fatal("expected Settings section")
+	}
+
+	children := settNode.Children()
+	bg := children[0]
+	if bg.Label != "bg" {
+		t.Fatalf("expected 'bg', got %q", bg.Label)
+	}
+	if !bg.Editable {
+		t.Error("expected 'bg' setting to be editable")
+	}
+	if bg.EditValue != "#1a1a2e" {
+		t.Errorf("expected EditValue '#1a1a2e', got %q", bg.EditValue)
+	}
+}
+
+func TestBuildSceneTreeEditableMapChild(t *testing.T) {
+	source := "raymarch { steps: 128 }\nsphere\n"
+	roots := BuildSceneTree(source)
+
+	settNode := findRoot(roots, "Settings")
+	if settNode == nil {
+		t.Fatal("expected Settings section")
+	}
+
+	children := settNode.Children()
+	var rm TreeNode
+	for _, c := range children {
+		if c.Label == "raymarch" {
+			rm = c
+			break
+		}
+	}
+	if rm.Children == nil {
+		t.Fatal("expected raymarch to have children")
+	}
+	rmChildren := rm.Children()
+	found := false
+	for _, c := range rmChildren {
+		if c.Label == "steps" {
+			found = true
+			if !c.Editable {
+				t.Error("expected 'steps' to be editable")
+			}
+			if c.EditValue != "128" {
+				t.Errorf("expected EditValue '128', got %q", c.EditValue)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected 'steps' child in raymarch")
+	}
 }
