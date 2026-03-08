@@ -497,7 +497,7 @@ vec4 shade(vec3 ro, vec3 rd, float t) {
     col += vec3(1.0) * spec * 0.25;
     col += mat * fresnel * ao;
 
-    float fog = exp(-t * t * 0.008);
+    float fog = exp(-t * 0.04);
     col *= fog;
 
     float brightness = (ambient + diffContrib + spec * 0.25 + fresnel * ao) * fog;
@@ -527,9 +527,9 @@ vec4 raymarchTransparent(vec3 ro, vec3 rd) {
     vec3 accum = vec3(0.0);
     float accumA = 0.0;
     float t = 0.0;
-    // Per-shape hit tracking
-    bool shapeHit[SHAPE_COUNT];
-    for (int s = 0; s < SHAPE_COUNT; s++) shapeHit[s] = false;
+    // Per-shape hit tracking: 0=unseen, 1=inside (front hit), 2=done (back hit)
+    int shapeHits[SHAPE_COUNT];
+    for (int s = 0; s < SHAPE_COUNT; s++) shapeHits[s] = 0;
     bool unionHit = false;
 
     for (int i = 0; i < MAX_STEPS * 2; i++) {
@@ -537,18 +537,17 @@ vec4 raymarchTransparent(vec3 ro, vec3 rd) {
         float dAll[SHAPE_COUNT];
         float dScene = sceneSDFAll(p, dAll);
 
-        // Check each shape for a front-face hit
         bool anyHit = false;
         for (int s = 0; s < SHAPE_COUNT; s++) {
-            if (!shapeHit[s] && dAll[s] < SURF_DIST) {
+            if (shapeHits[s] == 0 && dAll[s] < SURF_DIST) {
+                // Unseen shape — check for front face
                 vec3 n = shapeNormal(p, s);
                 if (dot(n, rd) < 0.0) {
-                    shapeHit[s] = true;
+                    shapeHits[s] = 1; // entered shape
                     anyHit = true;
                     float opacity = sceneShapeOpacity(s);
                     vec3 color = sceneShapeColor(s);
                     vec3 hitColor;
-                    // Use full shading at the union surface, simplified inside
                     if (abs(dScene) < SURF_DIST * 2.0) {
                         vec4 sh = shade(ro, rd, t);
                         hitColor = max(sh.rgb, color * 0.2);
@@ -560,16 +559,29 @@ vec4 raymarchTransparent(vec3 ro, vec3 rd) {
                     accum += hitColor * contrib;
                     accumA += contrib;
                 } else {
-                    // Back face — mark as hit but don't shade
-                    shapeHit[s] = true;
+                    // Back face without front face — skip
+                    shapeHits[s] = 2;
                     anyHit = true;
                 }
+            } else if (shapeHits[s] == 1 && abs(dAll[s]) < SURF_DIST) {
+                // Inside shape, hit back face — shade with interior lighting
+                shapeHits[s] = 2;
+                anyHit = true;
+                float opacity = sceneShapeOpacity(s);
+                vec3 color = sceneShapeColor(s);
+                vec3 n = shapeNormal(p, s);
+                // Flip normal for interior, attenuated lighting
+                float diff = max(dot(-n, uLightDir), 0.0);
+                vec3 hitColor = color * (uAmbient * 0.7 + diff * 0.3);
+                float contrib = (1.0 - accumA) * opacity * 0.5;
+                accum += hitColor * contrib;
+                accumA += contrib;
             }
         }
 
         // Fallback: union surface not claimed by any individual shape
         // (handles smooth union blend regions)
-        if (!anyHit && !unionHit && dScene < SURF_DIST) {
+        if (!anyHit && !unionHit && abs(dScene) < SURF_DIST) {
             vec3 n = calcNormal(p);
             if (dot(n, rd) < 0.0) {
                 float opacity = sceneOpacity(p);
@@ -592,11 +604,11 @@ vec4 raymarchTransparent(vec3 ro, vec3 rd) {
             // Step using union distance (respects smooth blend) and un-hit shapes
             float step = abs(dScene);
             for (int s = 0; s < SHAPE_COUNT; s++) {
-                if (!shapeHit[s]) {
+                if (shapeHits[s] < 2) {
                     step = min(step, abs(dAll[s]));
                 }
             }
-            if (step >= MAX_DIST) break; // all shapes hit, no union surface
+            if (step >= MAX_DIST) break;
             t += max(step, SURF_DIST * 2.0);
         }
         if (t > MAX_DIST) break;
@@ -619,8 +631,8 @@ vec4 raymarchTransparent(vec3 ro, vec3 rd) {
 vec2 raymarchTransparentCost(vec3 ro, vec3 rd) {
     float t = 0.0;
     float accumA = 0.0;
-    bool shapeHit[SHAPE_COUNT];
-    for (int s = 0; s < SHAPE_COUNT; s++) shapeHit[s] = false;
+    int shapeHits[SHAPE_COUNT];
+    for (int s = 0; s < SHAPE_COUNT; s++) shapeHits[s] = 0;
     bool unionHit = false;
 
     for (int i = 0; i < MAX_STEPS * 2; i++) {
@@ -630,16 +642,22 @@ vec2 raymarchTransparentCost(vec3 ro, vec3 rd) {
 
         bool anyHit = false;
         for (int s = 0; s < SHAPE_COUNT; s++) {
-            if (!shapeHit[s] && dAll[s] < SURF_DIST) {
-                shapeHit[s] = true;
+            if (shapeHits[s] == 0 && dAll[s] < SURF_DIST) {
+                shapeHits[s] = 1;
                 anyHit = true;
                 float opacity = sceneShapeOpacity(s);
                 float contrib = (1.0 - accumA) * opacity;
                 accumA += contrib;
+            } else if (shapeHits[s] == 1 && abs(dAll[s]) < SURF_DIST) {
+                shapeHits[s] = 2;
+                anyHit = true;
+                float opacity = sceneShapeOpacity(s);
+                float contrib = (1.0 - accumA) * opacity * 0.5;
+                accumA += contrib;
             }
         }
 
-        if (!anyHit && !unionHit && dScene < SURF_DIST) {
+        if (!anyHit && !unionHit && abs(dScene) < SURF_DIST) {
             unionHit = true;
             anyHit = true;
             float opacity = sceneOpacity(p);
@@ -654,7 +672,7 @@ vec2 raymarchTransparentCost(vec3 ro, vec3 rd) {
         } else {
             float step = abs(dScene);
             for (int s = 0; s < SHAPE_COUNT; s++) {
-                if (!shapeHit[s]) {
+                if (shapeHits[s] < 2) {
                     step = min(step, abs(dAll[s]));
                 }
             }
@@ -672,7 +690,18 @@ void main() {
     ndc.x = gl_FragCoord.x / uResolution.x * 2.0 - 1.0;
     ndc.y = 1.0 - gl_FragCoord.y / uResolution.y * 2.0;
 
-    vec3 fwd = normalize(uCameraTarget - uCameraPos);
+#ifdef CAMERA_POS
+    vec3 camPos = CAMERA_POS;
+#else
+    vec3 camPos = uCameraPos;
+#endif
+#ifdef CAMERA_TARGET
+    vec3 camTarget = CAMERA_TARGET;
+#else
+    vec3 camTarget = uCameraTarget;
+#endif
+
+    vec3 fwd = normalize(camTarget - camPos);
     vec3 right = normalize(cross(fwd, vec3(0, 1, 0)));
     vec3 up = cross(right, fwd);
 
@@ -682,12 +711,12 @@ void main() {
     if (uProjection == 1) {
         // Orthographic: parallel rays, offset origin
         float scale = uOrthoScale;
-        ro = uCameraPos + right * ndc.x * scale * aspect + up * ndc.y * scale;
+        ro = camPos + right * ndc.x * scale * aspect + up * ndc.y * scale;
         rd = fwd;
     } else if (uProjection == 2) {
         // Isometric: orthographic at fixed angle
         float scale = uOrthoScale;
-        ro = uCameraPos + right * ndc.x * scale * aspect + up * ndc.y * scale;
+        ro = camPos + right * ndc.x * scale * aspect + up * ndc.y * scale;
         rd = fwd;
     } else {
         // Perspective (default)
@@ -695,14 +724,14 @@ void main() {
         float halfH = tan(fovRad / 2.0);
         float halfW = halfH * aspect;
         rd = normalize(fwd + right * ndc.x * halfW + up * ndc.y * halfH);
-        ro = uCameraPos;
+        ro = camPos;
     }
 
     if (uSliceMode == 1) {
         // SDF slice heatmap: plane through camera target, perpendicular to view
         // Uses the same camera basis (right, up) so rotation/pan/zoom work naturally
         float scale = uOrthoScale;
-        vec3 sliceP = uCameraTarget + right * ndc.x * scale * aspect + up * ndc.y * scale;
+        vec3 sliceP = camTarget + right * ndc.x * scale * aspect + up * ndc.y * scale;
         float d = sceneSDF(sliceP);
 
         // Map distance to color: viridis-like palette
