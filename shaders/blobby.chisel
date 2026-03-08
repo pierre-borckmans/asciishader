@@ -2,10 +2,13 @@
 // Organic blob from smooth-unioned spheres and capsules
 // Port of fogleman/sdf/examples/blobby.py
 
+light {
+    ambient: 1.1
+}
 // Cross pattern along Z axis
 s = sphere(0.75).at(0, 0, -3) |~1 sphere(0.75).at(0, 0, 3) |~1 capsule([0, 0, -3], [0, 0, 3], 0.5)
 
 // Central sphere + 3 perpendicular copies of the cross
 blobby = sphere(1.5) |~1 s |~1 s.rot(90, x) |~1 s.rot(90, y)
 
-blobby.cyan.rot(30 * t, x).rot(50 * t, y)
+blobby.cyan.rot(30 * t, x).rot(50 * t, y).opacity(0.35)

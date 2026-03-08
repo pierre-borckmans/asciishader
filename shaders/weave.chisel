@@ -3,7 +3,7 @@
 // Port of fogleman/sdf/examples/weave.py
 // Fogleman Z-up → Our Y-up: swap Y↔Z
 light {
-    ambient: 0.3
+    ambient: 0.8
 }
 
 raymarch {
