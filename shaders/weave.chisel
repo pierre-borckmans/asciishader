@@ -2,6 +2,14 @@
 // Woven ribbon pattern — flat mat in XZ plane
 // Port of fogleman/sdf/examples/weave.py
 // Fogleman Z-up → Our Y-up: swap Y↔Z
+light {
+    ambient: 0.3
+}
+
+raymarch {
+//     steps: 128,
+  precision: 0.0005
+}
 
 // Ribbon: thin flat strip, bent and arrayed 3x
 ribbon = rounded_box(3.2, 0.25, 1, 0.1)

@@ -1,6 +1,18 @@
 // Scene: Hello Chisel
 // Constructive geometry — sphere intersected with box, minus 3 cylinders
-(sphere(1) & box(1.5)).color(#51a0eb)
+camera [sin(t * 0.3) * 4, 1.5 + sin(t * 0.2) * 0.8, 4+cos(t)] -> [0, 0, 0]
+light {
+    ambient: 0.8+0.2*sin(t*0.5)
+}
+
+(sphere(1) & box(1.5)).color(#51a0eb99)
 - cylinder(0.5, 8).orient(x)
 - cylinder(0.5, 8).orient(y)
 - cylinder(0.5, 8).orient(z)
+
+| sphere(0.4).at(1.6 * sin(t), 0, 0).color(#ff000088)
+
+| sphere(0.4).at(0, 1.6 * sin(t + TAU / 3), 0).color(#00ff0088)
+
+| sphere(0.4).at(0, 0, 1.6 * sin(t + 2 * TAU / 3)).color(#0000ff88)
+
