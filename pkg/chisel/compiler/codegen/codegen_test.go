@@ -849,7 +849,7 @@ func TestSetting_LightVector(t *testing.T) {
 func TestSetting_LightBlock(t *testing.T) {
 	glsl := compile(t, "light { ambient: 0.2 }\nsphere")
 	assertContains(t, glsl, "sceneSDF", "sceneSDF still emitted")
-	assertContains(t, glsl, "// chisel:light:", "light block comment present")
+	assertContains(t, glsl, "#define uAmbient 0.2", "ambient emitted as #define override")
 }
 
 // ---------------------------------------------------------------------------

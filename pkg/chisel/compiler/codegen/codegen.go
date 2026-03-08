@@ -2387,15 +2387,26 @@ func (g *generator) processCameraSetting(s *ast.SettingStmt) {
 	}
 }
 
-// processLightSetting emits light metadata as comments (Task 6.2).
+// processLightSetting handles light settings.
+// Numeric values like ambient are emitted as #define overrides so they take
+// effect in the shader without needing the TUI to parse comments.
 func (g *generator) processLightSetting(s *ast.SettingStmt) {
 	switch body := s.Body.(type) {
 	case map[string]interface{}:
+		if g.defines == nil {
+			g.defines = make(map[string]string)
+		}
 		for key, val := range body {
-			if valStr := g.settingValueStr(val); valStr != "" {
-				g.settingComments = append(g.settingComments, fmt.Sprintf("// chisel:light:%s %s", key, valStr))
-			} else {
+			valStr := g.settingValueStr(val)
+			if valStr == "" {
 				g.settingComments = append(g.settingComments, fmt.Sprintf("// chisel:light:%s [block]", key))
+				continue
+			}
+			switch key {
+			case "ambient":
+				g.defines["uAmbient"] = valStr
+			default:
+				g.settingComments = append(g.settingComments, fmt.Sprintf("// chisel:light:%s %s", key, valStr))
 			}
 		}
 	default:
@@ -2514,7 +2525,7 @@ func (g *generator) writeDefines(out *strings.Builder) {
 		return
 	}
 	// Emit in a deterministic order.
-	for _, key := range []string{"MAX_STEPS", "SURF_DIST", "MAX_DIST"} {
+	for _, key := range []string{"MAX_STEPS", "SURF_DIST", "MAX_DIST", "uAmbient"} {
 		if val, ok := g.defines[key]; ok {
 			fmt.Fprintf(out, "#define %s %s\n", key, val)
 		}
