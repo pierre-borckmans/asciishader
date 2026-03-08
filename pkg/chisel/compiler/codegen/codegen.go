@@ -299,6 +299,20 @@ func (g *generator) hasTransparency() bool {
 	return false
 }
 
+// propagateCSG updates color entries so that any entry pointing to an
+// operand SDF variable is re-pointed to the CSG result. This ensures
+// that sceneSDFAll tracks the final geometry after subtract/intersect
+// operations, not the pre-CSG intermediate.
+func (g *generator) propagateCSG(operandVars []string, resultVar string) {
+	for i := range g.colors {
+		for _, v := range operandVars {
+			if g.colors[i].sdfVar == v {
+				g.colors[i].sdfVar = resultVar
+			}
+		}
+	}
+}
+
 // freshVar returns a fresh temporary variable name like "d0", "d1", etc.
 func (g *generator) freshVar(prefix string) string {
 	name := fmt.Sprintf("%s%d", prefix, g.tmpCounter)
@@ -1687,6 +1701,7 @@ func (g *generator) emitBinaryExpr(e *ast.BinaryExpr) string {
 		right := g.emitSDF(e.Right)
 		d := g.freshVar("d")
 		g.emit("float %s = opSubtract(%s, %s);", d, left, right)
+		g.propagateCSG([]string{left}, d)
 		return d
 
 	case ast.SmoothSubtract:
@@ -1699,6 +1714,7 @@ func (g *generator) emitBinaryExpr(e *ast.BinaryExpr) string {
 			k = formatFloat(*e.Blend)
 		}
 		g.emit("float %s = opSmoothSubtract(%s, %s, %s);", d, right, left, k)
+		g.propagateCSG([]string{left}, d)
 		return d
 
 	case ast.Intersect:
@@ -1706,6 +1722,7 @@ func (g *generator) emitBinaryExpr(e *ast.BinaryExpr) string {
 		right := g.emitSDF(e.Right)
 		d := g.freshVar("d")
 		g.emit("float %s = opIntersect(%s, %s);", d, left, right)
+		g.propagateCSG([]string{left, right}, d)
 		return d
 
 	case ast.SmoothIntersect:
@@ -1718,6 +1735,7 @@ func (g *generator) emitBinaryExpr(e *ast.BinaryExpr) string {
 			k = formatFloat(*e.Blend)
 		}
 		g.emit("float %s = opSmoothIntersect(%s, %s, %s);", d, left, right, k)
+		g.propagateCSG([]string{left, right}, d)
 		return d
 
 	case ast.ChamferUnion:
@@ -2372,17 +2390,25 @@ func (g *generator) processRaymarchSetting(s *ast.SettingStmt) {
 	}
 }
 
-// processCameraSetting emits camera metadata as comments (Task 6.1).
+// processCameraSetting emits #define overrides for camera pos/target.
+// Dynamic expressions (using uTime) are evaluated per-frame in the shader.
 func (g *generator) processCameraSetting(s *ast.SettingStmt) {
+	if g.defines == nil {
+		g.defines = make(map[string]string)
+	}
 	switch body := s.Body.(type) {
 	case map[string]interface{}:
-		for key, val := range body {
-			if valStr := g.settingValueStr(val); valStr != "" {
-				g.settingComments = append(g.settingComments, fmt.Sprintf("// chisel:camera:%s %s", key, valStr))
+		if posVal, ok := body["pos"]; ok {
+			if valStr := g.settingValueStr(posVal); valStr != "" {
+				g.defines["CAMERA_POS"] = valStr
+			}
+		}
+		if targetVal, ok := body["target"]; ok {
+			if valStr := g.settingValueStr(targetVal); valStr != "" {
+				g.defines["CAMERA_TARGET"] = valStr
 			}
 		}
 	default:
-		// camera as a single expression — emit comment.
 		g.settingComments = append(g.settingComments, "// chisel:camera settings present")
 	}
 }
@@ -2525,7 +2551,7 @@ func (g *generator) writeDefines(out *strings.Builder) {
 		return
 	}
 	// Emit in a deterministic order.
-	for _, key := range []string{"MAX_STEPS", "SURF_DIST", "MAX_DIST", "uAmbient"} {
+	for _, key := range []string{"MAX_STEPS", "SURF_DIST", "MAX_DIST", "uAmbient", "CAMERA_POS", "CAMERA_TARGET"} {
 		if val, ok := g.defines[key]; ok {
 			fmt.Fprintf(out, "#define %s %s\n", key, val)
 		}

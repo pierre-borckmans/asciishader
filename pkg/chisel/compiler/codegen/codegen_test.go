@@ -780,8 +780,14 @@ func TestSetting_CameraBlock(t *testing.T) {
 	glsl := compile(t, "camera { pos: [0, 2, 5] }\nsphere")
 	assertContains(t, glsl, "sceneSDF", "sceneSDF still emitted")
 	assertContains(t, glsl, "sdSphere", "sphere still works with camera setting")
-	// Camera settings should be emitted as comments.
-	assertContains(t, glsl, "// chisel:camera:", "camera comment present")
+	assertContains(t, glsl, "#define CAMERA_POS", "camera pos define emitted")
+}
+
+func TestSetting_CameraShorthand(t *testing.T) {
+	glsl := compile(t, "camera [sin(t)*4, 2, cos(t)*4] -> [0, 0, 0]\nsphere")
+	assertContains(t, glsl, "#define CAMERA_POS", "camera pos define emitted")
+	assertContains(t, glsl, "#define CAMERA_TARGET", "camera target define emitted")
+	assertContains(t, glsl, "sin(uTime)", "time expression in camera pos")
 }
 
 func TestSetting_BgHex(t *testing.T) {
