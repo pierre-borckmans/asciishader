@@ -3176,11 +3176,11 @@ func (g *generator) shapeCall(name, pv string, args []ast.Arg) string {
 		return fmt.Sprintf("sdRhombus(%s, %s, %s, %s, %s)", pv, la, lb, h, ra)
 
 	case "horseshoe":
-		sc := g.emitScalarExpr(args[0].Value)
+		angle := g.emitScalarExpr(args[0].Value)
 		r := g.scalarArgOr(args, 1, "0.3")
 		le := g.scalarArgOr(args, 2, "0.3")
-		w := g.scalarArgOr(args, 3, "vec2(0.05, 0.1)")
-		return fmt.Sprintf("sdHorseshoe(%s, %s, %s, %s, %s)", pv, sc, r, le, w)
+		w := g.scalarArgOr(args, 3, "0.1")
+		return fmt.Sprintf("sdHorseshoe(%s, vec2(sin(%s), cos(%s)), %s, %s, vec2(%s))", pv, angle, angle, r, le, w)
 
 	case "rounded_cylinder":
 		if len(args) == 0 {
