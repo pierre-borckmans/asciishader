@@ -1,0 +1,85 @@
+// Purple berry with golden drops and leaf
+// Recreated from IQ's SDF editor export
+
+// Berry body — three rings of egg petals
+petal_solid = egg(0.116, 0.034).revolve(0).array(6, radius: 0.026)
+petal_ring = egg(0.104, 0.046).revolve(0.011).array(6, radius: 0.105)
+
+ring_top = petal_solid
+  .at(0.09, 0.63, 0)
+  .rot(90, x)
+  .color(#3010aa)
+
+ring_mid = petal_ring
+  .at(0.08, 0.49, 0)
+  .rot(-90, z)
+  .color(#1d1087)
+
+ring_bot = petal_solid
+  .at(0.09, 0.36, 0)
+  .rot(90, x)
+  .color(#1a1187)
+
+body = ring_top |^0.015 ring_mid |^0.02 ring_bot
+
+// Red crown — paint color onto top
+crown = sphere(0.17)
+  .at(0.09, 0.75, 0)
+  .rot(90, x)
+  .color(#cf2425)
+
+// Water drops — tiny spheres as simplified drops
+drop(r) = sphere(r * 2)
+
+drops = {
+  drop(0.008).at(-0.055, 0.325, -0.169)
+  drop(0.008).at(0.023, 0.422, -0.260)
+  drop(0.009).at(0.150, 0.716, 0.116)
+  drop(0.009).at(-0.015, 0.713, 0.154)
+  drop(0.009).at(0.037, 0.693, 0.060)
+  drop(0.009).at(0.145, 0.723, -0.121)
+  drop(0.010).at(0.208, 0.715, -0.017)
+  drop(0.009).at(0.319, 0.498, -0.188)
+  drop(0.009).at(0.147, 0.646, -0.210)
+  drop(0.010).at(0.107, 0.531, -0.295)
+  drop(0.008).at(-0.136, 0.331, -0.039)
+  drop(0.008).at(-0.173, 0.451, 0.041)
+  drop(0.008).at(-0.198, 0.524, 0.087)
+  drop(0.009).at(-0.116, 0.691, -0.018)
+  drop(0.009).at(0.013, 0.706, -0.181)
+  drop(0.009).at(-0.050, 0.625, -0.187)
+  drop(0.008).at(-0.173, 0.551, -0.152)
+}
+
+// Leaf at top
+leaf = horseshoe(0.685, 0.296, 0, 0.058)
+  .at(0.065, 0.802, -0.012)
+  .rot(45, y).rot(-30, x)
+  .color(#6f9932)
+
+// Leaf coloring
+leaf_color = sphere(0.13)
+  .at(-0.070, 0.941, 0.014)
+  .rot(20, y).rot(30, x)
+  .color(#27360a)
+
+// Compose
+body
+  |@0.08 crown
+  |!0.02 drops.color(#5f501f)
+  |~0.024 leaf
+  |@0.07 leaf_color
+
+light {
+  sun {
+    dir: [-0.46, 0.36, 0.81]
+    color: #ffe5cc
+    intensity: 2
+    shadows: true
+  }
+  ambient: 0.4
+}
+
+bg #ecf0f9
+
+camera [0.66, 0.65, 0.78] -> [0.06, 0.55, -0.03]
