@@ -1,2 +1,2 @@
 // Egg revolved into a solid of revolution
-egg(0.3, 0.15).revolve(0)
+egg(0.116, 0.034, 0.1, 0.5).revolve(0)

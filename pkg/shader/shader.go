@@ -345,13 +345,16 @@ float sdEquilateralTriangle2D(vec2 p, float r) {
     return -length(p) * sign(p.y);
 }
 
-float sdEgg2D(vec2 p, float ra, float rb) {
-    const float k = sqrt(3.0);
+float sdEgg2D(vec2 p, float he, float ra, float rb, float bu) {
+    float r = 0.5*(he + ra + rb) / bu;
+    float da = r - ra;
+    float db = r - rb;
+    float y = (db*db - da*da - he*he) / (2.0*he);
+    float x = sqrt(da*da - y*y);
     p.x = abs(p.x);
-    float r = ra - rb;
-    return ((p.y < 0.0)       ? length(vec2(p.x,  p.y    )) - ra :
-            (k*(p.x+r) < p.y) ? length(vec2(p.x,  p.y - k*r)) - rb :
-                                 length(vec2(p.x+r, p.y    )) - r) - rb;
+    float k = p.y*x - p.x*y;
+    if (k > 0.0 && k < he*(p.x + x)) return length(p + vec2(x, y)) - r;
+    return min(length(p) - ra, length(vec2(p.x, p.y - he)) - rb);
 }
 
 // ---- 2D to 3D Operations ----

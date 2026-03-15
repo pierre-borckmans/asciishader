@@ -729,14 +729,15 @@ func TestRevolve_NoOffset(t *testing.T) {
 }
 
 func TestEgg_Revolve(t *testing.T) {
-	glsl := compile(t, "egg(0.3, 0.15).revolve(0)")
+	glsl := compile(t, "egg(0.116, 0.034, 0.1, 0.5).revolve(0)")
 	assertContains(t, glsl, "sdEgg2D", "2D egg SDF")
-	assertContains(t, glsl, "0.3", "ra param")
-	assertContains(t, glsl, "0.15", "rb param")
+	assertContains(t, glsl, "0.116", "he param")
+	assertContains(t, glsl, "0.034", "ra param")
+	assertContains(t, glsl, "0.5", "bu param")
 }
 
 func TestEgg_Extrude(t *testing.T) {
-	glsl := compile(t, "egg(0.4, 0.2).extrude(1)")
+	glsl := compile(t, "egg(0.4, 0.2, 0.3, 0.5).extrude(1)")
 	assertContains(t, glsl, "sdEgg2D", "2D egg SDF")
 	assertContains(t, glsl, "sdExtrude", "extrude wrapper")
 }
@@ -744,15 +745,7 @@ func TestEgg_Extrude(t *testing.T) {
 func TestEgg_Default(t *testing.T) {
 	glsl := compile(t, "egg.revolve(0)")
 	assertContains(t, glsl, "sdEgg2D", "2D egg SDF")
-	assertContains(t, glsl, "0.5", "default ra")
-	assertContains(t, glsl, "0.3", "default rb")
-}
-
-func TestEgg_SingleArg(t *testing.T) {
-	glsl := compile(t, "egg(0.4).revolve(0)")
-	assertContains(t, glsl, "sdEgg2D", "2D egg SDF")
-	assertContains(t, glsl, "0.4", "ra param")
-	assertContains(t, glsl, "0.6", "auto rb = ra*0.6")
+	assertContains(t, glsl, "0.5", "default he or bu")
 }
 
 func TestExtrude_CircleBareIdent(t *testing.T) {

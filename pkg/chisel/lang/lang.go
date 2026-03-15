@@ -83,7 +83,7 @@ var Shapes2D = []Shape{
 	{"hexagon", true, 0, 1, "hexagon(radius = 1)\n2D hexagon."},
 	{"polygon", true, 1, 1, "polygon(points)\n2D polygon from [x,y] points."},
 	{"triangle", true, 0, 1, "triangle(size = 1)\n2D equilateral triangle."},
-	{"egg", true, 0, 2, "egg(ra = 0.5, rb = 0.3)\n2D egg/ovoid. ra=bottom radius, rb=top radius."},
+	{"egg", true, 0, 4, "egg(he, ra, rb, bu)\n2D egg/ovoid. he=height, ra=top radius, rb=bottom radius, bu=bulge."},
 }
 
 // --- Methods ---

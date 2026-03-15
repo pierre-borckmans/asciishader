@@ -2702,7 +2702,7 @@ func shape2DDefault(name, p2d string) string {
 	case "triangle":
 		return fmt.Sprintf("sdEquilateralTriangle2D(%s, 1.0)", p2d)
 	case "egg":
-		return fmt.Sprintf("sdEgg2D(%s, 0.5, 0.3)", p2d)
+		return fmt.Sprintf("sdEgg2D(%s, 0.5, 0.3, 0.2, 0.5)", p2d)
 	}
 	return fmt.Sprintf("sdCircle2D(%s, 1.0)", p2d)
 }
@@ -2745,14 +2745,13 @@ func (g *generator) shape2DCall(name, p2d string, args []ast.Arg) string {
 
 	case "egg":
 		if len(args) == 0 {
-			return fmt.Sprintf("sdEgg2D(%s, 0.5, 0.3)", p2d)
+			return fmt.Sprintf("sdEgg2D(%s, 0.5, 0.3, 0.2, 0.5)", p2d)
 		}
-		ra := g.emitScalarExpr(args[0].Value)
-		if len(args) == 1 {
-			return fmt.Sprintf("sdEgg2D(%s, %s, (%s)*0.6)", p2d, ra, ra)
-		}
-		rb := g.emitScalarExpr(args[1].Value)
-		return fmt.Sprintf("sdEgg2D(%s, %s, %s)", p2d, ra, rb)
+		he := g.emitScalarExpr(args[0].Value)
+		ra := g.scalarArgOr(args, 1, fmt.Sprintf("(%s)*0.3", he))
+		rb := g.scalarArgOr(args, 2, fmt.Sprintf("(%s)*0.5", he))
+		bu := g.scalarArgOr(args, 3, "0.5")
+		return fmt.Sprintf("sdEgg2D(%s, %s, %s, %s, %s)", p2d, he, ra, rb, bu)
 	}
 
 	return fmt.Sprintf("sdCircle2D(%s, 1.0)", p2d)
