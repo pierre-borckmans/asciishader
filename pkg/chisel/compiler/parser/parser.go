@@ -562,6 +562,12 @@ func infixPrecedence(kind token.TokenKind) (prec int, op ast.BinaryOp, isInfix b
 		return precUnion, ast.SmoothUnion, true
 	case token.TokPipeChamfer:
 		return precUnion, ast.ChamferUnion, true
+	case token.TokPipePaint:
+		return precUnion, ast.Paint, true
+	case token.TokPipeRepel:
+		return precUnion, ast.Repel, true
+	case token.TokPipeAvoid:
+		return precUnion, ast.Avoid, true
 
 	// Subtract ops — TokMinus is handled separately
 	case token.TokMinusSmooth:
@@ -614,6 +620,7 @@ func infixPrecedence(kind token.TokenKind) (prec int, op ast.BinaryOp, isInfix b
 func isSmoothOrChamfer(kind token.TokenKind) bool {
 	switch kind {
 	case token.TokPipeSmooth, token.TokPipeChamfer,
+		token.TokPipePaint, token.TokPipeRepel, token.TokPipeAvoid,
 		token.TokMinusSmooth, token.TokMinusChamfer,
 		token.TokAmpSmooth, token.TokAmpChamfer:
 		return true

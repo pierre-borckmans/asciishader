@@ -1,0 +1,2 @@
+// Paint blend — apply color without changing geometry
+sphere |@0.1 box.red

@@ -259,6 +259,9 @@ const (
 	Intersect                        // &
 	SmoothIntersect                  // &~
 	ChamferIntersect                 // &/
+	Paint                            // |@
+	Repel                            // |!
+	Avoid                            // |^
 	Add                              // +
 	Sub                              // - (arithmetic)
 	Mul                              // *
@@ -282,6 +285,9 @@ var binaryOpNames = [...]string{
 	Intersect:        "Intersect",
 	SmoothIntersect:  "SmoothIntersect",
 	ChamferIntersect: "ChamferIntersect",
+	Paint:            "Paint",
+	Repel:            "Repel",
+	Avoid:            "Avoid",
 	Add:              "Add",
 	Sub:              "Sub",
 	Mul:              "Mul",

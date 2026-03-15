@@ -420,6 +420,12 @@ func binaryOpLabel(op ast.BinaryOp) string {
 		return "smooth intersect"
 	case ast.ChamferIntersect:
 		return "chamfer intersect"
+	case ast.Paint:
+		return "paint"
+	case ast.Repel:
+		return "repel"
+	case ast.Avoid:
+		return "avoid"
 	default:
 		return op.String()
 	}
@@ -716,6 +722,12 @@ func binaryOpSymbol(op ast.BinaryOp) string {
 		return "&~"
 	case ast.ChamferIntersect:
 		return "&/"
+	case ast.Paint:
+		return "|@"
+	case ast.Repel:
+		return "|!"
+	case ast.Avoid:
+		return "|^"
 	case ast.Add:
 		return "+"
 	case ast.Sub:

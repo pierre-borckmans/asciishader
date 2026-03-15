@@ -54,6 +54,7 @@ func isContinuationStart(k token.TokenKind) bool {
 	switch k {
 	case token.TokDot,
 		token.TokPipe, token.TokPipeSmooth, token.TokPipeChamfer,
+		token.TokPipePaint, token.TokPipeRepel, token.TokPipeAvoid,
 		token.TokAmp, token.TokAmpSmooth, token.TokAmpChamfer,
 		token.TokMinus, token.TokMinusSmooth, token.TokMinusChamfer,
 		token.TokElse:
@@ -499,6 +500,18 @@ func (l *lexer) scanPunctuation(pos token.Position) {
 			l.advance()
 			l.advance()
 			l.emit(token.TokPipeChamfer, "|/", pos, 2)
+		} else if next == '@' {
+			l.advance()
+			l.advance()
+			l.emit(token.TokPipePaint, "|@", pos, 2)
+		} else if next == '!' {
+			l.advance()
+			l.advance()
+			l.emit(token.TokPipeRepel, "|!", pos, 2)
+		} else if next == '^' {
+			l.advance()
+			l.advance()
+			l.emit(token.TokPipeAvoid, "|^", pos, 2)
 		} else {
 			l.advance()
 			l.emit(token.TokPipe, "|", pos, 1)

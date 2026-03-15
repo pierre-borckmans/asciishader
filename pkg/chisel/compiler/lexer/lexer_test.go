@@ -210,6 +210,36 @@ func TestPipeChamfer(t *testing.T) {
 	})
 }
 
+func TestPipePaint(t *testing.T) {
+	checkTokens(t, "a |@0.3 b", []tokInfo{
+		tok(token.TokIdent, "a"),
+		tok(token.TokPipePaint, "|@"),
+		tok(token.TokFloat, "0.3"),
+		tok(token.TokIdent, "b"),
+		tok(token.TokEOF),
+	})
+}
+
+func TestPipeRepel(t *testing.T) {
+	checkTokens(t, "a |!0.5 b", []tokInfo{
+		tok(token.TokIdent, "a"),
+		tok(token.TokPipeRepel, "|!"),
+		tok(token.TokFloat, "0.5"),
+		tok(token.TokIdent, "b"),
+		tok(token.TokEOF),
+	})
+}
+
+func TestPipeAvoid(t *testing.T) {
+	checkTokens(t, "a |^0.3 b", []tokInfo{
+		tok(token.TokIdent, "a"),
+		tok(token.TokPipeAvoid, "|^"),
+		tok(token.TokFloat, "0.3"),
+		tok(token.TokIdent, "b"),
+		tok(token.TokEOF),
+	})
+}
+
 func TestMinus(t *testing.T) {
 	checkTokens(t, "a - b", []tokInfo{
 		tok(token.TokIdent, "a"),

@@ -1774,6 +1774,46 @@ func (g *generator) emitBinaryExpr(e *ast.BinaryExpr) string {
 		g.emit("float %s = opChamferIntersect(%s, %s, %s);", d, left, right, k)
 		return d
 
+	case ast.Avoid:
+		g.helpers["opAvoid"] = true
+		left := g.emitSDF(e.Left)
+		right := g.emitSDF(e.Right)
+		d := g.freshVar("d")
+		k := "0.5"
+		if e.Blend != nil {
+			k = formatFloat(*e.Blend)
+		}
+		g.emit("float %s = opAvoid(%s, %s, %s);", d, left, right, k)
+		return d
+
+	case ast.Repel:
+		g.helpers["opRepel"] = true
+		left := g.emitSDF(e.Left)
+		right := g.emitSDF(e.Right)
+		d := g.freshVar("d")
+		k := "0.5"
+		if e.Blend != nil {
+			k = formatFloat(*e.Blend)
+		}
+		g.emit("float %s = opRepel(%s, %s, %s);", d, left, right, k)
+		return d
+
+	case ast.Paint:
+		g.helpers["opPaint"] = true
+		left := g.emitSDF(e.Left)
+		right := g.emitSDF(e.Right)
+		d := g.freshVar("d")
+		k := "0.5"
+		if e.Blend != nil {
+			k = formatFloat(*e.Blend)
+		}
+		// Geometry is unchanged — use left SDF.
+		// The paint shape (right) blends color in the overlap region.
+		g.emit("float %s = opPaint(%s, %s, %s);", d, left, right, k)
+		// Propagate left's color entries to result; right's color applies via paint blending.
+		g.propagateCSG([]string{left}, d)
+		return d
+
 	// Arithmetic and comparison — emit as scalar expression.
 	case ast.Add, ast.Sub, ast.Mul, ast.Div, ast.Mod,
 		ast.Eq, ast.Neq, ast.Lt, ast.Gt, ast.Lte, ast.Gte:
@@ -2122,6 +2162,31 @@ func (g *generator) writeHelpers(out *strings.Builder) {
 	if g.helpers["opChamferIntersect"] {
 		out.WriteString(`float opChamferIntersect(float a, float b, float r) {
     return max(max(a, b), (a + r + b) * 0.7071067811865476);
+}
+`)
+	}
+
+	if g.helpers["opAvoid"] {
+		out.WriteString(`float opAvoid(float a, float b, float k) {
+    float h = clamp(0.5 + 0.5*(b-a)/k, 0.0, 1.0);
+    float d = mix(b, a, h) - k*h*(1.0-h);
+    float comp = k * 0.25 * (1.0 - (2.0*h - 1.0) * (2.0*h - 1.0));
+    return d + comp;
+}
+`)
+	}
+
+	if g.helpers["opRepel"] {
+		out.WriteString(`float opRepel(float a, float b, float k) {
+    float push = k * (1.0 - smoothstep(0.0, k, b));
+    return min(a + push, b);
+}
+`)
+	}
+
+	if g.helpers["opPaint"] {
+		out.WriteString(`float opPaint(float a, float b, float k) {
+    return a;
 }
 `)
 	}

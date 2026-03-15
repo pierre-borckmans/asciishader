@@ -212,6 +212,27 @@ func TestBoolean_ChamferUnion(t *testing.T) {
 	assertContains(t, glsl, "float opChamferUnion(float a, float b, float r)", "helper emitted")
 }
 
+func TestBoolean_Avoid(t *testing.T) {
+	glsl := compile(t, "sphere |^0.3 box")
+	assertContains(t, glsl, "opAvoid", "avoid op")
+	assertContains(t, glsl, "0.3", "blend radius")
+	assertContains(t, glsl, "float opAvoid(float a, float b, float k)", "helper emitted")
+}
+
+func TestBoolean_Repel(t *testing.T) {
+	glsl := compile(t, "sphere |!0.5 box")
+	assertContains(t, glsl, "opRepel", "repel op")
+	assertContains(t, glsl, "0.5", "blend radius")
+	assertContains(t, glsl, "float opRepel(float a, float b, float k)", "helper emitted")
+}
+
+func TestBoolean_Paint(t *testing.T) {
+	glsl := compile(t, "sphere |@0.3 box.red")
+	assertContains(t, glsl, "opPaint", "paint op")
+	assertContains(t, glsl, "0.3", "blend radius")
+	assertContains(t, glsl, "float opPaint(float a, float b, float k)", "helper emitted")
+}
+
 func TestBoolean_Nested(t *testing.T) {
 	glsl := compile(t, "(sphere | box) - cylinder")
 	assertContains(t, glsl, "opUnion", "union")

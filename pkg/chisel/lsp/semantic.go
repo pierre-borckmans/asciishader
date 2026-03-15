@@ -102,6 +102,7 @@ func (s *Server) handleSemanticTokensFull(id interface{}, params json.RawMessage
 			token.TokPost, token.TokMat, token.TokDebug:
 			semTokens = append(semTokens, semToken{line, col, tok.Len, stKeyword, 0})
 		case token.TokPipe, token.TokPipeSmooth, token.TokPipeChamfer,
+			token.TokPipePaint, token.TokPipeRepel, token.TokPipeAvoid,
 			token.TokMinus, token.TokMinusSmooth, token.TokMinusChamfer,
 			token.TokAmp, token.TokAmpSmooth, token.TokAmpChamfer,
 			token.TokPlus, token.TokStar, token.TokSlash, token.TokPercent,

@@ -477,7 +477,7 @@ func (f *formatter) formatExprWithPrec(child ast.Expr, parentOp ast.BinaryOp, is
 // opPrecedence returns the Pratt precedence for a binary operator.
 func opPrecedence(op ast.BinaryOp) int {
 	switch op {
-	case ast.Union, ast.SmoothUnion, ast.ChamferUnion:
+	case ast.Union, ast.SmoothUnion, ast.ChamferUnion, ast.Paint, ast.Repel, ast.Avoid:
 		return 1
 	case ast.Subtract, ast.SmoothSubtract, ast.ChamferSubtract, ast.Sub:
 		return 2
@@ -1034,6 +1034,12 @@ func binaryOpString(op ast.BinaryOp) string {
 		return "&~"
 	case ast.ChamferIntersect:
 		return "&/"
+	case ast.Paint:
+		return "|@"
+	case ast.Repel:
+		return "|!"
+	case ast.Avoid:
+		return "|^"
 	case ast.Add:
 		return "+"
 	case ast.Sub:
@@ -1065,7 +1071,8 @@ func isSmoothOrChamferOp(op ast.BinaryOp) bool {
 	switch op {
 	case ast.SmoothUnion, ast.ChamferUnion,
 		ast.SmoothSubtract, ast.ChamferSubtract,
-		ast.SmoothIntersect, ast.ChamferIntersect:
+		ast.SmoothIntersect, ast.ChamferIntersect,
+		ast.Paint, ast.Repel, ast.Avoid:
 		return true
 	}
 	return false
@@ -1075,7 +1082,8 @@ func isCSGOp(op ast.BinaryOp) bool {
 	switch op {
 	case ast.Union, ast.SmoothUnion, ast.ChamferUnion,
 		ast.Subtract, ast.SmoothSubtract, ast.ChamferSubtract,
-		ast.Intersect, ast.SmoothIntersect, ast.ChamferIntersect:
+		ast.Intersect, ast.SmoothIntersect, ast.ChamferIntersect,
+		ast.Paint, ast.Repel, ast.Avoid:
 		return true
 	}
 	return false

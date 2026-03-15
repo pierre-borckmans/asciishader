@@ -322,6 +322,9 @@ var Operators = []Operator{
 	{"|", PrecUnion, Left, false},
 	{"|~", PrecUnion, Left, true},
 	{"|/", PrecUnion, Left, true},
+	{"|@", PrecUnion, Left, true},
+	{"|!", PrecUnion, Left, true},
+	{"|^", PrecUnion, Left, true},
 	// Subtract (CSG) — TokMinus is also arithmetic; the analyzer resolves.
 	{"-", PrecSubtract, Left, false},
 	{"-~", PrecSubtract, Left, true},

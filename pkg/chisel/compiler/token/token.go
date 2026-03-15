@@ -42,6 +42,9 @@ const (
 	TokAmp          // &
 	TokAmpSmooth    // &~
 	TokAmpChamfer   // &/
+	TokPipePaint    // |@
+	TokPipeRepel    // |!
+	TokPipeAvoid    // |^
 
 	// Operators -- arithmetic
 	TokPlus    // +
@@ -121,6 +124,9 @@ var tokenKindNames = [...]string{
 	TokAmp:          "&",
 	TokAmpSmooth:    "&~",
 	TokAmpChamfer:   "&/",
+	TokPipePaint:    "|@",
+	TokPipeRepel:    "|!",
+	TokPipeAvoid:    "|^",
 
 	TokPlus:    "+",
 	TokStar:    "*",
