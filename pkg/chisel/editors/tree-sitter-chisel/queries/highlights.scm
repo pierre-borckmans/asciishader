@@ -19,7 +19,7 @@
   (#match? @function.builtin "^(sphere|box|cylinder|torus|capsule|cone|plane|octahedron|pyramid|ellipsoid|rounded_box|box_frame|capped_torus|hex_prism|octagon_prism|round_cone|tri_prism|capped_cone|solid_angle|rhombus|horseshoe|rounded_cylinder|tetrahedron|dodecahedron|icosahedron|slab)$"))
 
 ((identifier) @function.builtin
-  (#match? @function.builtin "^(circle|rect|hexagon|polygon|triangle)$"))
+  (#match? @function.builtin "^(circle|rect|hexagon|polygon|triangle|egg)$"))
 
 ; ── Built-in functions ─────────────────────────────────────
 ((identifier) @function.builtin

@@ -345,6 +345,15 @@ float sdEquilateralTriangle2D(vec2 p, float r) {
     return -length(p) * sign(p.y);
 }
 
+float sdEgg2D(vec2 p, float ra, float rb) {
+    const float k = sqrt(3.0);
+    p.x = abs(p.x);
+    float r = ra - rb;
+    return ((p.y < 0.0)       ? length(vec2(p.x,  p.y    )) - ra :
+            (k*(p.x+r) < p.y) ? length(vec2(p.x,  p.y - k*r)) - rb :
+                                 length(vec2(p.x+r, p.y    )) - r) - rb;
+}
+
 // ---- 2D to 3D Operations ----
 
 float sdExtrude(float d2d, float pz, float h) {

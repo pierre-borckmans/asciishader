@@ -2668,6 +2668,7 @@ var builtinShapeNames = map[string]bool{
 	"rect":     true,
 	"hexagon":  true,
 	"triangle": true,
+	"egg":      true,
 }
 
 // isBuiltinShape reports whether name is a built-in shape.
@@ -2681,6 +2682,7 @@ var builtin2DShapeNames = map[string]bool{
 	"rect":     true,
 	"hexagon":  true,
 	"triangle": true,
+	"egg":      true,
 }
 
 // is2DShape reports whether name is a 2D shape primitive.
@@ -2699,6 +2701,8 @@ func shape2DDefault(name, p2d string) string {
 		return fmt.Sprintf("sdHexagon2D(%s, 1.0)", p2d)
 	case "triangle":
 		return fmt.Sprintf("sdEquilateralTriangle2D(%s, 1.0)", p2d)
+	case "egg":
+		return fmt.Sprintf("sdEgg2D(%s, 0.5, 0.3)", p2d)
 	}
 	return fmt.Sprintf("sdCircle2D(%s, 1.0)", p2d)
 }
@@ -2738,6 +2742,17 @@ func (g *generator) shape2DCall(name, p2d string, args []ast.Arg) string {
 		}
 		r := g.emitScalarExpr(args[0].Value)
 		return fmt.Sprintf("sdEquilateralTriangle2D(%s, %s)", p2d, r)
+
+	case "egg":
+		if len(args) == 0 {
+			return fmt.Sprintf("sdEgg2D(%s, 0.5, 0.3)", p2d)
+		}
+		ra := g.emitScalarExpr(args[0].Value)
+		if len(args) == 1 {
+			return fmt.Sprintf("sdEgg2D(%s, %s, (%s)*0.6)", p2d, ra, ra)
+		}
+		rb := g.emitScalarExpr(args[1].Value)
+		return fmt.Sprintf("sdEgg2D(%s, %s, %s)", p2d, ra, rb)
 	}
 
 	return fmt.Sprintf("sdCircle2D(%s, 1.0)", p2d)

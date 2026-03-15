@@ -728,6 +728,33 @@ func TestRevolve_NoOffset(t *testing.T) {
 	assertContains(t, glsl, "0.0", "default zero offset")
 }
 
+func TestEgg_Revolve(t *testing.T) {
+	glsl := compile(t, "egg(0.3, 0.15).revolve(0)")
+	assertContains(t, glsl, "sdEgg2D", "2D egg SDF")
+	assertContains(t, glsl, "0.3", "ra param")
+	assertContains(t, glsl, "0.15", "rb param")
+}
+
+func TestEgg_Extrude(t *testing.T) {
+	glsl := compile(t, "egg(0.4, 0.2).extrude(1)")
+	assertContains(t, glsl, "sdEgg2D", "2D egg SDF")
+	assertContains(t, glsl, "sdExtrude", "extrude wrapper")
+}
+
+func TestEgg_Default(t *testing.T) {
+	glsl := compile(t, "egg.revolve(0)")
+	assertContains(t, glsl, "sdEgg2D", "2D egg SDF")
+	assertContains(t, glsl, "0.5", "default ra")
+	assertContains(t, glsl, "0.3", "default rb")
+}
+
+func TestEgg_SingleArg(t *testing.T) {
+	glsl := compile(t, "egg(0.4).revolve(0)")
+	assertContains(t, glsl, "sdEgg2D", "2D egg SDF")
+	assertContains(t, glsl, "0.4", "ra param")
+	assertContains(t, glsl, "0.6", "auto rb = ra*0.6")
+}
+
 func TestExtrude_CircleBareIdent(t *testing.T) {
 	glsl := compile(t, "circle.extrude(2)")
 	assertContains(t, glsl, "sdCircle2D", "2D circle SDF from bare ident")
