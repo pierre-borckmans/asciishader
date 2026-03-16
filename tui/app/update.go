@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"asciishader/pkg/core"
+	"asciishader/pkg/gpu"
 	"asciishader/pkg/recorder"
 	"asciishader/pkg/scene"
 	"asciishader/tui/components"
@@ -22,6 +23,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.Width = msg.Width
 		m.Height = msg.Height
+		// Re-detect cell pixel size on resize
+		if cellW, cellH, err := core.GetCellPixelSize(); err == nil {
+			m.Config.CellPixelW = cellW
+			m.Config.CellPixelH = cellH
+			m.ImageSupported = cellW > 0 && cellH > 0
+		}
 		m.ResizeViewport()
 		return m, nil
 
@@ -154,6 +161,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		checkFileChanged(&m)
 
 		// Render frame
+		if m.Config.RenderMode == core.RenderImage && m.ImageSupported {
+			// Viewport origin in 1-indexed terminal coordinates
+			viewRow := HeaderHeight() + 1
+			viewCol := m.Sidebar.Width() + 2 + 1
+			transmit := m.GPU.RenderImageFrame(m.Config, viewRow, viewCol)
+			m.Frame = gpu.BlankFrame(m.Config.Width, m.Config.Height)
+			m.ImageTransmit = transmit
+			if transmit != "" {
+				return m, tea.Batch(Tick(), tea.Raw(transmit))
+			}
+			return m, Tick()
+		}
+		if m.ImageTransmit != "" {
+			// Switching away from image mode — clean up
+			cleanup := m.GPU.CleanupImage()
+			m.ImageTransmit = ""
+			return m, tea.Batch(Tick(), tea.Raw(cleanup))
+		}
 		m.Frame = m.GPU.Render(m.Config)
 
 		return m, Tick()
@@ -619,8 +644,14 @@ func (m Model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		m.AutoRotate = !m.AutoRotate
 	case "m":
 		m.Config.RenderMode = (m.Config.RenderMode + 1) % core.RenderModeCount
+		if m.Config.RenderMode == core.RenderImage && !m.ImageSupported {
+			m.Config.RenderMode = (m.Config.RenderMode + 1) % core.RenderModeCount
+		}
 	case "M":
 		m.Config.RenderMode = (m.Config.RenderMode + core.RenderModeCount - 1) % core.RenderModeCount
+		if m.Config.RenderMode == core.RenderImage && !m.ImageSupported {
+			m.Config.RenderMode = (m.Config.RenderMode + core.RenderModeCount - 1) % core.RenderModeCount
+		}
 	case "v":
 		m.Config.Projection = (m.Config.Projection + 1) % core.ProjectionCount
 		// For isometric, set camera to fixed angle
@@ -654,9 +685,17 @@ func (m Model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 			m.RecMessageTime = time.Now()
 		}
 	case "[":
-		m.Config.Contrast = core.Clamp(m.Config.Contrast-0.25, 0.5, 5.0)
+		if m.Config.RenderMode == core.RenderImage {
+			m.Config.ImageScale = core.Clamp(m.Config.ImageScale-0.1, 0.1, 1.0)
+		} else {
+			m.Config.Contrast = core.Clamp(m.Config.Contrast-0.25, 0.5, 5.0)
+		}
 	case "]":
-		m.Config.Contrast = core.Clamp(m.Config.Contrast+0.25, 0.5, 5.0)
+		if m.Config.RenderMode == core.RenderImage {
+			m.Config.ImageScale = core.Clamp(m.Config.ImageScale+0.1, 0.1, 1.0)
+		} else {
+			m.Config.Contrast = core.Clamp(m.Config.Contrast+0.25, 0.5, 5.0)
+		}
 	case "1":
 		m.Config.Spread = core.Clamp(m.Config.Spread+0.25, 0.25, 3.0)
 	case "!":

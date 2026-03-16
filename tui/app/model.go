@@ -73,11 +73,18 @@ type Model struct {
 	// Profiling
 	Profiling bool
 	ProfFile  *os.File
+
+	// Image mode (Kitty graphics)
+	ImageTransmit  string // Kitty APC escape to send via tea.Raw
+	ImageSupported bool   // whether terminal reports pixel dimensions
 }
 
 // NewModel creates the initial application model with default settings.
 func NewModel() Model {
 	rc := core.NewRenderConfig(80, 24)
+	cellW, cellH, _ := core.GetCellPixelSize()
+	rc.CellPixelW = cellW
+	rc.CellPixelH = cellH
 	rc.Contrast = 1.25
 	rc.Spread = 0.75
 	rc.ExtDist = 1.0
@@ -102,21 +109,22 @@ func NewModel() Model {
 	bp.SetTitle("GLSL Editor")
 
 	return Model{
-		Config:      rc,
-		CamDist:     4.0,
-		Scene:       0,
-		LastFrame:   time.Now(),
-		Sidebar:     sb,
-		RightPanel:  rp,
-		BottomPanel: bp,
-		Controls:    controls.NewControlsTab(),
-		SceneTree:   components.NewTreeView(),
-		Editor:      editor.NewEditorTab(),
-		Focus:       FocusViewport,
-		Mode:        ViewShader,
-		Gallery:     views.NewGalleryView(),
-		HelpView:    views.NewHelpView(),
-		PlayerView:  views.NewPlayerView(),
+		Config:         rc,
+		ImageSupported: cellW > 0 && cellH > 0,
+		CamDist:        4.0,
+		Scene:          0,
+		LastFrame:      time.Now(),
+		Sidebar:        sb,
+		RightPanel:     rp,
+		BottomPanel:    bp,
+		Controls:       controls.NewControlsTab(),
+		SceneTree:      components.NewTreeView(),
+		Editor:         editor.NewEditorTab(),
+		Focus:          FocusViewport,
+		Mode:           ViewShader,
+		Gallery:        views.NewGalleryView(),
+		HelpView:       views.NewHelpView(),
+		PlayerView:     views.NewPlayerView(),
 	}
 }
 

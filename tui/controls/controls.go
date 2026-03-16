@@ -297,6 +297,8 @@ func (ct *ControlsTab) Render(width int, m AppState) string {
 		blocksLabel = " Slice"
 	case core.RenderCost:
 		blocksLabel = " Cost"
+	case core.RenderImage:
+		blocksLabel = " Image"
 	}
 	blocksLine := pad(blocksLabel, width)
 	if ct.focus == ctrlBlocks {

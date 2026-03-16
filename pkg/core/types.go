@@ -9,7 +9,8 @@ const (
 	RenderBlocks    = 2 // quadrant blocks, fg+bg
 	RenderSlice     = 3 // 2D SDF slice heatmap
 	RenderCost      = 4 // raymarching step count heatmap
-	RenderModeCount = 5
+	RenderImage     = 5 // inline image via Kitty graphics protocol
+	RenderModeCount = 6
 )
 
 // Default luminosity compensation. Shapes (ASCII) is the reference.
@@ -91,6 +92,9 @@ type RenderConfig struct {
 	SliceY        float64 // Y position of slice plane
 	BlockGamma    float64 // luminosity compensation for block renderer
 	BrailleGamma  float64 // luminosity compensation for braille renderer
+	CellPixelW    int     // terminal cell width in pixels (for image mode)
+	CellPixelH    int     // terminal cell height in pixels (for image mode)
+	ImageScale    float64 // image mode resolution scale (0.25–1.0, default 0.5)
 }
 
 // Projection mode constants
@@ -116,6 +120,7 @@ func NewRenderConfig(w, h int) *RenderConfig {
 		OrthoScale:   3.0,
 		BlockGamma:   DefaultBlockGamma,
 		BrailleGamma: DefaultBrailleGamma,
+		ImageScale:   0.5,
 	}
 }
 

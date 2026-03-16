@@ -40,6 +40,8 @@ func (m Model) View() tea.View {
 			modeStr = "SLICE"
 		case core.RenderCost:
 			modeStr = "COST"
+		case core.RenderImage:
+			modeStr = fmt.Sprintf("IMAGE %d%%", int(m.Config.ImageScale*100))
 		}
 		// Projection mode
 		switch m.Config.Projection {
@@ -129,10 +131,17 @@ func (m Model) View() tea.View {
 			{Key: "s", Desc: "controls"},
 			{Key: "e", Desc: "editor"},
 			{Key: "m", Desc: "mode"},
-			{Key: "tab", Desc: "focus"},
-			{Key: "space", Desc: "pause"},
-			{Key: "q", Desc: "quit"},
 		}
+		if m.Config.RenderMode == core.RenderImage {
+			bindings = append(bindings, layout.FooterBinding{Key: "[/]", Desc: "resolution"})
+		} else {
+			bindings = append(bindings, layout.FooterBinding{Key: "[/]", Desc: "contrast"})
+		}
+		bindings = append(bindings,
+			layout.FooterBinding{Key: "tab", Desc: "focus"},
+			layout.FooterBinding{Key: "space", Desc: "pause"},
+			layout.FooterBinding{Key: "q", Desc: "quit"},
+		)
 		switch m.Focus {
 		case FocusControls:
 			focusStr = "[Controls]"

@@ -32,6 +32,8 @@ static int initCGLContext() {
 import "C"
 
 import (
+	"bytes"
+	"compress/zlib"
 	"fmt"
 	"runtime"
 	"unsafe"
@@ -71,6 +73,17 @@ type GPURenderer struct {
 	// Reusable buffers (avoid per-frame allocation)
 	cellBuf [][]core.Cell
 	ansiBuf []byte
+
+	// Image mode buffers and state (reused across frames)
+	imgRGB     []byte
+	imgZBuf    bytes.Buffer
+	imgB64     bytes.Buffer
+	imgZlib    *zlib.Writer
+	imgPlaced  bool
+	imgLastRow int
+	imgLastCol int
+	imgLastW   int
+	imgLastH   int
 
 	// Hot-reload state
 	userCode   string // current user GLSL code
@@ -259,6 +272,8 @@ func renderSubPixels(mode int) (subW, subH int) {
 		return 1, 2 // half-block for color fidelity
 	case core.RenderCost:
 		return 1, 2
+	case core.RenderImage:
+		return 1, 1 // image mode uses RenderImageFrame directly
 	default: // RenderBlocks, RenderBraille use 2×4
 		return 2, 4
 	}
@@ -641,6 +656,7 @@ func (g *GPURenderer) renderCellsBraille(r *core.RenderConfig, tw, th int) [][]c
 }
 
 func (g *GPURenderer) Destroy() {
+	g.CleanupImage()
 	if g.program != 0 {
 		gl.DeleteProgram(g.program)
 	}
