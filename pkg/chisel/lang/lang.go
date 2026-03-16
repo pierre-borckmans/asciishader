@@ -93,6 +93,7 @@ var Methods = []Method{
 	{"at", ".at(x, y, z)\nTranslate. Named args: at(x: 2) or at(y: -1).", false},
 	{"scale", ".scale(s) or .scale(x, y, z)\nScale uniformly or per-axis.", false},
 	{"rot", ".rot(degrees, axis)\nRotate around an axis.", false},
+	{"quat", ".quat(x, y, z, w)\nRotate by quaternion.", false},
 	{"orient", ".orient(axis)\nAlign shape along a direction.", false},
 	{"mirror", ".mirror(axes...)\nMirror across axes. O(1) space folding.", false},
 	{"rep", ".rep(spacing) or .rep(spacing, count: N)\nRepeat in space. O(1).", false},

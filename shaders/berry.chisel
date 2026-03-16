@@ -1,3 +1,33 @@
-// Debug: petal ring
-// Offset the revolved egg from center, then array 6 copies around Y
-egg(0.116, 0.034, 0.1, 0.5).revolve(0).at(x: 0.026).rot(90,z).array(6, radius: 0).color(#3010aa)
+// Berry — 3 petal rings with exact quaternions from editor
+
+// Top ring (solid revolve)
+//   .quat(0.5, 0.5, 0.5, 0.5)
+ring_top = egg(0.116, 0.034, 0.1, 0.5)
+  .revolve(0)
+  .rot(x:45,y:0,z:-90)
+//   .at(x:0.026)
+//   .array(6, radius: 0.0, axis: x)
+//   .color(#5a4bbf)
+//   .at(0.091,0.628,0)
+//
+//
+// ring_mid = egg(0.116, 0.011, 0.1, 0.5)
+//   .revolve(0)
+//   .at(x:0.105)
+//   .array(6, radius: 0.0, axis: x)
+//   .color(#5a4bbf00)
+//   .at(0.079,0.494,0)
+
+//
+// // Bottom ring (same shape as top, lower)
+// ring_bot = egg(0.116, 0.034, 0.1, 0.5)
+//   .revolve(0)
+//   .at(x: 0.026)
+//   .array(6, radius: 0)
+//   .quat(0.5, -0.5, -0.5, 0.5)
+//   .at(0.091, 0.356, 0)
+//   .color(#1a1187)
+
+ring_top.color(#5a4bbf)
+//  |^0.02 ring_mid
+// |^0.015 ring_bot
