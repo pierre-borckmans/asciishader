@@ -206,8 +206,11 @@ func convertHorseshoe(arr []json.RawMessage) string {
 	var opParams [3]float64
 	json.Unmarshal(arr[3], &opParams)
 
+	// Horseshoe params from editor UI:
+	// [angle, radius, width, length, thickness, corners]
+	// 2D horseshoe: angle, radius, length(le), thickness(arm width)
 	hs := fmt.Sprintf("horseshoe(%s, %s, %s, %s)",
-		f(params[0]), f(params[1]), f(params[2]), f(params[3]))
+		f(params[0]), f(params[1]), f(params[3]), f(params[4]))
 
 	if op == "Extrude" {
 		args := f(opParams[0] * 2)

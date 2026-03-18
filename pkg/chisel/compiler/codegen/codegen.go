@@ -2841,10 +2841,10 @@ func isBuiltinShape(name string) bool {
 
 // builtin2DShapeNames lists the 2D shape identifiers that require extrude/revolve.
 var builtin2DShapeNames = map[string]bool{
-	"circle":   true,
-	"rect":     true,
-	"hexagon":  true,
-	"triangle": true,
+	"circle":    true,
+	"rect":      true,
+	"hexagon":   true,
+	"triangle":  true,
 	"egg":       true,
 	"softbox":   true,
 	"horseshoe": true,
@@ -2871,7 +2871,7 @@ func shape2DDefault(name, p2d string) string {
 	case "softbox":
 		return fmt.Sprintf("sdSoftBox2D(%s, vec2(0.5), vec4(0.1))", p2d)
 	case "horseshoe":
-		return fmt.Sprintf("sdHorseshoe2D(%s, vec2(0.866, 0.5), 0.3, 0.3)", p2d)
+		return fmt.Sprintf("sdHorseshoe2D(%s, 1.0, 0.3, 0.3, 0.05)", p2d)
 	}
 	return fmt.Sprintf("sdCircle2D(%s, 1.0)", p2d)
 }
@@ -2935,7 +2935,8 @@ func (g *generator) shape2DCall(name, p2d string, args []ast.Arg) string {
 		angle := g.emitScalarExpr(args[0].Value)
 		r := g.scalarArgOr(args, 1, "0.3")
 		le := g.scalarArgOr(args, 2, "0.0")
-		return fmt.Sprintf("sdHorseshoe2D(%s, vec2(sin(%s), cos(%s)), %s, %s)", p2d, angle, angle, r, le)
+		th := g.scalarArgOr(args, 3, "0.05")
+		return fmt.Sprintf("sdHorseshoe2D(%s, %s, %s, %s, %s)", p2d, angle, r, le, th)
 	}
 
 	return fmt.Sprintf("sdCircle2D(%s, 1.0)", p2d)
@@ -3363,7 +3364,7 @@ func (g *generator) shapeCall(name, pv string, args []ast.Arg) string {
 		r := g.scalarArgOr(args, 1, "0.3")
 		le := g.scalarArgOr(args, 2, "0.3")
 		w := g.scalarArgOr(args, 3, "0.1")
-		return fmt.Sprintf("sdHorseshoe(%s, vec2(sin(%s), cos(%s)), %s, %s, vec2(%s))", pv, angle, angle, r, le, w)
+		return fmt.Sprintf("sdHorseshoe(%s, vec2(cos(%s), sin(%s)), %s, %s, vec2(%s))", pv, angle, angle, r, le, w)
 
 	case "rounded_cylinder":
 		if len(args) == 0 {
