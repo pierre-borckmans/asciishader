@@ -432,18 +432,21 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if m.MouseDrag {
 			dx := mouse.X - m.MouseLastX
 			dy := mouse.Y - m.MouseLastY
-			m.CamAngleYTarget += float64(dx) * 0.08
-			m.CamAngleXTarget = core.Clamp(m.CamAngleXTarget+float64(dy)*0.08, -math.Pi/2+0.1, math.Pi/2-0.1)
+			m.CamAngleYTarget += float64(dx) * 0.04
+			m.CamAngleXTarget = core.Clamp(m.CamAngleXTarget+float64(dy)*0.04, -math.Pi/2+0.01, math.Pi/2-0.01)
 			m.MouseLastX = mouse.X
 			m.MouseLastY = mouse.Y
 		}
 		if m.MousePan {
 			dx := mouse.X - m.MouseLastX
 			dy := mouse.Y - m.MouseLastY
-			right := core.Vec3{X: math.Cos(m.CamAngleY), Y: 0, Z: math.Sin(m.CamAngleY)}
-			up := core.V(0, 1, 0)
+			// Pan in the camera's view plane
+			fwd := m.Config.Camera.Target.Sub(m.Config.Camera.Pos).Normalize()
+			worldUp := core.V(0, 1, 0)
+			right := fwd.Cross(worldUp).Normalize()
+			up := right.Cross(fwd).Normalize()
 			panSpeed := m.CamDistTarget * 0.01
-			m.CamTargetTarget = m.CamTargetTarget.Add(right.Mul(float64(dx) * panSpeed))
+			m.CamTargetTarget = m.CamTargetTarget.Add(right.Mul(float64(-dx) * panSpeed))
 			m.CamTargetTarget = m.CamTargetTarget.Add(up.Mul(float64(dy) * panSpeed * 2.2))
 			m.MouseLastX = mouse.X
 			m.MouseLastY = mouse.Y
@@ -645,10 +648,10 @@ func (m Model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		m.CamAngleYTarget += 0.15
 		m.AutoRotate = false
 	case "up", "k":
-		m.CamAngleXTarget = core.Clamp(m.CamAngleXTarget+0.1, -math.Pi/2+0.1, math.Pi/2-0.1)
+		m.CamAngleXTarget = core.Clamp(m.CamAngleXTarget+0.1, -math.Pi/2+0.01, math.Pi/2-0.01)
 		m.AutoRotate = false
 	case "down", "j":
-		m.CamAngleXTarget = core.Clamp(m.CamAngleXTarget-0.1, -math.Pi/2+0.1, math.Pi/2-0.1)
+		m.CamAngleXTarget = core.Clamp(m.CamAngleXTarget-0.1, -math.Pi/2+0.01, math.Pi/2-0.01)
 		m.AutoRotate = false
 	case "+", "=":
 		m.CamDistTarget = core.Clamp(m.CamDistTarget*0.92, 0.5, 30)
