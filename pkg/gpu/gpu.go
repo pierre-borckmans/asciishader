@@ -34,6 +34,7 @@ import "C"
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"runtime"
 	"unsafe"
 
@@ -43,6 +44,9 @@ import (
 	"github.com/go-gl/gl/v4.1-core/gl"
 	"github.com/klauspost/compress/zlib"
 )
+
+// pidOnce is used to create unique shm segment names.
+var pidOnce = os.Getpid()
 
 const vertexShaderSource = `#version 150
 in vec2 position;
@@ -74,7 +78,11 @@ type GPURenderer struct {
 	cellBuf [][]core.Cell
 	ansiBuf []byte
 
-	// Image mode: double-buffered RGB + pipelined encode
+	// Image mode: shm path + zlib fallback with pipelining
+	imgShmOK      bool
+	imgShm        [2]*shmSegment
+	imgShmIdx     int
+	imgShmCounter int
 	imgRGBBufs    [2][]byte
 	imgBufIdx     int
 	imgZBuf       bytes.Buffer
@@ -135,6 +143,7 @@ func NewGPURenderer() (*GPURenderer, error) {
 		userCode:   shader.DefaultUserCode,
 		ShapeTable: core.NewShapeTable(),
 		imgEncOut:  make(chan imgEncResult, 1),
+		imgShmOK:   true, // try shm first, falls back to zlib
 	}
 
 	g.cacheUniforms()

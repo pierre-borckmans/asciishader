@@ -80,6 +80,8 @@ type Model struct {
 	ImageGPUMs     float64
 	ImageZlibMs    float64
 	ImageB64Ms     float64
+	ImageShmMode   bool // true when using shm path
+	FPSHovered     bool
 }
 
 // NewModel creates the initial application model with default settings.

@@ -104,12 +104,7 @@ func (m Model) View() tea.View {
 			fileType = " [glsl]"
 		}
 		headerTitle = fmt.Sprintf("ASCII Shader  ·  %s%s", s.Name, fileType)
-		if m.Config.RenderMode == core.RenderImage {
-			rightInfo = fmt.Sprintf("%s | %.0f fps | gpu %.1f zlib %.1f b64 %.1f ms%s%s",
-				modeStr, m.FPS, m.ImageGPUMs, m.ImageZlibMs, m.ImageB64Ms, pauseStr, recStr)
-		} else {
-			rightInfo = fmt.Sprintf("%s | %.0f fps%s%s", modeStr, m.FPS, pauseStr, recStr)
-		}
+		rightInfo = fmt.Sprintf("%s | %.0f fps%s%s", modeStr, m.FPS, pauseStr, recStr)
 		rpWidth = m.RightPanel.Width()
 	case ViewPlayer:
 		headerTitle = "ASCII Shader  ·  Player"
@@ -322,6 +317,18 @@ func (m Model) View() tea.View {
 	var tooltips []components.Tooltip
 	if tip := m.Sidebar.ActiveTooltip(hh); tip != nil {
 		tooltips = append(tooltips, *tip)
+	}
+	if m.FPSHovered && m.Mode == ViewShader && m.Config.RenderMode == core.RenderImage {
+		label := "shm"
+		if !m.ImageShmMode {
+			label = "zlib"
+		}
+		text := fmt.Sprintf("gpu %.1fms  %s %.1fms", m.ImageGPUMs, label, m.ImageZlibMs)
+		tooltips = append(tooltips, components.Tooltip{
+			Text: text,
+			Row:  3, // just below header
+			Col:  m.Width - lipgloss.Width(text) - 6,
+		})
 	}
 	if len(tooltips) > 0 {
 		composed = components.OverlayTooltips(composed, tooltips)

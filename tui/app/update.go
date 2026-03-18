@@ -171,6 +171,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.ImageGPUMs = float64(timing.GPU.Microseconds()) / 1000
 			m.ImageZlibMs = float64(timing.Zlib.Microseconds()) / 1000
 			m.ImageB64Ms = float64(timing.Base64.Microseconds()) / 1000
+			m.ImageShmMode = timing.Base64 == 0 && timing.Zlib > 0
 			if transmit != "" {
 				return m, tea.Batch(Tick(), tea.Raw(transmit))
 			}
@@ -205,6 +206,16 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if m.SceneTree.HandleColorPickerMouse(msg, m.Width, m.Height) {
 			processTreeActions(&m)
 			return m, nil
+		}
+	}
+
+	// FPS hover detection (header title bar is row 1, 0-indexed)
+	if _, ok := msg.(tea.MouseMotionMsg); ok {
+		// The FPS text is right-aligned in the header. Detect hover on header row 1,
+		// within the last ~20 chars (approximate FPS region).
+		fpsHovered := mouse.Y == 1 && mouse.X >= m.Width-20
+		if fpsHovered != m.FPSHovered {
+			m.FPSHovered = fpsHovered
 		}
 	}
 
