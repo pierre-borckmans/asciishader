@@ -120,7 +120,7 @@ func NewRenderConfig(w, h int) *RenderConfig {
 		OrthoScale:   3.0,
 		BlockGamma:   DefaultBlockGamma,
 		BrailleGamma: DefaultBrailleGamma,
-		ImageScale:   0.5,
+		ImageScale:   1.0,
 	}
 }
 

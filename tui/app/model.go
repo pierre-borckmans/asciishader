@@ -26,10 +26,14 @@ type Model struct {
 	Time          float64
 	Scene         int
 	Paused        bool
-	CamAngleY     float64
-	CamAngleX     float64
-	CamDist       float64
-	CamTarget     core.Vec3
+	CamAngleY       float64
+	CamAngleX       float64
+	CamAngleYTarget float64
+	CamAngleXTarget float64
+	CamDist         float64
+	CamDistTarget   float64
+	CamTarget       core.Vec3
+	CamTargetTarget core.Vec3
 	AutoRotate    bool
 	MouseLastX    int
 	MouseLastY    int
@@ -117,6 +121,7 @@ func NewModel() Model {
 		Config:         rc,
 		ImageSupported: cellW > 0 && cellH > 0,
 		CamDist:        4.0,
+		CamDistTarget:  4.0,
 		Scene:          0,
 		LastFrame:      time.Now(),
 		Sidebar:        sb,

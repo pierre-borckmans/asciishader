@@ -79,7 +79,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.AutoRotate && !m.Paused {
-			m.CamAngleY += dt * 0.3
+			m.CamAngleYTarget += dt * 0.3
+		}
+
+		// Smooth camera: exponential lerp toward targets
+		tZoom := 1 - math.Exp(-12*dt)
+		tOrbit := 1 - math.Exp(-25*dt)
+		if m.CamDist != m.CamDistTarget {
+			m.CamDist += (m.CamDistTarget - m.CamDist) * tZoom
+			if math.Abs(m.CamDist-m.CamDistTarget) < 0.001 {
+				m.CamDist = m.CamDistTarget
+			}
+		}
+		if m.CamAngleY != m.CamAngleYTarget || m.CamAngleX != m.CamAngleXTarget {
+			m.CamAngleY += (m.CamAngleYTarget - m.CamAngleY) * tOrbit
+			m.CamAngleX += (m.CamAngleXTarget - m.CamAngleX) * tOrbit
+			if math.Abs(m.CamAngleY-m.CamAngleYTarget) < 0.0001 {
+				m.CamAngleY = m.CamAngleYTarget
+			}
+			if math.Abs(m.CamAngleX-m.CamAngleXTarget) < 0.0001 {
+				m.CamAngleX = m.CamAngleXTarget
+			}
+		}
+		if m.CamTarget != m.CamTargetTarget {
+			m.CamTarget.X += (m.CamTargetTarget.X - m.CamTarget.X) * tOrbit
+			m.CamTarget.Y += (m.CamTargetTarget.Y - m.CamTarget.Y) * tOrbit
+			m.CamTarget.Z += (m.CamTargetTarget.Z - m.CamTarget.Z) * tOrbit
 		}
 
 		// Update camera (orbit around CamTarget)
@@ -377,15 +402,15 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 					dy = -dy
 				}
 				if now.Sub(m.LastClickTime) < 300*time.Millisecond && dx < 3 && dy < 3 {
-					m.CamDist = 4.0
-					m.CamTarget = core.V(0, 0, 0)
+					m.CamDistTarget = 4.0
+					m.CamTargetTarget = core.V(0, 0, 0)
 					m.AutoRotate = false
 					if m.Config.Projection == core.ProjectionIsometric {
-						m.CamAngleY = 0.785 // 45°
-						m.CamAngleX = 0.615 // ~35.26°
+						m.CamAngleYTarget = 0.785 // 45°
+						m.CamAngleXTarget = 0.615 // ~35.26°
 					} else {
-						m.CamAngleX = 0
-						m.CamAngleY = 0
+						m.CamAngleXTarget = 0
+						m.CamAngleYTarget = 0
 					}
 					m.LastClickTime = time.Time{}
 					return m, nil
@@ -411,20 +436,21 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if m.MouseDrag {
 			dx := mouse.X - m.MouseLastX
 			dy := mouse.Y - m.MouseLastY
-			m.CamAngleY += float64(dx) * 0.02
-			m.CamAngleX = core.Clamp(m.CamAngleX+float64(dy)*0.05, -math.Pi/2+0.1, math.Pi/2-0.1)
+			// Scale orbit speed with zoom so it feels consistent at any distance
+			orbitScale := m.CamDistTarget / 4.0
+			m.CamAngleYTarget += float64(dx) * 0.01 * orbitScale
+			m.CamAngleXTarget = core.Clamp(m.CamAngleXTarget+float64(dy)*0.025*orbitScale, -math.Pi/2+0.1, math.Pi/2-0.1)
 			m.MouseLastX = mouse.X
 			m.MouseLastY = mouse.Y
 		}
 		if m.MousePan {
 			dx := mouse.X - m.MouseLastX
 			dy := mouse.Y - m.MouseLastY
-			// Pan in camera's right/up plane
 			right := core.Vec3{X: math.Cos(m.CamAngleY), Y: 0, Z: math.Sin(m.CamAngleY)}
 			up := core.V(0, 1, 0)
 			panSpeed := m.CamDist * 0.01
-			m.CamTarget = m.CamTarget.Add(right.Mul(float64(dx) * panSpeed))
-			m.CamTarget = m.CamTarget.Add(up.Mul(float64(dy) * panSpeed * 2.2))
+			m.CamTargetTarget = m.CamTargetTarget.Add(right.Mul(float64(dx) * panSpeed))
+			m.CamTargetTarget = m.CamTargetTarget.Add(up.Mul(float64(dy) * panSpeed * 2.2))
 			m.MouseLastX = mouse.X
 			m.MouseLastY = mouse.Y
 		}
@@ -435,16 +461,16 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				fwd := m.Config.Camera.Target.Sub(m.Config.Camera.Pos).Normalize()
 				step := m.CamDist * 0.05
 				if mouse.Button == tea.MouseWheelUp {
-					m.CamTarget = m.CamTarget.Add(fwd.Mul(step))
+					m.CamTargetTarget = m.CamTargetTarget.Add(fwd.Mul(step))
 				} else if mouse.Button == tea.MouseWheelDown {
-					m.CamTarget = m.CamTarget.Sub(fwd.Mul(step))
+					m.CamTargetTarget = m.CamTargetTarget.Sub(fwd.Mul(step))
 				}
 			} else {
-				// Normal scroll = zoom
+				// Normal scroll = zoom (set target, lerp in tick)
 				if mouse.Button == tea.MouseWheelUp {
-					m.CamDist = core.Clamp(m.CamDist*0.92, 0.5, 30)
+					m.CamDistTarget = core.Clamp(m.CamDistTarget*0.92, 0.5, 30)
 				} else if mouse.Button == tea.MouseWheelDown {
-					m.CamDist = core.Clamp(m.CamDist/0.92, 0.5, 30)
+					m.CamDistTarget = core.Clamp(m.CamDistTarget/0.92, 0.5, 30)
 				}
 			}
 		}
@@ -619,21 +645,21 @@ func (m Model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Quit
 	case "left", "h":
-		m.CamAngleY -= 0.15
+		m.CamAngleYTarget -= 0.15
 		m.AutoRotate = false
 	case "right", "l":
-		m.CamAngleY += 0.15
+		m.CamAngleYTarget += 0.15
 		m.AutoRotate = false
 	case "up", "k":
-		m.CamAngleX = core.Clamp(m.CamAngleX+0.1, -math.Pi/2+0.1, math.Pi/2-0.1)
+		m.CamAngleXTarget = core.Clamp(m.CamAngleXTarget+0.1, -math.Pi/2+0.1, math.Pi/2-0.1)
 		m.AutoRotate = false
 	case "down", "j":
-		m.CamAngleX = core.Clamp(m.CamAngleX-0.1, -math.Pi/2+0.1, math.Pi/2-0.1)
+		m.CamAngleXTarget = core.Clamp(m.CamAngleXTarget-0.1, -math.Pi/2+0.1, math.Pi/2-0.1)
 		m.AutoRotate = false
 	case "+", "=":
-		m.CamDist = core.Clamp(m.CamDist*0.92, 0.5, 30)
+		m.CamDistTarget = core.Clamp(m.CamDistTarget*0.92, 0.5, 30)
 	case "-", "_":
-		m.CamDist = core.Clamp(m.CamDist/0.92, 0.5, 30)
+		m.CamDistTarget = core.Clamp(m.CamDistTarget/0.92, 0.5, 30)
 	case "tab":
 		// Cycle focus: viewport → controls (if open) → editor (if open) → viewport
 		if m.RightPanel.IsExpanded() {
@@ -670,8 +696,8 @@ func (m Model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		m.Config.Projection = (m.Config.Projection + 1) % core.ProjectionCount
 		// For isometric, set camera to fixed angle
 		if m.Config.Projection == core.ProjectionIsometric {
-			m.CamAngleY = 0.785 // 45°
-			m.CamAngleX = 0.615 // ~35.26° (arctan(1/√2))
+			m.CamAngleYTarget = 0.785 // 45°
+			m.CamAngleXTarget = 0.615 // ~35.26° (arctan(1/√2))
 		}
 	case "p":
 		if !m.Profiling {
@@ -735,15 +761,15 @@ func (m Model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 	case "^":
 		m.Config.AOSteps = max(m.Config.AOSteps-1, 0)
 	case "r":
-		m.CamDist = 4.0
-		m.CamTarget = core.V(0, 0, 0)
+		m.CamDistTarget = 4.0
+		m.CamTargetTarget = core.V(0, 0, 0)
 		m.AutoRotate = false
 		if m.Config.Projection == core.ProjectionIsometric {
-			m.CamAngleY = 0.785
-			m.CamAngleX = 0.615
+			m.CamAngleYTarget = 0.785
+			m.CamAngleXTarget = 0.615
 		} else {
-			m.CamAngleX = 0
-			m.CamAngleY = 0
+			m.CamAngleXTarget = 0
+			m.CamAngleYTarget = 0
 		}
 		m.Config.Contrast = 1.25
 		m.Config.Spread = 0.75
