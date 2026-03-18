@@ -74,16 +74,19 @@ type GPURenderer struct {
 	cellBuf [][]core.Cell
 	ansiBuf []byte
 
-	// Image mode buffers and state (reused across frames)
-	imgRGB     []byte
-	imgZBuf    bytes.Buffer
-	imgB64     bytes.Buffer
-	imgZlib    *zlib.Writer
-	imgPlaced  bool
-	imgLastRow int
-	imgLastCol int
-	imgLastW   int
-	imgLastH   int
+	// Image mode: double-buffered RGB + pipelined encode
+	imgRGBBufs    [2][]byte
+	imgBufIdx     int
+	imgZBuf       bytes.Buffer
+	imgB64        bytes.Buffer
+	imgZlib       *zlib.Writer
+	imgEncOut     chan imgEncResult
+	imgEncPending bool
+	imgPlaced     bool
+	imgLastRow    int
+	imgLastCol    int
+	imgLastW      int
+	imgLastH      int
 
 	// Hot-reload state
 	userCode   string // current user GLSL code
@@ -131,6 +134,7 @@ func NewGPURenderer() (*GPURenderer, error) {
 		vao:        vao,
 		userCode:   shader.DefaultUserCode,
 		ShapeTable: core.NewShapeTable(),
+		imgEncOut:  make(chan imgEncResult, 1),
 	}
 
 	g.cacheUniforms()
