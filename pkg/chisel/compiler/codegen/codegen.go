@@ -2819,7 +2819,7 @@ var builtinShapeNames = map[string]bool{
 	"capped_cone":      true,
 	"solid_angle":      true,
 	"rhombus":          true,
-	"horseshoe":        true,
+	"horseshoe3d":      true,
 	"rounded_cylinder": true,
 	"tetrahedron":      true,
 	"dodecahedron":     true,
@@ -2845,8 +2845,9 @@ var builtin2DShapeNames = map[string]bool{
 	"rect":     true,
 	"hexagon":  true,
 	"triangle": true,
-	"egg":      true,
-	"softbox":  true,
+	"egg":       true,
+	"softbox":   true,
+	"horseshoe": true,
 }
 
 // is2DShape reports whether name is a 2D shape primitive.
@@ -2869,6 +2870,8 @@ func shape2DDefault(name, p2d string) string {
 		return fmt.Sprintf("sdEgg2D(%s, 0.5, 0.3, 0.2, 0.5)", p2d)
 	case "softbox":
 		return fmt.Sprintf("sdSoftBox2D(%s, vec2(0.5), vec4(0.1))", p2d)
+	case "horseshoe":
+		return fmt.Sprintf("sdHorseshoe2D(%s, vec2(0.866, 0.5), 0.3, 0.3)", p2d)
 	}
 	return fmt.Sprintf("sdCircle2D(%s, 1.0)", p2d)
 }
@@ -2927,6 +2930,12 @@ func (g *generator) shape2DCall(name, p2d string, args []ast.Arg) string {
 		r3 := g.scalarArgOr(args, 4, "0.0")
 		r4 := g.scalarArgOr(args, 5, "0.0")
 		return fmt.Sprintf("sdSoftBox2D(%s, vec2((%s)*0.5, (%s)*0.5), vec4(%s, %s, %s, %s))", p2d, bx, by, r1, r2, r3, r4)
+
+	case "horseshoe":
+		angle := g.emitScalarExpr(args[0].Value)
+		r := g.scalarArgOr(args, 1, "0.3")
+		le := g.scalarArgOr(args, 2, "0.0")
+		return fmt.Sprintf("sdHorseshoe2D(%s, vec2(sin(%s), cos(%s)), %s, %s)", p2d, angle, angle, r, le)
 	}
 
 	return fmt.Sprintf("sdCircle2D(%s, 1.0)", p2d)
@@ -3090,7 +3099,7 @@ func shapeDefault(name, pv string) string {
 		return fmt.Sprintf("sdSolidAngle(%s, vec2(0.6, 0.8), 0.4)", pv)
 	case "rhombus":
 		return fmt.Sprintf("sdRhombus(%s, 0.5, 0.5, 0.1, 0.05)", pv)
-	case "horseshoe":
+	case "horseshoe3d":
 		return fmt.Sprintf("sdHorseshoe(%s, vec2(0.866, 0.5), 0.3, 0.3, vec2(0.05, 0.1))", pv)
 	case "rounded_cylinder":
 		return fmt.Sprintf("sdRoundedCylinder(%s, 0.5, 0.1, 0.5)", pv)
@@ -3349,7 +3358,7 @@ func (g *generator) shapeCall(name, pv string, args []ast.Arg) string {
 		ra := g.scalarArgOr(args, 3, "0.05")
 		return fmt.Sprintf("sdRhombus(%s, %s, %s, %s, %s)", pv, la, lb, h, ra)
 
-	case "horseshoe":
+	case "horseshoe3d":
 		angle := g.emitScalarExpr(args[0].Value)
 		r := g.scalarArgOr(args, 1, "0.3")
 		le := g.scalarArgOr(args, 2, "0.3")

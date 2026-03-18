@@ -67,7 +67,7 @@ var Shapes3D = []Shape{
 	{"capped_cone", false, 0, 4, "capped_cone(a, b, ra, rb)\nCapped cone between endpoints."},
 	{"solid_angle", false, 0, 2, "solid_angle(angle, radius)\nSolid angle sector."},
 	{"rhombus", false, 0, 4, "rhombus(la, lb, h, ra)\nRhombus shape."},
-	{"horseshoe", false, 1, 4, "horseshoe(angle, r, thickness, width)\nHorseshoe/arc."},
+	{"horseshoe3d", false, 1, 4, "horseshoe3d(angle, r, thickness, width)\nHorseshoe/arc (3D)."},
 	{"rounded_cylinder", false, 0, 3, "rounded_cylinder(radius, height, rounding)\nCylinder with rounded edges."},
 	{"tetrahedron", false, 0, 1, "tetrahedron(size = 1)\nRegular tetrahedron."},
 	{"dodecahedron", false, 0, 1, "dodecahedron(size = 1)\nRegular dodecahedron."},
@@ -85,6 +85,7 @@ var Shapes2D = []Shape{
 	{"triangle", true, 0, 1, "triangle(size = 1)\n2D equilateral triangle."},
 	{"egg", true, 0, 4, "egg(he, ra, rb, bu)\n2D egg/ovoid. he=height, ra=top radius, rb=bottom radius, bu=bulge."},
 	{"softbox", true, 2, 6, "softbox(bx, by, r1, r2, r3, r4)\n2D rounded box with 4 independent corner radii."},
+	{"horseshoe", true, 1, 4, "horseshoe(angle, r, le, w)\n2D horseshoe/arc. Use .extrude() or .revolve()."},
 }
 
 // --- Methods ---

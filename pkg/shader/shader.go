@@ -364,6 +364,16 @@ float sdEgg2D(vec2 p, float he, float ra, float rb, float bu) {
     return min(length(p) - ra, length(vec2(p.x, p.y - he)) - rb);
 }
 
+float sdHorseshoe2D(vec2 p, vec2 c, float r, float le) {
+    p.x = abs(p.x);
+    float l = length(p);
+    p = mat2(-c.x, c.y, c.y, c.x) * p;
+    p = vec2((p.y > 0.0 || p.x > 0.0) ? p.x : l * sign(-c.x),
+             (p.x > 0.0) ? p.y : l);
+    p = vec2(p.x, abs(p.y - r)) - vec2(le, 0.0);
+    return length(max(p, 0.0)) + min(0.0, max(p.x, p.y));
+}
+
 // ---- 2D to 3D Operations ----
 
 float sdExtrude(float d2d, float pz, float h) {
