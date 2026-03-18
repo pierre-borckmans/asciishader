@@ -33,7 +33,6 @@ import "C"
 
 import (
 	"bytes"
-	"compress/zlib"
 	"fmt"
 	"runtime"
 	"unsafe"
@@ -42,6 +41,7 @@ import (
 	"asciishader/pkg/shader"
 
 	"github.com/go-gl/gl/v4.1-core/gl"
+	"github.com/klauspost/compress/zlib"
 )
 
 const vertexShaderSource = `#version 150

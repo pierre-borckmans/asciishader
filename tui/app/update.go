@@ -165,9 +165,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Viewport origin in 1-indexed terminal coordinates
 			viewRow := HeaderHeight() + 1
 			viewCol := m.Sidebar.Width() + 2 + 1
-			transmit := m.GPU.RenderImageFrame(m.Config, viewRow, viewCol)
+			transmit, timing := m.GPU.RenderImageFrame(m.Config, viewRow, viewCol)
 			m.Frame = gpu.BlankFrame(m.Config.Width, m.Config.Height)
 			m.ImageTransmit = transmit
+			m.ImageGPUMs = float64(timing.GPU.Microseconds()) / 1000
+			m.ImageZlibMs = float64(timing.Zlib.Microseconds()) / 1000
+			m.ImageB64Ms = float64(timing.Base64.Microseconds()) / 1000
 			if transmit != "" {
 				return m, tea.Batch(Tick(), tea.Raw(transmit))
 			}

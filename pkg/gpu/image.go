@@ -1,23 +1,32 @@
 package gpu
 
 import (
-	"compress/zlib"
 	"encoding/base64"
 	"fmt"
 	"strings"
+	"time"
 
 	"asciishader/pkg/core"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/ansi/kitty"
+	"github.com/klauspost/compress/zlib"
 )
+
+// ImageTiming holds per-frame timing breakdown for image mode.
+type ImageTiming struct {
+	GPU    time.Duration
+	Zlib   time.Duration
+	Base64 time.Duration
+}
 
 // RenderImageFrame renders at full pixel resolution and returns a Kitty graphics
 // escape sequence that positions and displays the image directly.
 // viewRow and viewCol are 1-indexed terminal coordinates of the viewport origin.
-func (g *GPURenderer) RenderImageFrame(r *core.RenderConfig, viewRow, viewCol int) string {
+func (g *GPURenderer) RenderImageFrame(r *core.RenderConfig, viewRow, viewCol int) (string, ImageTiming) {
+	var timing ImageTiming
 	if r.CellPixelW <= 0 || r.CellPixelH <= 0 {
-		return ""
+		return "", timing
 	}
 
 	// Render at scaled pixel resolution
@@ -27,7 +36,10 @@ func (g *GPURenderer) RenderImageFrame(r *core.RenderConfig, viewRow, viewCol in
 	}
 	subW := max(int(float64(r.CellPixelW)*scale+0.5), 1)
 	subH := max(int(float64(r.CellPixelH)*scale+0.5), 1)
+
+	t0 := time.Now()
 	g.renderPass(r, subW, subH)
+	timing.GPU = time.Since(t0)
 
 	// Extract RGB bytes directly from the RGBA pixel buffer (skip alpha).
 	npx := g.pixW * g.pixH
@@ -44,9 +56,8 @@ func (g *GPURenderer) RenderImageFrame(r *core.RenderConfig, viewRow, viewCol in
 		j += 3
 	}
 
-	// Zlib compress with BestSpeed — LZ77 matching compresses image data well
-	// enough to avoid saturating terminal I/O, while being the fastest level
-	// that does meaningful compression.
+	// Zlib compress with BestSpeed — best balance of compression ratio vs CPU.
+	t1 := time.Now()
 	g.imgZBuf.Reset()
 	if g.imgZlib == nil {
 		g.imgZlib, _ = zlib.NewWriterLevel(&g.imgZBuf, zlib.BestSpeed)
@@ -55,8 +66,10 @@ func (g *GPURenderer) RenderImageFrame(r *core.RenderConfig, viewRow, viewCol in
 	}
 	_, _ = g.imgZlib.Write(g.imgRGB)
 	_ = g.imgZlib.Close()
+	timing.Zlib = time.Since(t1)
 
-	// Base64 encode
+	// Base64 encode + chunking
+	t2 := time.Now()
 	g.imgB64.Reset()
 	b64 := base64.NewEncoder(base64.StdEncoding, &g.imgB64)
 	_, _ = g.imgZBuf.WriteTo(b64)
@@ -118,7 +131,8 @@ func (g *GPURenderer) RenderImageFrame(r *core.RenderConfig, viewRow, viewCol in
 		}
 	}
 
-	return out.String()
+	timing.Base64 = time.Since(t2)
+	return out.String(), timing
 }
 
 // BlankFrame returns a string of spaces sized to fill the viewport.

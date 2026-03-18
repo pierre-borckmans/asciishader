@@ -77,6 +77,9 @@ type Model struct {
 	// Image mode (Kitty graphics)
 	ImageTransmit  string // Kitty APC escape to send via tea.Raw
 	ImageSupported bool   // whether terminal reports pixel dimensions
+	ImageGPUMs     float64
+	ImageZlibMs    float64
+	ImageB64Ms     float64
 }
 
 // NewModel creates the initial application model with default settings.

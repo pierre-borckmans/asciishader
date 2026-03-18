@@ -104,7 +104,12 @@ func (m Model) View() tea.View {
 			fileType = " [glsl]"
 		}
 		headerTitle = fmt.Sprintf("ASCII Shader  ·  %s%s", s.Name, fileType)
-		rightInfo = fmt.Sprintf("%s | %.0f fps%s%s", modeStr, m.FPS, pauseStr, recStr)
+		if m.Config.RenderMode == core.RenderImage {
+			rightInfo = fmt.Sprintf("%s | %.0f fps | gpu %.1f zlib %.1f b64 %.1f ms%s%s",
+				modeStr, m.FPS, m.ImageGPUMs, m.ImageZlibMs, m.ImageB64Ms, pauseStr, recStr)
+		} else {
+			rightInfo = fmt.Sprintf("%s | %.0f fps%s%s", modeStr, m.FPS, pauseStr, recStr)
+		}
 		rpWidth = m.RightPanel.Width()
 	case ViewPlayer:
 		headerTitle = "ASCII Shader  ·  Player"
