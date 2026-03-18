@@ -1662,22 +1662,64 @@ func (g *generator) emitFlip(e *ast.MethodCall) string {
 // Extrude & Revolve (2D → 3D)
 // ---------------------------------------------------------------------------
 
-// emitExtrude handles .extrude(height) on 2D SDF shapes.
-// Generates: sdExtrude(sdf2d(p.xy), p.z, h*0.5)
+// emitExtrude handles .extrude(depth), .extrude(depth, chamfer), .extrude(depth, ct, cb)
+// on 2D SDF shapes. Optional named arg offset: applies abs(d2d)-offset before extrusion.
 func (g *generator) emitExtrude(e *ast.MethodCall) string {
 	if len(e.Args) < 1 {
-		g.addDiag(diagnostic.Error, ".extrude() requires 1 argument (height)", e.NodeSpan())
+		g.addDiag(diagnostic.Error, ".extrude() requires at least 1 argument (depth)", e.NodeSpan())
 		return g.emitSDF(e.Receiver)
 	}
 
-	h := g.emitScalarExpr(e.Args[0].Value)
+	depth := g.emitScalarExpr(e.Args[0].Value)
 
-	// Emit the 2D SDF using pointVar.xy
-	p2d := fmt.Sprintf("%s.xy", g.pointVar)
-	d2d := g.emit2DSDF(e.Receiver, p2d)
+	// Check for chamfer params (positional args 2 and 3)
+	chamferTop := ""
+	chamferBot := ""
+	for i, a := range e.Args {
+		if a.Name == "" && i == 1 {
+			chamferTop = g.emitScalarExpr(a.Value)
+		}
+		if a.Name == "" && i == 2 {
+			chamferBot = g.emitScalarExpr(a.Value)
+		}
+	}
+	// Single chamfer arg → symmetric
+	if chamferTop != "" && chamferBot == "" {
+		chamferBot = chamferTop
+	}
+
+	// Check for offset: named arg
+	offset := ""
+	for _, a := range e.Args {
+		if a.Name == "offset" {
+			offset = g.emitScalarExpr(a.Value)
+		}
+	}
+
+	// Emit the 2D SDF in the XZ plane, extrude along Y.
+	p2d := fmt.Sprintf("%s.xz", g.pointVar)
+	d2dExpr := g.emit2DSDF(e.Receiver, p2d)
+
+	// Apply shell/onion offset if specified.
+	// Shrink the 2D shape by offset first, then shell it, so the result
+	// fits within the original bounding box (outer radius = original radius).
+	if offset != "" {
+		d2dShell := g.freshVar("d2d")
+		g.emit("float %s = abs(%s + %s) - %s;", d2dShell, d2dExpr, offset, offset)
+		d2dExpr = d2dShell
+	}
 
 	d := g.freshVar("d")
-	g.emit("float %s = sdExtrude(%s, %s.z, (%s)*0.5);", d, d2d, g.pointVar, h)
+	if chamferTop != "" {
+		// Use symmetric chamfer (min of ct, cb)
+		r := chamferTop
+		if chamferTop != chamferBot {
+			r = fmt.Sprintf("min(%s, %s)", chamferTop, chamferBot)
+		}
+		g.emit("float %s = sdExtrudeChamfer(%s, %s.y, (%s)*0.5, %s);", d, d2dExpr, g.pointVar, depth, r)
+	} else {
+		g.emit("float %s = sdExtrude(%s, %s.y, (%s)*0.5);", d, d2dExpr, g.pointVar, depth)
+	}
 	return d
 }
 
@@ -2737,6 +2779,7 @@ var builtinShapeNames = map[string]bool{
 	"hexagon":  true,
 	"triangle": true,
 	"egg":      true,
+	"softbox":  true,
 }
 
 // isBuiltinShape reports whether name is a built-in shape.
@@ -2751,6 +2794,7 @@ var builtin2DShapeNames = map[string]bool{
 	"hexagon":  true,
 	"triangle": true,
 	"egg":      true,
+	"softbox":  true,
 }
 
 // is2DShape reports whether name is a 2D shape primitive.
@@ -2771,6 +2815,8 @@ func shape2DDefault(name, p2d string) string {
 		return fmt.Sprintf("sdEquilateralTriangle2D(%s, 1.0)", p2d)
 	case "egg":
 		return fmt.Sprintf("sdEgg2D(%s, 0.5, 0.3, 0.2, 0.5)", p2d)
+	case "softbox":
+		return fmt.Sprintf("sdSoftBox2D(%s, vec2(0.5), vec4(0.1))", p2d)
 	}
 	return fmt.Sprintf("sdCircle2D(%s, 1.0)", p2d)
 }
@@ -2820,6 +2866,15 @@ func (g *generator) shape2DCall(name, p2d string, args []ast.Arg) string {
 		rb := g.scalarArgOr(args, 2, fmt.Sprintf("(%s)*0.5", he))
 		bu := g.scalarArgOr(args, 3, "0.5")
 		return fmt.Sprintf("sdEgg2D(%s, %s, %s, %s, %s)", p2d, he, ra, rb, bu)
+
+	case "softbox":
+		bx := g.emitScalarExpr(args[0].Value)
+		by := g.emitScalarExpr(args[1].Value)
+		r1 := g.scalarArgOr(args, 2, "0.0")
+		r2 := g.scalarArgOr(args, 3, "0.0")
+		r3 := g.scalarArgOr(args, 4, "0.0")
+		r4 := g.scalarArgOr(args, 5, "0.0")
+		return fmt.Sprintf("sdSoftBox2D(%s, vec2((%s)*0.5, (%s)*0.5), vec4(%s, %s, %s, %s))", p2d, bx, by, r1, r2, r3, r4)
 	}
 
 	return fmt.Sprintf("sdCircle2D(%s, 1.0)", p2d)

@@ -84,6 +84,7 @@ var Shapes2D = []Shape{
 	{"polygon", true, 1, 1, "polygon(points)\n2D polygon from [x,y] points."},
 	{"triangle", true, 0, 1, "triangle(size = 1)\n2D equilateral triangle."},
 	{"egg", true, 0, 4, "egg(he, ra, rb, bu)\n2D egg/ovoid. he=height, ra=top radius, rb=bottom radius, bu=bulge."},
+	{"softbox", true, 2, 6, "softbox(bx, by, r1, r2, r3, r4)\n2D rounded box with 4 independent corner radii."},
 }
 
 // --- Methods ---
