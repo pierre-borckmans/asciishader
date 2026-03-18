@@ -11,7 +11,7 @@ GO = go
 
 all: build test lint
 
-build: build-app build-chisel build-lsp
+build: build-app build-chisel build-lsp build-json2chisel
 
 build-app:
 	$(GO) build -o $(ASCIISHADER) ./cmd/asciishader
@@ -21,6 +21,9 @@ build-chisel:
 
 build-lsp:
 	$(GO) build -o $(CHISEL_LSP) ./pkg/chisel/cmd/chisel-lsp
+
+build-json2chisel:
+	$(GO) build -o json2chisel ./pkg/chisel/cmd/json2chisel
 
 install:
 	$(GO) install ./cmd/asciishader

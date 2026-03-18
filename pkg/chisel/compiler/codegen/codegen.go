@@ -1127,23 +1127,67 @@ func (g *generator) emitRep(e *ast.MethodCall) string {
 		return g.emitSDF(e.Receiver)
 	}
 
-	// Check for count: and padding: named args
+	// Check for count:, padding:, and named axis args (x:, y:, z:)
 	var countArg ast.Expr
 	var paddingArg ast.Expr
 	var positionalArgs []ast.Arg
+	axisSpacing := map[string]string{} // named axis spacing: x:, y:, z:
 	for _, a := range e.Args {
 		if a.Name == "count" {
 			countArg = a.Value
 		} else if a.Name == "padding" {
 			paddingArg = a.Value
+		} else if a.Name == "x" || a.Name == "y" || a.Name == "z" {
+			axisSpacing[a.Name] = g.emitScalarExpr(a.Value)
 		} else if a.Name == "" {
 			positionalArgs = append(positionalArgs, a)
 		}
 	}
 
+	// Build spacing from named axis args if no positional args
+	if len(positionalArgs) == 0 && len(axisSpacing) > 0 {
+		sx := axisSpacing["x"]
+		sy := axisSpacing["y"]
+		sz := axisSpacing["z"]
+		if sx == "" {
+			sx = "1e10"
+		}
+		if sy == "" {
+			sy = "1e10"
+		}
+		if sz == "" {
+			sz = "1e10"
+		}
+		spacingVar := fmt.Sprintf("vec3(%s, %s, %s)", sx, sy, sz)
+		if countArg != nil {
+			n := g.emitScalarExpr(countArg)
+			pNew := g.freshVar("p")
+			g.emit("vec3 %s = %s - %s * clamp(round(%s / %s), vec3(-%s), vec3(%s));",
+				pNew, g.pointVar, spacingVar, g.pointVar, spacingVar, n, n)
+			oldPoint := g.pointVar
+			g.pointVar = pNew
+			result := g.emitSDF(e.Receiver)
+			g.pointVar = oldPoint
+			return result
+		}
+		// Simple mod-based repeat with per-axis spacing
+		pNew := g.freshVar("p")
+		g.emit("vec3 %s = mod(%s + 0.5 * %s, %s) - 0.5 * %s;",
+			pNew, g.pointVar, spacingVar, spacingVar, spacingVar)
+		oldPoint := g.pointVar
+		g.pointVar = pNew
+		result := g.emitSDF(e.Receiver)
+		g.pointVar = oldPoint
+		return result
+	}
+
 	// Compute spacing vector
 	var sVar string
 	if countArg != nil {
+		if len(positionalArgs) == 0 {
+			g.addDiag(diagnostic.Error, ".rep() with count: requires a spacing argument", e.NodeSpan())
+			return g.emitSDF(e.Receiver)
+		}
 		s := g.emitScalarExpr(positionalArgs[0].Value)
 		n := g.emitScalarExpr(countArg)
 		pNew := g.freshVar("p")
