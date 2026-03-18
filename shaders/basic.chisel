@@ -1,0 +1,38 @@
+// basic.json — full extents (JSON half-extents × 2 for bx, by, depth)
+// Corner radii and chamfer are absolute, not halved
+
+// 1. Base plate (blue) — editor: W=1.5, H=0.02, D=1.5
+softbox(1.5, 1.5, 0.1, 0.1, 0.1, 0.1).extrude(0.02)
+  .at(0, -0.01, 0)
+  .color(#17439c)
+
+// 2. Rounded box (gray) — editor: W=0.24, H=0.24, D=0.24
+| softbox(0.24, 0.24, 0.05, 0.05, 0.05, 0.05).extrude(0.24, 0.05, 0.05)
+  .quat(0, 0.707, 0, 0.707)
+  .at(0, 0.12, 0)
+  .color(#9c9c9c)
+
+// 3. Red sphere — editor: W=0.24, H=0.24, D=0.24 (all equal + full chamfer = sphere)
+| softbox(0.241, 0.241, 0.121, 0.12, 0.12, 0.12).extrude(0.24, 0.12, 0.12)
+  .quat(0, 0.707, 0, 0.707)
+  .at(0.177, 0.45, 0.54)
+  .color(#c91414)
+
+// 4. Green torus — circle + shell offset
+| softbox(0.24, 0.24, 0.12, 0.12, 0.12, 0.12).extrude(0.24, 0.05, offset: 0.032)
+  .quat(-0.144, 0.415, -0.247, 0.864)
+  .at(-0.531, 0.368, -0.419)
+  .color(#14c915)
+  .emission(5.0)
+
+bg #c2e1ff
+
+light {
+  ambient: 0.8
+  dir: [sin(t*0.2), 0.8, cos(t*0.15)]
+}
+
+raymarch {
+  steps: 1024,
+  precision: 0.0001
+}

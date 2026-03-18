@@ -1,0 +1,25 @@
+// Axis test — full extents (matching editor UI Size panel)
+// JSON half-extents × 2 = editor W, H, D values
+
+// Black box at origin — editor: W=1, H=1, D=1
+softbox(1, 1, 0, 0, 0, 0).extrude(1)
+  .at(0, 0, 0)
+  .color(0, 0, 0)
+
+// Green box at Y=10 — editor: W=1, H=2, D=1
+| softbox(1, 1, 0, 0, 0, 0).extrude(2)
+  .at(0, 10, 0)
+  .color(0, 1, 0)
+
+// Blue box at Z=10 — editor: W=1, H=1, D=2
+| softbox(1, 2, 0, 0, 0, 0).extrude(1)
+  .at(0, 0, 10)
+  .color(0, 0, 1)
+
+// Red box at X=10 — editor: W=2, H=1, D=1
+| softbox(2, 1, 0, 0, 0, 0).extrude(1)
+  .at(10, 0, 0)
+  .color(1, 0, 0)
+
+bg #c2e1ff
+
