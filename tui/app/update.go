@@ -185,8 +185,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Check for file changes (polls every 500ms)
 		checkFileChanged(&m)
 
-		// Render frame
-		if m.Config.RenderMode == core.RenderImage && m.ImageSupported {
+		// Render frame — use image renderer for Image, Slice, and Cost modes when available
+		if m.UsesImageRenderer() {
 			// Viewport origin in 1-indexed terminal coordinates
 			viewRow := HeaderHeight() + 1
 			viewCol := m.Sidebar.Width() + 2 + 1
@@ -448,7 +448,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			dy := mouse.Y - m.MouseLastY
 			right := core.Vec3{X: math.Cos(m.CamAngleY), Y: 0, Z: math.Sin(m.CamAngleY)}
 			up := core.V(0, 1, 0)
-			panSpeed := m.CamDist * 0.01
+			panSpeed := m.CamDistTarget * 0.01
 			m.CamTargetTarget = m.CamTargetTarget.Add(right.Mul(float64(dx) * panSpeed))
 			m.CamTargetTarget = m.CamTargetTarget.Add(up.Mul(float64(dy) * panSpeed * 2.2))
 			m.MouseLastX = mouse.X
@@ -725,13 +725,13 @@ func (m Model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 			m.RecMessageTime = time.Now()
 		}
 	case "[":
-		if m.Config.RenderMode == core.RenderImage {
+		if m.UsesImageRenderer() {
 			m.Config.ImageScale = core.Clamp(m.Config.ImageScale-0.1, 0.1, 1.0)
 		} else {
 			m.Config.Contrast = core.Clamp(m.Config.Contrast-0.25, 0.5, 5.0)
 		}
 	case "]":
-		if m.Config.RenderMode == core.RenderImage {
+		if m.UsesImageRenderer() {
 			m.Config.ImageScale = core.Clamp(m.Config.ImageScale+0.1, 0.1, 1.0)
 		} else {
 			m.Config.Contrast = core.Clamp(m.Config.Contrast+0.25, 0.5, 5.0)

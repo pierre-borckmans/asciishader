@@ -105,7 +105,7 @@ func (m Model) View() tea.View {
 		}
 		headerTitle = fmt.Sprintf("ASCII Shader  ·  %s%s", s.Name, fileType)
 		fpsDetail := ""
-		if m.FPSHovered && m.Config.RenderMode == core.RenderImage {
+		if m.FPSHovered && m.UsesImageRenderer() {
 			label := "shm"
 			if !m.ImageShmMode {
 				label = "zlib"
@@ -140,7 +140,7 @@ func (m Model) View() tea.View {
 			{Key: "e", Desc: "editor"},
 			{Key: "m", Desc: "mode"},
 		}
-		if m.Config.RenderMode == core.RenderImage {
+		if m.UsesImageRenderer() {
 			bindings = append(bindings, layout.FooterBinding{Key: "[/]", Desc: "resolution"})
 		} else {
 			bindings = append(bindings, layout.FooterBinding{Key: "[/]", Desc: "contrast"})

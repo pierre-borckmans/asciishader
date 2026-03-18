@@ -195,6 +195,13 @@ func (m *Model) ResizeViewport() {
 	m.Config.Resize(cw, vh)
 }
 
+// UsesImageRenderer returns true if the current render mode uses the Kitty image path.
+func (m *Model) UsesImageRenderer() bool {
+	return m.ImageSupported && (m.Config.RenderMode == core.RenderImage ||
+		m.Config.RenderMode == core.RenderSlice ||
+		m.Config.RenderMode == core.RenderCost)
+}
+
 func (m *Model) GetRenderConfig() *core.RenderConfig { return m.Config }
 func (m *Model) GetGPU() *gpupkg.GPURenderer         { return m.GPU }
 func (m *Model) GetScene() int                       { return m.Scene }
