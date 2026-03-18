@@ -2598,21 +2598,29 @@ func (g *generator) processLightSetting(s *ast.SettingStmt) {
 			g.defines = make(map[string]string)
 		}
 		for key, val := range body {
-			valStr := g.settingValueStr(val)
-			if valStr == "" {
-				g.settingComments = append(g.settingComments, fmt.Sprintf("// chisel:light:%s [block]", key))
-				continue
-			}
 			switch key {
 			case "ambient":
-				g.defines["uAmbient"] = valStr
+				if valStr := g.settingValueStr(val); valStr != "" {
+					g.defines["uAmbient"] = valStr
+				}
+			case "dir":
+				if expr, ok := val.(ast.Expr); ok {
+					g.defines["LIGHT_DIR"] = g.emitScalarExpr(expr)
+				}
 			default:
-				g.settingComments = append(g.settingComments, fmt.Sprintf("// chisel:light:%s %s", key, valStr))
+				if valStr := g.settingValueStr(val); valStr != "" {
+					g.settingComments = append(g.settingComments, fmt.Sprintf("// chisel:light:%s %s", key, valStr))
+				}
 			}
 		}
 	default:
-		// light [x, y, z] — a vector expression.
-		g.settingComments = append(g.settingComments, "// chisel:light direction override")
+		// light [x, y, z] — a vector expression for direction.
+		if expr, ok := s.Body.(ast.Expr); ok {
+			if g.defines == nil {
+				g.defines = make(map[string]string)
+			}
+			g.defines["LIGHT_DIR"] = g.emitScalarExpr(expr)
+		}
 	}
 }
 
@@ -2726,7 +2734,7 @@ func (g *generator) writeDefines(out *strings.Builder) {
 		return
 	}
 	// Emit in a deterministic order.
-	for _, key := range []string{"MAX_STEPS", "SURF_DIST", "MAX_DIST", "uAmbient", "CAMERA_POS", "CAMERA_TARGET"} {
+	for _, key := range []string{"MAX_STEPS", "SURF_DIST", "MAX_DIST", "uAmbient", "LIGHT_DIR", "CAMERA_POS", "CAMERA_TARGET"} {
 		if val, ok := g.defines[key]; ok {
 			fmt.Fprintf(out, "#define %s %s\n", key, val)
 		}

@@ -125,12 +125,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Config.SliceMode = 0
 		}
 
-		// Animated light
-		m.Config.LightDir = core.V(
-			math.Sin(m.Time*0.5)*0.5,
-			0.8,
-			math.Cos(m.Time*0.5)*0.5-0.5,
-		).Normalize()
+		// Light direction is static by default (set in NewRenderConfig).
+		// Scenes can override via the Chisel `light` setting.
 
 		// Resize viewport if needed (panel animation may have changed width)
 		cw := m.ContentWidth()
@@ -436,10 +432,8 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if m.MouseDrag {
 			dx := mouse.X - m.MouseLastX
 			dy := mouse.Y - m.MouseLastY
-			// Scale orbit speed with zoom so it feels consistent at any distance
-			orbitScale := m.CamDistTarget / 4.0
-			m.CamAngleYTarget += float64(dx) * 0.01 * orbitScale
-			m.CamAngleXTarget = core.Clamp(m.CamAngleXTarget+float64(dy)*0.025*orbitScale, -math.Pi/2+0.1, math.Pi/2-0.1)
+			m.CamAngleYTarget += float64(dx) * 0.08
+			m.CamAngleXTarget = core.Clamp(m.CamAngleXTarget+float64(dy)*0.08, -math.Pi/2+0.1, math.Pi/2-0.1)
 			m.MouseLastX = mouse.X
 			m.MouseLastY = mouse.Y
 		}
@@ -726,13 +720,13 @@ func (m Model) handleViewportKey(key string) (tea.Model, tea.Cmd) {
 		}
 	case "[":
 		if m.UsesImageRenderer() {
-			m.Config.ImageScale = core.Clamp(m.Config.ImageScale-0.1, 0.1, 1.0)
+			m.Config.ImageScale = core.Clamp(m.Config.ImageScale-0.05, 0.1, 1.0)
 		} else {
 			m.Config.Contrast = core.Clamp(m.Config.Contrast-0.25, 0.5, 5.0)
 		}
 	case "]":
 		if m.UsesImageRenderer() {
-			m.Config.ImageScale = core.Clamp(m.Config.ImageScale+0.1, 0.1, 1.0)
+			m.Config.ImageScale = core.Clamp(m.Config.ImageScale+0.05, 0.1, 1.0)
 		} else {
 			m.Config.Contrast = core.Clamp(m.Config.Contrast+0.25, 0.5, 5.0)
 		}

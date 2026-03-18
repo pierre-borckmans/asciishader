@@ -498,14 +498,20 @@ vec4 shade(vec3 ro, vec3 rd, float t) {
     vec3 n = calcNormal(p);
     vec3 mat = sceneColor(p);
 
-    float diff = clamp(dot(n, uLightDir), 0.0, 1.0);
-    float shadow = softShadow(p + n*0.02, uLightDir, 0.02, 10.0, 16.0);
+#ifdef LIGHT_DIR
+    vec3 lightDir = normalize(LIGHT_DIR);
+#else
+    vec3 lightDir = uLightDir;
+#endif
+
+    float diff = clamp(dot(n, lightDir), 0.0, 1.0);
+    float shadow = softShadow(p + n*0.02, lightDir, 0.02, 10.0, 16.0);
     shadow = mix(1.0, shadow, 0.6); // soften shadow intensity
     diff *= shadow;
 
     float spec = 0.0;
     if (uShadowSteps > 0) {
-        vec3 half_v = normalize(uLightDir - rd);
+        vec3 half_v = normalize(lightDir - rd);
         spec = pow(clamp(dot(n, half_v), 0.0, 1.0), uSpecPower) * shadow;
     }
 
@@ -548,6 +554,11 @@ vec3 shapeNormal(vec3 p, int idx) {
 // with correct 3D intersections (not flat Voronoi boundaries).
 // Also handles smooth union blend regions via union-surface fallback.
 vec4 raymarchTransparent(vec3 ro, vec3 rd) {
+#ifdef LIGHT_DIR
+    vec3 lightDir = normalize(LIGHT_DIR);
+#else
+    vec3 lightDir = uLightDir;
+#endif
     vec3 accum = vec3(0.0);
     float accumA = 0.0;
     float t = 0.0;
@@ -576,7 +587,7 @@ vec4 raymarchTransparent(vec3 ro, vec3 rd) {
                         vec4 sh = shade(ro, rd, t);
                         hitColor = max(sh.rgb, color * 0.2);
                     } else {
-                        float diff = max(dot(n, uLightDir), 0.0);
+                        float diff = max(dot(n, lightDir), 0.0);
                         hitColor = color * (uAmbient + diff * 0.65);
                     }
                     float contrib = (1.0 - accumA) * opacity;
@@ -595,7 +606,7 @@ vec4 raymarchTransparent(vec3 ro, vec3 rd) {
                 vec3 color = sceneShapeColor(s);
                 vec3 n = shapeNormal(p, s);
                 // Flip normal for interior, attenuated lighting
-                float diff = max(dot(-n, uLightDir), 0.0);
+                float diff = max(dot(-n, lightDir), 0.0);
                 vec3 hitColor = color * (uAmbient * 0.7 + diff * 0.3);
                 float contrib = (1.0 - accumA) * opacity * 0.5;
                 accum += hitColor * contrib;

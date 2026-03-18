@@ -19,13 +19,13 @@ import (
 
 // Model is the top-level BubbleTea model for the AsciiShader TUI.
 type Model struct {
-	Config        *core.RenderConfig
-	GPU           *gpupkg.GPURenderer
-	Width         int
-	Height        int
-	Time          float64
-	Scene         int
-	Paused        bool
+	Config          *core.RenderConfig
+	GPU             *gpupkg.GPURenderer
+	Width           int
+	Height          int
+	Time            float64
+	Scene           int
+	Paused          bool
 	CamAngleY       float64
 	CamAngleX       float64
 	CamAngleYTarget float64
@@ -34,17 +34,17 @@ type Model struct {
 	CamDistTarget   float64
 	CamTarget       core.Vec3
 	CamTargetTarget core.Vec3
-	AutoRotate    bool
-	MouseLastX    int
-	MouseLastY    int
-	MouseDrag     bool
-	MousePan      bool
-	LastClickTime time.Time
-	LastClickX    int
-	LastClickY    int
-	FPS           float64
-	LastFrame     time.Time
-	Frame         string
+	AutoRotate      bool
+	MouseLastX      int
+	MouseLastY      int
+	MouseDrag       bool
+	MousePan        bool
+	LastClickTime   time.Time
+	LastClickX      int
+	LastClickY      int
+	FPS             float64
+	LastFrame       time.Time
+	Frame           string
 
 	// Layout components
 	Sidebar     *layout.Sidebar

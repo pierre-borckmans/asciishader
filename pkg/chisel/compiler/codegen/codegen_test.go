@@ -890,7 +890,7 @@ func TestSetting_LightVector(t *testing.T) {
 	glsl := compile(t, "light [-1, -1, -1]\nsphere")
 	assertContains(t, glsl, "sceneSDF", "sceneSDF still emitted")
 	assertContains(t, glsl, "sdSphere", "sphere still works with light setting")
-	assertContains(t, glsl, "// chisel:light", "light comment present")
+	assertContains(t, glsl, "#define LIGHT_DIR", "light direction emitted as #define")
 }
 
 func TestSetting_LightBlock(t *testing.T) {
